@@ -1,0 +1,6 @@
+-- Optional SQL-only content seed.
+-- For auth users and the full deterministic seed, run:
+-- npm run seed
+--
+-- This file is intentionally lightweight because Supabase Auth users are best
+-- created with the service-role seed script in scripts/seed.ts.

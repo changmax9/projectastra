@@ -1,0 +1,161 @@
+@import "katex/dist/katex.min.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #f8fafc;
+  color: #172033;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+input,
+textarea,
+select,
+button {
+  font: inherit;
+}
+
+.exam-prose,
+.review-prose {
+  line-height: 1.75;
+}
+
+.exam-prose p,
+.review-prose p {
+  margin: 0.75rem 0;
+}
+
+.exam-prose table {
+  border-collapse: collapse;
+  display: block;
+  margin: 1rem 0;
+  overflow-x: auto;
+  width: 100%;
+}
+
+.exam-prose th,
+.exam-prose td {
+  border: 1px solid #cbd5e1;
+  padding: 0.45rem 0.6rem;
+  text-align: left;
+}
+
+.exam-prose th {
+  background: #f8fafc;
+  font-weight: 700;
+}
+
+.review-prose h1,
+.review-prose h2,
+.review-prose h3 {
+  color: #0f172a;
+  font-weight: 750;
+  letter-spacing: 0;
+  scroll-margin-top: 7rem;
+}
+
+.review-prose h1 {
+  font-size: clamp(2rem, 5vw, 3.25rem);
+  line-height: 1.08;
+  margin: 0 0 1rem;
+}
+
+.review-prose h2 {
+  border-top: 1px solid #e2e8f0;
+  font-size: 1.55rem;
+  margin: 2.5rem 0 0.75rem;
+  padding-top: 1.5rem;
+}
+
+.review-prose h3 {
+  font-size: 1.2rem;
+  margin: 1.6rem 0 0.5rem;
+}
+
+.review-prose table {
+  border-collapse: collapse;
+  display: block;
+  margin: 1.5rem 0;
+  overflow-x: auto;
+  width: 100%;
+}
+
+.review-prose th,
+.review-prose td {
+  border: 1px solid #dbe4ef;
+  padding: 0.7rem 0.8rem;
+  text-align: left;
+}
+
+.review-prose th {
+  background: #eef4ff;
+}
+
+.review-prose code {
+  background: #e2e8f0;
+  border-radius: 6px;
+  padding: 0.1rem 0.3rem;
+}
+
+.review-prose pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.review-prose pre {
+  background: #101827;
+  border-radius: 8px;
+  color: #e2e8f0;
+  overflow-x: auto;
+  padding: 1rem;
+}
+
+.review-prose blockquote {
+  border-left: 4px solid #2563eb;
+  background: #eff6ff;
+  border-radius: 0 8px 8px 0;
+  margin: 1.25rem 0;
+  padding: 0.9rem 1rem;
+}
+
+.review-prose blockquote[data-callout="mistake"] {
+  border-left-color: #b45309;
+  background: #fff7ed;
+}
+
+.review-prose blockquote[data-callout="tip"] {
+  border-left-color: #15803d;
+  background: #f0fdf4;
+}
+
+.review-prose img,
+.exam-prose img {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  height: auto;
+  margin: 1rem 0;
+  max-width: 100%;
+}
+
+.katex-display {
+  background: #f1f5f9;
+  border-radius: 8px;
+  margin: 1.25rem 0;
+  overflow-x: auto;
+  padding: 1rem;
+}

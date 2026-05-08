@@ -1,0 +1,18 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "rootDir": "..",
+    "outDir": "../.test-build",
+    "noEmit": false,
+    "incremental": false
+  },
+  "include": [
+    "../lib/ap-question-format.ts",
+    "../lib/math-markdown.ts",
+    "../lib/question-import.ts",
+    "../lib/schemas.ts",
+    "../lib/types.ts"
+  ]
+}

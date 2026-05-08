@@ -1,0 +1,10 @@
+.DS_Store
+.env
+.env.local
+.mock-db.json
+.next
+.test-build
+node_modules
+tmp
+public/uploads/*
+!public/uploads/.gitkeep

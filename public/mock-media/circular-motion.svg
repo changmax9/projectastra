@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="420" viewBox="0 0 720 420" role="img" aria-label="Circular motion diagram">
+  <rect width="720" height="420" fill="#f8fafc"/>
+  <circle cx="360" cy="210" r="130" fill="none" stroke="#2563eb" stroke-width="4" stroke-dasharray="10 10"/>
+  <circle cx="360" cy="210" r="7" fill="#172033"/>
+  <circle cx="490" cy="210" r="28" fill="#0891b2"/>
+  <line x1="490" y1="210" x2="382" y2="210" stroke="#b91c1c" stroke-width="5" marker-end="url(#arrow)"/>
+  <path d="M488 182 Q525 172 542 203" fill="none" stroke="#15803d" stroke-width="4" marker-end="url(#arrowGreen)"/>
+  <text x="337" y="238" font-family="Arial, sans-serif" font-size="22" fill="#172033">center</text>
+  <text x="408" y="188" font-family="Arial, sans-serif" font-size="22" fill="#b91c1c">net force</text>
+  <text x="520" y="168" font-family="Arial, sans-serif" font-size="22" fill="#15803d">velocity</text>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#b91c1c"/>
+    </marker>
+    <marker id="arrowGreen" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#15803d"/>
+    </marker>
+  </defs>
+</svg>

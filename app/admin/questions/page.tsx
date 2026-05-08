@@ -1,0 +1,145 @@
+import Link from "next/link";
+import { adminCreateQuestionFromMinimalAction, adminDeleteQuestionAction } from "@/app/actions";
+import { DataTable } from "@/components/admin/DataTable";
+import { QuestionForm } from "@/components/admin/QuestionForm";
+import { listQuestions } from "@/lib/data";
+import type { Difficulty, QuestionStatus, QuestionType } from "@/lib/types";
+
+export const dynamic = "force-dynamic";
+
+export default async function AdminQuestionsPage({
+  searchParams
+}: {
+  searchParams: {
+    examName?: string;
+    subject?: string;
+    course?: string;
+    year?: string;
+    section?: string;
+    examType?: string;
+    topic?: string;
+    status?: QuestionStatus | "";
+    difficulty?: Difficulty | "";
+    type?: QuestionType | "";
+    tag?: string;
+    search?: string;
+  };
+}) {
+  const questions = await listQuestions(searchParams);
+  const needsReviewCount = questions.filter((question) => question.tags.includes("needs-admin-review")).length;
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-3xl font-semibold text-ink">Question bank</h1>
+        <p className="mt-1 text-sm text-slate-500">Manage structured questions, review imported assets, and publish only cleaned items.</p>
+        <div className="mt-4 flex flex-wrap gap-3">
+          <Link
+            href="/admin/questions?course=AP%20Calculus%20AB&tag=needs-admin-review"
+            className="rounded-md bg-amber-100 px-4 py-2 text-sm font-semibold text-amber-900 hover:bg-amber-200"
+          >
+            Calculus AB needs review
+          </Link>
+          {searchParams.tag === "needs-admin-review" ? (
+            <span className="rounded-md border border-amber-200 bg-white px-4 py-2 text-sm font-semibold text-amber-800">
+              {needsReviewCount} visible needs-review questions
+            </span>
+          ) : null}
+        </div>
+      </div>
+
+      <form className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-3 lg:grid-cols-8">
+        <input name="search" defaultValue={searchParams.search || ""} placeholder="Search text" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+        <input name="examName" defaultValue={searchParams.examName || ""} placeholder="Exam name" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+        <input name="subject" defaultValue={searchParams.subject || ""} placeholder="Subject group" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+        <input name="course" defaultValue={searchParams.course || ""} placeholder="AP Course" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+        <input name="year" defaultValue={searchParams.year || ""} placeholder="Year" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+        <select name="section" defaultValue={searchParams.section || ""} className="rounded-md border border-slate-300 px-3 py-2 text-sm">
+          <option value="">All section</option>
+          <option value="MCQ">MCQ</option>
+          <option value="FRQ">FRQ</option>
+          <option value="MCQ_NON_CALCULATOR">MCQ Non-Calculator</option>
+          <option value="MCQ_CALCULATOR">MCQ Calculator</option>
+          <option value="FRQ_CALCULATOR">FRQ Calculator</option>
+          <option value="FRQ_NON_CALCULATOR">FRQ Non-Calculator</option>
+          <option value="Full Exam">Full Exam</option>
+        </select>
+        <select name="examType" defaultValue={searchParams.examType || ""} className="rounded-md border border-slate-300 px-3 py-2 text-sm">
+          <option value="">All exam type</option>
+          <option value="Practice Exam">Practice Exam</option>
+          <option value="Released Exam">Released Exam</option>
+          <option value="Unit Test">Unit Test</option>
+          <option value="Custom Quiz">Custom Quiz</option>
+        </select>
+        <input name="topic" defaultValue={searchParams.topic || ""} placeholder="Topic" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+        <select name="tag" defaultValue={searchParams.tag || ""} className="rounded-md border border-slate-300 px-3 py-2 text-sm">
+          <option value="">All tags</option>
+          <option value="needs-admin-review">needs-admin-review</option>
+          <option value="calculus-ab">calculus-ab</option>
+          <option value="structured-pdf-import">structured-pdf-import</option>
+        </select>
+        <select name="status" defaultValue={searchParams.status || ""} className="rounded-md border border-slate-300 px-3 py-2 text-sm">
+          <option value="">All status</option>
+          <option value="draft">draft</option>
+          <option value="reviewed">reviewed</option>
+          <option value="published">published</option>
+        </select>
+        <select name="difficulty" defaultValue={searchParams.difficulty || ""} className="rounded-md border border-slate-300 px-3 py-2 text-sm">
+          <option value="">All difficulty</option>
+          <option value="easy">easy</option>
+          <option value="medium">medium</option>
+          <option value="hard">hard</option>
+        </select>
+        <button className="rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white md:col-span-3 lg:col-span-1">Filter</button>
+      </form>
+
+      <details className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+        <summary className="cursor-pointer text-lg font-semibold text-ink">Create full question</summary>
+        <div className="mt-4">
+          <QuestionForm />
+        </div>
+      </details>
+
+      <form action={adminCreateQuestionFromMinimalAction} className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-[1fr_1fr_1fr_1fr_100px_120px]">
+        <input name="subject" defaultValue="Physics" placeholder="Subject group" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+        <input name="course" defaultValue="AP Physics 1" placeholder="AP Course" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+        <input name="year" placeholder="Year" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+        <input name="unit" placeholder="Unit" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+        <input name="topic" placeholder="Topic" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+        <select name="type" className="rounded-md border border-slate-300 px-3 py-2 text-sm">
+          <option value="mcq">mcq</option>
+          <option value="frq">frq</option>
+        </select>
+        <button className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">Quick create</button>
+        <input name="question_text" placeholder="Question text" className="md:col-span-6 rounded-md border border-slate-300 px-3 py-2 text-sm" />
+      </form>
+
+      <DataTable
+        headers={["#", "Question", "Exam", "Year", "Section", "Topic", "Difficulty", "Status", "Edit", "Delete"]}
+        empty="No questions found."
+        rows={questions.map((question) => [
+          question.question_number || "—",
+          <span key="q" className="block max-w-xl">
+            {question.tags.includes("needs-admin-review") ? (
+              <span className="mb-2 inline-flex rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold uppercase text-amber-800">
+                Needs Review
+              </span>
+            ) : null}
+            <span className="line-clamp-3">{question.question_text}</span>
+          </span>,
+          <span key="m" className="text-sm text-slate-600">{question.exam_name}<br />{question.subject} · {question.course}</span>,
+          question.year || "—",
+          question.section,
+          question.topic,
+          question.difficulty,
+          <span key="status" className="rounded-full bg-slate-100 px-2 py-1 text-xs uppercase text-slate-500">{question.status}</span>,
+          <Link key="open" href={`/admin/questions/${question.id}`} className="font-medium text-brand">Edit</Link>,
+          <form key="delete" action={adminDeleteQuestionAction}>
+            <input type="hidden" name="id" value={question.id} />
+            <button className="rounded-md border border-red-200 px-3 py-2 text-sm text-danger">Delete</button>
+          </form>
+        ])}
+      />
+    </div>
+  );
+}
