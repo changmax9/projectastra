@@ -59,7 +59,7 @@ AP Mock Exam Platform 是一个 AP 风格模考网站，目前已经支持：
    - 当前 remote 名称：`origin`
 
 2. personal repo
-   - `sjfq/ap-website-vercel`
+   - `changmax9/ap-website-vercel`
    - 当前 remote 名称：`personal`
 
 当前部署约定：
