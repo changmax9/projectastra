@@ -38,6 +38,8 @@ async function countRows(supabase, table) {
 async function main() {
   loadEnvFile(path.join(ROOT, ".env.local"));
   loadEnvFile(path.join(ROOT, ".env"));
+  const mockPath = path.join(ROOT, ".mock-db.json");
+  const mockDb = fs.existsSync(mockPath) ? JSON.parse(fs.readFileSync(mockPath, "utf8")) : null;
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -67,6 +69,25 @@ async function main() {
   const summary = {};
   for (const table of tables) summary[table] = await countRows(supabase, table);
   console.table(summary);
+
+  if (mockDb) {
+    const expected = {
+      exams: (mockDb.exams || []).length,
+      exam_sections: (mockDb.exams || []).reduce((sum, exam) => sum + (exam.sections || []).length, 0),
+      questions: (mockDb.questions || []).length,
+      question_images: (mockDb.questions || []).reduce((sum, question) => sum + (question.question_images || []).length, 0),
+      exam_questions: (mockDb.examQuestions || []).length,
+      review_guides: (mockDb.reviewGuides || []).length
+    };
+    const missing = Object.entries(expected).filter(([table, count]) => summary[table] < count);
+    if (missing.length > 0) {
+      throw new Error(
+        `Supabase data is below expected seeded counts: ${missing
+          .map(([table, count]) => `${table} expected at least ${count}, got ${summary[table]}`)
+          .join("; ")}`
+      );
+    }
+  }
 
   const { data: exams, error: examError } = await supabase
     .from("exams")
