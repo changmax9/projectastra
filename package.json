@@ -12,6 +12,8 @@
     "seed:supabase:dry": "node scripts/seed-supabase-from-mock.cjs --dry-run",
     "seed:supabase": "node scripts/seed-supabase-from-mock.cjs --apply",
     "check:supabase": "node scripts/check-supabase-data.cjs",
+    "backup:supabase": "node scripts/export-supabase-to-backup.cjs",
+    "restore:supabase:dry": "node scripts/restore-supabase-from-backup.cjs --dry-run",
     "predeploy": "node scripts/predeploy-check.cjs"
   },
   "dependencies": {
