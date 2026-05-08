@@ -28,6 +28,7 @@ import type {
   Profile,
   Question,
   QuestionFilters,
+  QuestionImage,
   QuestionImportItem,
   QuestionImportBatch,
   ReviewGuide,
@@ -279,6 +280,324 @@ function canonicalChoiceAnswer(value: string | null | undefined) {
     .join(",");
 }
 
+type ExamSectionRow = {
+  id: string;
+  exam_id: string;
+  section: string;
+  title: string;
+  question_count: number;
+  time_limit_minutes: number;
+  calculator_allowed: boolean;
+  order_index: number;
+};
+
+type QuestionImageRow = {
+  id: string;
+  question_id: string;
+  file_url: string;
+  caption: string | null;
+  alt: string | null;
+  sort_order: number;
+};
+
+type SectionProgressRow = {
+  attempt_id: string;
+  exam_id: string;
+  section: string;
+  section_title: string;
+  status: ExamSectionProgress["status"];
+  started_at: string | null;
+  submitted_at: string | null;
+  time_limit_minutes: number;
+  time_spent_seconds: number;
+  current_question_index: number;
+  score_correct: number;
+  score_total: number;
+};
+
+type ExamAttemptRow = Omit<Submission, "sections_progress" | "section" | "section_title" | "calculator_allowed" | "section_time_limit_minutes"> & {
+  student_id: string;
+};
+
+type StudentAnswerRow = Omit<Answer, "submission_id"> & {
+  attempt_id: string;
+};
+
+function mapExamSectionRow(row: ExamSectionRow): ExamSection {
+  return {
+    id: row.id,
+    section: row.section,
+    title: row.title,
+    questionCount: Number(row.question_count || 0),
+    timeLimitMinutes: Number(row.time_limit_minutes || 0),
+    calculatorAllowed: Boolean(row.calculator_allowed),
+    order: Number(row.order_index || 0)
+  };
+}
+
+function examSectionToRow(examId: string, section: ExamSection) {
+  return {
+    id: section.id,
+    exam_id: examId,
+    section: section.section,
+    title: section.title,
+    question_count: section.questionCount,
+    time_limit_minutes: section.timeLimitMinutes,
+    calculator_allowed: section.calculatorAllowed,
+    order_index: section.order
+  };
+}
+
+function mapQuestionImageRow(row: QuestionImageRow): QuestionImage {
+  return {
+    id: row.id,
+    url: row.file_url,
+    caption: row.caption,
+    alt: row.alt
+  };
+}
+
+function questionImageToRow(questionId: string, image: QuestionImage, sortOrder: number) {
+  return {
+    id: image.id,
+    question_id: questionId,
+    file_url: image.url,
+    caption: image.caption || null,
+    alt: image.alt || null,
+    sort_order: sortOrder
+  };
+}
+
+function mapSectionProgressRow(row: SectionProgressRow): ExamSectionProgress {
+  return {
+    section: row.section,
+    sectionTitle: row.section_title,
+    status: row.status,
+    startedAt: row.started_at,
+    submittedAt: row.submitted_at,
+    timeLimitMinutes: Number(row.time_limit_minutes || 0),
+    timeSpentSeconds: Number(row.time_spent_seconds || 0),
+    currentQuestionIndex: Number(row.current_question_index || 0),
+    scoreCorrect: Number(row.score_correct || 0),
+    scoreTotal: Number(row.score_total || 0)
+  };
+}
+
+function sectionProgressToRow(attemptId: string, examId: string, progress: ExamSectionProgress) {
+  return {
+    attempt_id: attemptId,
+    exam_id: examId,
+    section: progress.section,
+    section_title: progress.sectionTitle,
+    status: progress.status,
+    started_at: progress.startedAt,
+    submitted_at: progress.submittedAt,
+    time_limit_minutes: progress.timeLimitMinutes,
+    time_spent_seconds: progress.timeSpentSeconds,
+    current_question_index: progress.currentQuestionIndex,
+    score_correct: progress.scoreCorrect,
+    score_total: progress.scoreTotal
+  };
+}
+
+function mapAttemptRow(row: ExamAttemptRow, sectionsProgress: ExamSectionProgress[] = []): Submission {
+  return normalizeSubmissionRecord({
+    id: row.id,
+    exam_id: row.exam_id,
+    student_id: row.student_id,
+    section: null,
+    section_title: null,
+    calculator_allowed: null,
+    section_time_limit_minutes: null,
+    current_step: row.current_step,
+    current_section_index: row.current_section_index,
+    break_started_at: row.break_started_at,
+    break_completed_at: row.break_completed_at,
+    break_skipped: row.break_skipped,
+    sections_progress: sectionsProgress,
+    status: row.status,
+    started_at: row.started_at,
+    submitted_at: row.submitted_at,
+    total_score: Number(row.total_score || 0),
+    max_score: Number(row.max_score || 0),
+    percentage: Number(row.percentage || 0),
+    time_spent_seconds: Number(row.time_spent_seconds || 0),
+    current_question_index: Number(row.current_question_index || 0),
+    created_at: row.created_at,
+    updated_at: row.updated_at
+  });
+}
+
+function mapStudentAnswerRow(row: StudentAnswerRow): Answer {
+  return {
+    id: row.id,
+    submission_id: row.attempt_id,
+    question_id: row.question_id,
+    answer_text: row.answer_text,
+    selected_choice: row.selected_choice,
+    is_correct: row.is_correct,
+    auto_score: Number(row.auto_score || 0),
+    manual_score: row.manual_score === null ? null : Number(row.manual_score || 0),
+    final_score: Number(row.final_score || 0),
+    time_spent_seconds: row.time_spent_seconds,
+    flagged: Boolean(row.flagged),
+    created_at: row.created_at,
+    updated_at: row.updated_at
+  };
+}
+
+async function fetchExamSections(examId: string) {
+  const { data, error } = await adminClient()
+    .from("exam_sections")
+    .select("*")
+    .eq("exam_id", examId)
+    .order("order_index", { ascending: true });
+  if (error) throw new Error(error.message);
+  return ((data || []) as ExamSectionRow[]).map(mapExamSectionRow);
+}
+
+async function attachExamSections(exams: Exam[]) {
+  const ids = exams.map((exam) => exam.id);
+  if (ids.length === 0) return exams.map(normalizeExamRecord);
+  const { data, error } = await adminClient()
+    .from("exam_sections")
+    .select("*")
+    .in("exam_id", ids)
+    .order("order_index", { ascending: true });
+  if (error) throw new Error(error.message);
+  const byExam = new Map<string, ExamSection[]>();
+  for (const row of (data || []) as ExamSectionRow[]) {
+    const items = byExam.get(row.exam_id) || [];
+    items.push(mapExamSectionRow(row));
+    byExam.set(row.exam_id, items);
+  }
+  return exams.map((exam) => normalizeExamRecord({ ...exam, sections: byExam.get(exam.id) || exam.sections }));
+}
+
+async function attachQuestionImages(questions: Question[]) {
+  const ids = questions.map((question) => question.id);
+  if (ids.length === 0) return questions.map(normalizeQuestionRecord);
+  const { data, error } = await adminClient()
+    .from("question_images")
+    .select("*")
+    .in("question_id", ids)
+    .order("sort_order", { ascending: true });
+  if (error) throw new Error(error.message);
+  const byQuestion = new Map<string, QuestionImage[]>();
+  for (const row of (data || []) as QuestionImageRow[]) {
+    const items = byQuestion.get(row.question_id) || [];
+    items.push(mapQuestionImageRow(row));
+    byQuestion.set(row.question_id, items);
+  }
+  return questions.map((question) =>
+    normalizeQuestionRecord({
+      ...question,
+      question_images: byQuestion.get(question.id) || question.question_images || []
+    })
+  );
+}
+
+async function syncExamSections(examId: string, sections: ExamSection[]) {
+  const supabase = adminClient();
+  await supabase.from("exam_sections").delete().eq("exam_id", examId);
+  if (sections.length === 0) return;
+  const { error } = await supabase.from("exam_sections").insert(sections.map((section) => examSectionToRow(examId, section)));
+  if (error) throw new Error(error.message);
+}
+
+async function syncQuestionImages(questionId: string, images: QuestionImage[]) {
+  const supabase = adminClient();
+  await supabase.from("question_images").delete().eq("question_id", questionId);
+  if (images.length === 0) return;
+  const { error } = await supabase.from("question_images").insert(images.map((image, index) => questionImageToRow(questionId, image, index + 1)));
+  if (error) throw new Error(error.message);
+}
+
+async function fetchSectionProgressForAttempts(attemptIds: string[]) {
+  if (attemptIds.length === 0) return new Map<string, ExamSectionProgress[]>();
+  const { data, error } = await adminClient()
+    .from("section_progress")
+    .select("*")
+    .in("attempt_id", attemptIds)
+    .order("created_at", { ascending: true });
+  if (error) throw new Error(error.message);
+  const byAttempt = new Map<string, ExamSectionProgress[]>();
+  for (const row of (data || []) as SectionProgressRow[]) {
+    const items = byAttempt.get(row.attempt_id) || [];
+    items.push(mapSectionProgressRow(row));
+    byAttempt.set(row.attempt_id, items);
+  }
+  return byAttempt;
+}
+
+async function upsertSectionProgressRows(attemptId: string, examId: string, progress: ExamSectionProgress[]) {
+  if (progress.length === 0) return;
+  const { error } = await adminClient()
+    .from("section_progress")
+    .upsert(progress.map((item) => sectionProgressToRow(attemptId, examId, item)), { onConflict: "attempt_id,section" });
+  if (error) throw new Error(error.message);
+}
+
+async function getSupabaseSubmission(submissionId: string) {
+  const { data, error } = await adminClient().from("exam_attempts").select("*").eq("id", submissionId).single();
+  if (error || !data) return null;
+  const progress = await fetchSectionProgressForAttempts([submissionId]);
+  return mapAttemptRow(data as ExamAttemptRow, progress.get(submissionId) || []);
+}
+
+async function upsertStudentAnswer(answer: Answer) {
+  const { data, error } = await adminClient()
+    .from("student_answers")
+    .upsert(
+      {
+        attempt_id: answer.submission_id,
+        question_id: answer.question_id,
+        answer_text: answer.answer_text,
+        selected_choice: answer.selected_choice,
+        is_correct: answer.is_correct,
+        auto_score: answer.auto_score,
+        manual_score: answer.manual_score,
+        final_score: answer.final_score,
+        time_spent_seconds: answer.time_spent_seconds,
+        flagged: answer.flagged,
+        updated_at: answer.updated_at
+      },
+      { onConflict: "attempt_id,question_id" }
+    )
+    .select("*")
+    .single();
+  if (error) throw new Error(error.message);
+  return mapStudentAnswerRow(data as StudentAnswerRow);
+}
+
+async function upsertFrqResponseFromAnswer(answer: Answer) {
+  if (answer.answer_text === null) return;
+  const { error } = await adminClient()
+    .from("frq_responses")
+    .upsert(
+      {
+        attempt_id: answer.submission_id,
+        question_id: answer.question_id,
+        response_text: answer.answer_text || "",
+        updated_at: answer.updated_at
+      },
+      { onConflict: "attempt_id,question_id" }
+    );
+  if (error) throw new Error(error.message);
+}
+
+async function logAdminEdit(adminId: string, entityType: string, entityId: string, action: string, changes: object = {}) {
+  if (!hasSupabaseEnv()) return;
+  const { error } = await adminClient().from("admin_edits").insert({
+    admin_id: adminId,
+    entity_type: entityType,
+    entity_id: entityId,
+    action,
+    changes
+  });
+  if (error) throw new Error(error.message);
+}
+
 export async function listPublishedExams() {
   if (hasSupabaseEnv()) {
     const { data, error } = await adminClient()
@@ -287,7 +606,7 @@ export async function listPublishedExams() {
       .eq("status", "published")
       .order("updated_at", { ascending: false });
     if (error) throw new Error(error.message);
-    return ((data || []) as Exam[]).map(normalizeExamRecord);
+    return attachExamSections((data || []) as Exam[]);
   }
 
   await ensureMockStore();
@@ -309,7 +628,7 @@ export async function adminListExams(filters: ExamFilters = {}) {
     if (filters.search) query = query.or(`title.ilike.%${filters.search}%,description.ilike.%${filters.search}%,course.ilike.%${filters.search}%`);
     const { data, error } = await query;
     if (error) throw new Error(error.message);
-    return ((data || []) as Exam[]).map(normalizeExamRecord);
+    return attachExamSections((data || []) as Exam[]);
   }
 
   await ensureMockStore();
@@ -330,11 +649,17 @@ export async function getExamWithQuestions(examId: string, includeDraft = false)
       .order("order_index", { ascending: true });
     if (rowError) throw new Error(rowError.message);
 
+    const [examWithSections] = await attachExamSections([exam as Exam]);
+    const questionsWithImages = await attachQuestionImages(
+      ((rows || []) as Array<ExamQuestion & { question: Question }>).map((row) => row.question)
+    );
+    const questionsById = new Map(questionsWithImages.map((question) => [question.id, question]));
+
     return {
-      ...normalizeExamRecord(exam as Exam),
+      ...examWithSections,
       exam_questions: ((rows || []) as Array<ExamQuestion & { question: Question }>).map((row) => ({
         ...row,
-        question: normalizeQuestionRecord(row.question)
+        question: questionsById.get(row.question.id) || normalizeQuestionRecord(row.question)
       }))
     };
   }
@@ -372,7 +697,7 @@ export async function listQuestions(filters: QuestionFilters = {}) {
     if (filters.search) query = query.ilike("question_text", `%${filters.search}%`);
     const { data, error } = await query;
     if (error) throw new Error(error.message);
-    return ((data || []) as Question[]).map(normalizeQuestionRecord);
+    return attachQuestionImages((data || []) as Question[]);
   }
 
   await ensureMockStore();
@@ -383,7 +708,8 @@ export async function getQuestion(questionId: string) {
   if (hasSupabaseEnv()) {
     const { data, error } = await adminClient().from("questions").select("*").eq("id", questionId).single();
     if (error || !data) return null;
-    return normalizeQuestionRecord(data as Question);
+    const [question] = await attachQuestionImages([data as Question]);
+    return question;
   }
 
   await ensureMockStore();
@@ -425,9 +751,17 @@ export async function upsertQuestion(input: Partial<Question> & Omit<QuestionImp
   };
 
   if (hasSupabaseEnv()) {
-    const { data, error } = await adminClient().from("questions").upsert(payload).select("*").single();
+    const { question_images: questionImages, ...questionPayload } = payload;
+    const { data, error } = await adminClient().from("questions").upsert(questionPayload).select("*").single();
     if (error) throw new Error(error.message);
-    return normalizeQuestionRecord(data as Question);
+    await syncQuestionImages(payload.id, questionImages || []);
+    await logAdminEdit(adminId, "question", payload.id, "upsert", {
+      status: payload.status,
+      tags: payload.tags,
+      updated_at: payload.updated_at
+    });
+    const [question] = await attachQuestionImages([data as Question]);
+    return question;
   }
 
   const existingIndex = mockQuestions.findIndex((question) => question.id === payload.id);
@@ -510,6 +844,8 @@ export async function upsertExam(input: Partial<Exam>, adminId: string) {
   const timestamp = nowIso();
   if (!hasSupabaseEnv()) await ensureMockStore();
   const existingExam = !hasSupabaseEnv() && input.id ? mockExams.find((item) => item.id === input.id) : null;
+  const existingSupabaseSections =
+    hasSupabaseEnv() && input.id && input.sections === undefined ? await fetchExamSections(input.id) : undefined;
   const exam: Exam = {
     id: input.id || uid("exam"),
     title: input.title || "Untitled Exam",
@@ -520,7 +856,7 @@ export async function upsertExam(input: Partial<Exam>, adminId: string) {
     section: normalizeSection(input.section, "Full Exam"),
     exam_type: normalizeExamType(input.exam_type),
     time_limit_minutes: Number(input.time_limit_minutes || 45),
-    sections: normalizeExamSections(input.sections ?? existingExam?.sections),
+    sections: normalizeExamSections(input.sections ?? existingExam?.sections ?? existingSupabaseSections),
     status: (input.status as ExamStatus) || "draft",
     created_by: input.created_by || adminId,
     created_at: input.created_at || timestamp,
@@ -531,7 +867,14 @@ export async function upsertExam(input: Partial<Exam>, adminId: string) {
     const { sections, ...supabaseExam } = exam;
     const { data, error } = await adminClient().from("exams").upsert(supabaseExam).select("*").single();
     if (error) throw new Error(error.message);
-    return normalizeExamRecord({ ...(data as Exam), sections });
+    if (input.sections !== undefined) await syncExamSections(exam.id, sections || []);
+    await logAdminEdit(adminId, "exam", exam.id, "upsert", {
+      status: exam.status,
+      section_count: sections?.length || 0,
+      updated_at: exam.updated_at
+    });
+    const [savedExam] = await attachExamSections([data as Exam]);
+    return savedExam;
   }
 
   const index = mockExams.findIndex((item) => item.id === exam.id);
@@ -662,14 +1005,18 @@ export async function getStudentDashboard(profileId: string) {
 export async function listStudentSubmissions(studentId: string) {
   if (hasSupabaseEnv()) {
     const { data, error } = await adminClient()
-      .from("submissions")
+      .from("exam_attempts")
       .select("*, exam:exams(*)")
       .eq("student_id", studentId)
       .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
-    return ((data || []) as Array<Submission & { exam: Exam | null }>).map((submission) => ({
-      ...normalizeSubmissionRecord(submission),
-      exam: submission.exam ? normalizeExamRecord(submission.exam) : null
+    const rows = (data || []) as Array<ExamAttemptRow & { exam: Exam | null }>;
+    const progress = await fetchSectionProgressForAttempts(rows.map((row) => row.id));
+    const exams = await attachExamSections(rows.map((row) => row.exam).filter(Boolean) as Exam[]);
+    const examsById = new Map(exams.map((exam) => [exam.id, exam]));
+    return rows.map((submission) => ({
+      ...mapAttemptRow(submission, progress.get(submission.id) || []),
+      exam: examsById.get(submission.exam_id) || null
     }));
   }
 
@@ -688,32 +1035,29 @@ export async function createOrContinueSubmission(examId: string, studentId: stri
   if (hasSupabaseEnv()) {
     const supabase = adminClient();
     const { data: existing } = await supabase
-      .from("submissions")
+      .from("exam_attempts")
       .select("*")
       .eq("exam_id", examId)
       .eq("student_id", studentId)
       .eq("status", "in_progress")
-      .is("section", null)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
-    if (existing) return normalizeSubmissionRecord(existing as Submission);
+    if (existing) {
+      const existingSubmission = await getSupabaseSubmission((existing as ExamAttemptRow).id);
+      if (existingSubmission) return existingSubmission;
+    }
 
     const { data, error } = await supabase
-      .from("submissions")
+      .from("exam_attempts")
       .insert({
         exam_id: examId,
         student_id: studentId,
-        section: null,
-        section_title: null,
-        calculator_allowed: null,
-        section_time_limit_minutes: null,
         current_step: sectionsProgress.length ? "section" : "section",
         current_section_index: 0,
         break_started_at: null,
         break_completed_at: null,
         break_skipped: false,
-        sections_progress: sectionsProgress,
         status: "in_progress",
         started_at: nowIso(),
         total_score: 0,
@@ -725,7 +1069,8 @@ export async function createOrContinueSubmission(examId: string, studentId: stri
       .select("*")
       .single();
     if (error) throw new Error(error.message);
-    return normalizeSubmissionRecord(data as Submission);
+    await upsertSectionProgressRows((data as ExamAttemptRow).id, examId, sectionsProgress);
+    return mapAttemptRow(data as ExamAttemptRow, sectionsProgress);
   }
 
   await ensureMockStore();
@@ -812,9 +1157,7 @@ export async function recoverMockSubmission(input: {
 
 export async function getSubmission(submissionId: string) {
   if (hasSupabaseEnv()) {
-    const { data, error } = await adminClient().from("submissions").select("*").eq("id", submissionId).single();
-    if (error || !data) return null;
-    return normalizeSubmissionRecord(data as Submission);
+    return getSupabaseSubmission(submissionId);
   }
 
   await ensureMockStore();
@@ -846,18 +1189,18 @@ export async function updateSubmissionProgress(input: {
 
   if (hasSupabaseEnv()) {
     const { data, error } = await adminClient()
-      .from("submissions")
+      .from("exam_attempts")
       .update({
         current_question_index: currentQuestionIndex,
         time_spent_seconds: timeSpentSeconds,
-        sections_progress: progress,
         updated_at: timestamp
       })
       .eq("id", input.submissionId)
       .select("*")
       .single();
     if (error) throw new Error(error.message);
-    return normalizeSubmissionRecord(data as Submission);
+    await upsertSectionProgressRows(input.submissionId, (data as ExamAttemptRow).exam_id, progress);
+    return mapAttemptRow(data as ExamAttemptRow, progress);
   }
 
   await ensureMockStore();
@@ -874,11 +1217,11 @@ export async function updateSubmissionProgress(input: {
 export async function listAnswersForSubmission(submissionId: string) {
   if (hasSupabaseEnv()) {
     const { data, error } = await adminClient()
-      .from("answers")
+      .from("student_answers")
       .select("*")
-      .eq("submission_id", submissionId);
+      .eq("attempt_id", submissionId);
     if (error) throw new Error(error.message);
-    return (data || []) as Answer[];
+    return ((data || []) as StudentAnswerRow[]).map(mapStudentAnswerRow);
   }
 
   await ensureMockStore();
@@ -905,39 +1248,23 @@ export async function saveAnswer(input: {
   };
 
   if (hasSupabaseEnv()) {
-    const supabase = adminClient();
-    const { data: existing } = await supabase
-      .from("answers")
-      .select("*")
-      .eq("submission_id", input.submissionId)
-      .eq("question_id", input.questionId)
-      .maybeSingle();
-
-    if (existing) {
-      const { data, error } = await supabase
-        .from("answers")
-        .update(payload)
-        .eq("id", existing.id)
-        .select("*")
-        .single();
-      if (error) throw new Error(error.message);
-      return data as Answer;
-    }
-
-    const { data, error } = await supabase
-      .from("answers")
-      .insert({
-        ...payload,
-        is_correct: null,
-        auto_score: 0,
-        manual_score: null,
-        final_score: 0,
-        created_at: timestamp
-      })
-      .select("*")
-      .single();
-    if (error) throw new Error(error.message);
-    return data as Answer;
+    const answer = await upsertStudentAnswer({
+      id: uid("answer"),
+      submission_id: payload.submission_id,
+      question_id: payload.question_id,
+      answer_text: payload.answer_text,
+      selected_choice: payload.selected_choice,
+      is_correct: null,
+      auto_score: 0,
+      manual_score: null,
+      final_score: 0,
+      time_spent_seconds: payload.time_spent_seconds,
+      flagged: payload.flagged,
+      created_at: timestamp,
+      updated_at: timestamp
+    });
+    await upsertFrqResponseFromAnswer(answer);
+    return answer;
   }
 
   await ensureMockStore();
@@ -1032,16 +1359,11 @@ export async function submitSubmission(submissionId: string, timeSpentOverrideSe
   if (hasSupabaseEnv()) {
     const supabase = adminClient();
     for (const answer of answerUpdates) {
-      await supabase.from("answers").update({
-        is_correct: answer.is_correct,
-        auto_score: answer.auto_score,
-        manual_score: answer.manual_score,
-        final_score: answer.final_score,
-        updated_at: answer.updated_at
-      }).eq("id", answer.id);
+      await upsertStudentAnswer(answer);
+      await upsertFrqResponseFromAnswer(answer);
     }
     const { data, error } = await supabase
-      .from("submissions")
+      .from("exam_attempts")
       .update({
         status,
         submitted_at: submittedAt,
@@ -1056,7 +1378,7 @@ export async function submitSubmission(submissionId: string, timeSpentOverrideSe
       .select("*")
       .single();
     if (error) throw new Error(error.message);
-    return data as Submission;
+    return mapAttemptRow(data as ExamAttemptRow, submission.sections_progress || []);
   }
 
   for (const updated of answerUpdates) {
@@ -1179,16 +1501,11 @@ export async function submitCurrentSection(submissionId: string, timeSpentOverri
   if (hasSupabaseEnv()) {
     const supabase = adminClient();
     for (const answer of answerUpdates) {
-      await supabase.from("answers").update({
-        is_correct: answer.is_correct,
-        auto_score: answer.auto_score,
-        manual_score: answer.manual_score,
-        final_score: answer.final_score,
-        updated_at: answer.updated_at
-      }).eq("id", answer.id);
+      await upsertStudentAnswer(answer);
+      await upsertFrqResponseFromAnswer(answer);
     }
     const { data, error } = await supabase
-      .from("submissions")
+      .from("exam_attempts")
       .update({
         status,
         submitted_at: submittedAtForAttempt,
@@ -1202,14 +1519,14 @@ export async function submitCurrentSection(submissionId: string, timeSpentOverri
         break_started_at: breakStartedAt,
         break_completed_at: breakCompletedAt,
         break_skipped: breakSkipped,
-        sections_progress: progress,
         updated_at: submittedAt
       })
       .eq("id", submissionId)
       .select("*")
       .single();
     if (error) throw new Error(error.message);
-    return normalizeSubmissionRecord(data as Submission);
+    await upsertSectionProgressRows(submissionId, submission.exam_id, progress);
+    return mapAttemptRow(data as ExamAttemptRow, progress);
   }
 
   for (const updated of answerUpdates) {
@@ -1258,19 +1575,19 @@ export async function completeSubmissionBreak(submissionId: string, skipped: boo
 
   if (hasSupabaseEnv()) {
     const { data, error } = await adminClient()
-      .from("submissions")
+      .from("exam_attempts")
       .update({
         current_step: "section",
         break_completed_at: timestamp,
         break_skipped: skipped,
-        sections_progress: progress,
         updated_at: timestamp
       })
       .eq("id", submissionId)
       .select("*")
       .single();
     if (error) throw new Error(error.message);
-    return normalizeSubmissionRecord(data as Submission);
+    await upsertSectionProgressRows(submissionId, submission.exam_id, progress);
+    return mapAttemptRow(data as ExamAttemptRow, progress);
   }
 
   await ensureMockStore();
@@ -1287,20 +1604,35 @@ export async function completeSubmissionBreak(submissionId: string, skipped: boo
 
 export async function getSubmissionDetail(submissionId: string): Promise<SubmissionWithDetails | null> {
   if (hasSupabaseEnv()) {
-    const { data, error } = await adminClient()
-      .from("submissions")
-      .select("*, exam:exams(*), student:profiles(*), answers:answers(*, question:questions(*))")
-      .eq("id", submissionId)
-      .single();
-    if (error || !data) return null;
-    const detail = data as SubmissionWithDetails;
+    const submission = await getSupabaseSubmission(submissionId);
+    if (!submission) return null;
+    const supabase = adminClient();
+    const [{ data: exam }, { data: student }, { data: answers, error: answersError }] = await Promise.all([
+      supabase.from("exams").select("*").eq("id", submission.exam_id).maybeSingle(),
+      supabase.from("profiles").select("*").eq("id", submission.student_id).maybeSingle(),
+      supabase.from("student_answers").select("*").eq("attempt_id", submissionId)
+    ]);
+    if (answersError) throw new Error(answersError.message);
+    const answerRows = ((answers || []) as StudentAnswerRow[]).map(mapStudentAnswerRow);
+    const questionIds = answerRows.map((answer) => answer.question_id);
+    let questions: Question[] = [];
+    if (questionIds.length > 0) {
+      const { data: questionRows, error: questionError } = await supabase
+        .from("questions")
+        .select("*")
+        .in("id", questionIds);
+      if (questionError) throw new Error(questionError.message);
+      questions = await attachQuestionImages((questionRows || []) as Question[]);
+    }
+    const questionById = new Map(questions.map((question) => [question.id, question]));
+    const [examWithSections] = exam ? await attachExamSections([exam as Exam]) : [null];
     return {
-      ...normalizeSubmissionRecord(detail),
-      exam: detail.exam ? normalizeExamRecord(detail.exam) : null,
-      student: detail.student,
-      answers: detail.answers.map((answer) => ({
+      ...submission,
+      exam: examWithSections,
+      student: (student as Profile | null) || null,
+      answers: answerRows.map((answer) => ({
         ...answer,
-        question: answer.question ? normalizeQuestionRecord(answer.question) : null
+        question: questionById.get(answer.question_id) || null
       }))
     };
   }
@@ -1324,13 +1656,17 @@ export async function getSubmissionDetail(submissionId: string): Promise<Submiss
 export async function adminListSubmissions() {
   if (hasSupabaseEnv()) {
     const { data, error } = await adminClient()
-      .from("submissions")
+      .from("exam_attempts")
       .select("*, exam:exams(*), student:profiles(*)")
       .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
-    return ((data || []) as Array<Submission & { exam: Exam | null; student: Profile | null }>).map((submission) => ({
-      ...normalizeSubmissionRecord(submission),
-      exam: submission.exam ? normalizeExamRecord(submission.exam) : null,
+    const rows = (data || []) as Array<ExamAttemptRow & { exam: Exam | null; student: Profile | null }>;
+    const progress = await fetchSectionProgressForAttempts(rows.map((row) => row.id));
+    const exams = await attachExamSections(rows.map((row) => row.exam).filter(Boolean) as Exam[]);
+    const examsById = new Map(exams.map((exam) => [exam.id, exam]));
+    return rows.map((submission) => ({
+      ...mapAttemptRow(submission, progress.get(submission.id) || []),
+      exam: examsById.get(submission.exam_id) || null,
       student: submission.student
     }));
   }

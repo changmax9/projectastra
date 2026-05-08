@@ -4,6 +4,7 @@
 .mock-db.json
 .next
 .test-build
+tsconfig.tsbuildinfo
 node_modules
 tmp
 public/uploads/*

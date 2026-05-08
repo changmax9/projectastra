@@ -36,22 +36,73 @@ SUPABASE_SERVICE_ROLE_KEY=
 NEXT_PUBLIC_SITE_URL=http://localhost:3000
 ADMIN_EMAIL=admin@example.com
 ADMIN_PASSWORD=admin123456
+STUDENT_EMAIL=student@example.com
+STUDENT_PASSWORD=student123456
 ```
 
 Never expose `SUPABASE_SERVICE_ROLE_KEY` to client code. This project only reads it in server-side helpers and seed scripts.
+
+## Deployment
+
+Recommended current test deployment:
+
+```text
+Vercel Free + Supabase Free
+```
+
+Production data flow:
+
+```text
+.mock-db.json -> seed script -> Supabase
+production app -> Supabase
+```
+
+Important deployment rules:
+
+- Vercel production must configure `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY`.
+- Do not rely on `.mock-db.json` as the production database. It is only a local fallback and seed source.
+- Local development can still fall back to mock mode when Supabase env values are missing.
+- Files under `public/assets/questions` deploy with Vercel automatically.
+- Do not commit `.env.local` or any real Supabase keys.
+- `SUPABASE_SERVICE_ROLE_KEY` must stay server-side only.
+
+Deployment prep commands:
+
+```bash
+npm run test
+npm run lint
+npx tsc --noEmit
+npm run predeploy
+npm run build
+```
+
+Stop `npm run dev` before running `npm run build`.
+
+Supabase seed/check commands:
+
+```bash
+npm run seed:supabase:dry
+npm run seed:supabase
+npm run check:supabase
+```
+
+Full Vercel Free deployment instructions live in [`docs/DEPLOY_VERCEL_FREE.md`](docs/DEPLOY_VERCEL_FREE.md).
+
+VPS/self-host deployment is intentionally not documented yet; if this test deployment outgrows Vercel/Supabase Free, add a separate self-host guide later.
 
 ## Supabase Setup
 
 1. Create a Supabase project.
 2. Copy `.env.example` to `.env.local` and fill the Supabase URL, anon key, and service role key.
-3. Run the SQL migration in `supabase/migrations/001_initial_schema.sql` using the Supabase SQL editor or Supabase CLI.
+3. Run every SQL migration in `supabase/migrations` in order using the Supabase SQL editor or Supabase CLI.
 4. Ensure Storage buckets exist:
    - `question-media`
    - `pdf-uploads`
 5. Run seed:
 
 ```bash
-npm run seed
+npm run seed:supabase
+npm run check:supabase
 ```
 
 The migration creates tables, constraints, indexes, `updated_at` triggers, profile creation trigger, RLS policies, and Storage buckets.
@@ -71,18 +122,23 @@ The migration creates:
 
 - `profiles`
 - `exams`
+- `exam_sections`
 - `questions`
+- `question_images`
 - `exam_questions`
-- `submissions`
-- `answers`
+- `exam_attempts`
+- `section_progress`
+- `student_answers`
+- `frq_responses`
 - `media_files`
 - `pdf_uploads`
 - `review_guides`
 - `review_guide_questions`
+- `admin_edits`
 
 RLS rules enforce:
 
-- Students only access their own submissions and answers.
+- Students only access their own attempts, section progress, answers, and FRQ responses.
 - Students only see published exams and published review guides.
 - Admins can manage exams, questions, media, PDFs, submissions, students, and review guides.
 - Upload/admin operations are checked server-side with `requireAdmin()`.

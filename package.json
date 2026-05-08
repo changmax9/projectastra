@@ -8,7 +8,11 @@
     "start": "next start",
     "lint": "next lint",
     "test": "node tests/run-import-tests.cjs",
-    "seed": "tsx scripts/seed.ts"
+    "seed": "node scripts/seed-supabase-from-mock.cjs --apply",
+    "seed:supabase:dry": "node scripts/seed-supabase-from-mock.cjs --dry-run",
+    "seed:supabase": "node scripts/seed-supabase-from-mock.cjs --apply",
+    "check:supabase": "node scripts/check-supabase-data.cjs",
+    "predeploy": "node scripts/predeploy-check.cjs"
   },
   "dependencies": {
     "@supabase/ssr": "0.5.2",
