@@ -2,7 +2,8 @@ import { notFound, redirect } from "next/navigation";
 import { requireProfile } from "@/lib/auth";
 import {
   completeSubmissionBreak,
-  getExamWithQuestions,
+  getExamWithQuestionSummaries,
+  getExamWithSectionQuestions,
   getPlayableExamSections,
   getSubmission,
   listAnswersForSubmission
@@ -20,8 +21,6 @@ export default async function TakeExamPage({
   searchParams: { submission?: string };
 }) {
   const profile = await requireProfile();
-  const exam = await getExamWithQuestions(params.id);
-  if (!exam) notFound();
   const submissionId = searchParams.submission;
   if (!submissionId) redirect(`/exam/${params.id}`);
   const submission = await getSubmission(submissionId);
@@ -38,20 +37,24 @@ export default async function TakeExamPage({
     return <BreakScreenClient submission={submission} />;
   }
 
-  const answers = await listAnswersForSubmission(submission.id);
-  const playableSections = getPlayableExamSections(exam);
+  const examSummary = await getExamWithQuestionSummaries(params.id);
+  if (!examSummary) notFound();
+  const playableSections = getPlayableExamSections(examSummary);
   const activeSection = playableSections.length
     ? playableSections[Math.min(Math.max(0, submission.current_section_index || 0), playableSections.length - 1)]
     : null;
-  const activeRows = activeSection
-    ? exam.exam_questions.filter((row) => row.question.section === activeSection.section)
-    : exam.exam_questions;
+  const [exam, answers] = await Promise.all([
+    getExamWithSectionQuestions(params.id, activeSection?.section || null),
+    listAnswersForSubmission(submission.id)
+  ]);
+  if (!exam) notFound();
+  const activeRows = exam.exam_questions;
   if (activeRows.length === 0) notFound();
 
   const studentSafeExam = {
     ...exam,
-    time_limit_minutes: submission.section_time_limit_minutes || activeSection?.timeLimitMinutes || exam.time_limit_minutes,
-    sections: activeSection ? [activeSection] : exam.sections,
+    time_limit_minutes: submission.section_time_limit_minutes || activeSection?.timeLimitMinutes || examSummary.time_limit_minutes,
+    sections: activeSection ? [activeSection] : examSummary.sections,
     exam_questions: activeRows.map((row) => ({
       ...row,
       question: {

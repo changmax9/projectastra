@@ -6,7 +6,7 @@ import {
   adminReorderExamQuestionAction,
   adminSaveExamAction
 } from "@/app/actions";
-import { adminListExams, getExamWithQuestions, listQuestions } from "@/lib/data";
+import { adminListExams, getExamWithQuestionSummaries, listQuestionsPage } from "@/lib/data";
 import type { ExamStatus } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -24,8 +24,12 @@ export default async function AdminExamsPage({
     search?: string;
   };
 }) {
-  const [exams, questions] = await Promise.all([adminListExams(searchParams), listQuestions({})]);
-  const examsWithQuestions = await Promise.all(exams.map((exam) => getExamWithQuestions(exam.id, true)));
+  const [exams, questionPage] = await Promise.all([
+    adminListExams(searchParams),
+    listQuestionsPage({}, { page: 1, pageSize: 100, summaryOnly: true })
+  ]);
+  const questions = questionPage.questions;
+  const examsWithQuestions = await Promise.all(exams.map((exam) => getExamWithQuestionSummaries(exam.id, true)));
 
   return (
     <div className="space-y-6">

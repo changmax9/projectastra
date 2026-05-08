@@ -51,6 +51,38 @@ async function saveMockStore() {
   if (!hasSupabaseEnv()) await persistMockStore();
 }
 
+const DATA_CACHE_TTL_MS = 60_000;
+
+type TimedCache<T> = {
+  expiresAt: number;
+  value: T;
+};
+
+const dataCache: {
+  publishedExamSummaries?: TimedCache<ExamWithQuestions[]>;
+  examSummaries: Map<string, TimedCache<ExamWithQuestions | null>>;
+} = {
+  examSummaries: new Map()
+};
+
+export function invalidateQuestionBankCache() {
+  dataCache.publishedExamSummaries = undefined;
+  dataCache.examSummaries.clear();
+}
+
+function getTimedCache<T>(entry: TimedCache<T> | undefined) {
+  if (!entry) return undefined;
+  if (Date.now() > entry.expiresAt) return undefined;
+  return entry.value;
+}
+
+function setTimedCache<T>(value: T): TimedCache<T> {
+  return {
+    expiresAt: Date.now() + DATA_CACHE_TTL_MS,
+    value
+  };
+}
+
 function sortByUpdatedDesc<T extends { updated_at?: string; created_at: string }>(items: T[]) {
   return [...items].sort((a, b) =>
     (b.updated_at || b.created_at).localeCompare(a.updated_at || a.created_at)
@@ -323,6 +355,91 @@ type StudentAnswerRow = Omit<Answer, "submission_id"> & {
   attempt_id: string;
 };
 
+interface QuestionListPageOptions {
+  page?: number;
+  pageSize?: number;
+  summaryOnly?: boolean;
+}
+
+const QUESTION_SUMMARY_SELECT = [
+  "id",
+  "exam_name",
+  "subject",
+  "course",
+  "year",
+  "section",
+  "exam_type",
+  "question_number",
+  "unit",
+  "topic",
+  "difficulty",
+  "type",
+  "selection_type",
+  "required_selections",
+  "max_selections",
+  "question_text",
+  "tags",
+  "status",
+  "points",
+  "time_estimate_seconds",
+  "created_by",
+  "created_at",
+  "updated_at"
+].join(",");
+
+const EXAM_QUESTION_SUMMARY_SELECT = [
+  "id",
+  "exam_id",
+  "question_id",
+  "order_index",
+  "points_override",
+  `question:questions(${QUESTION_SUMMARY_SELECT})`
+].join(",");
+
+async function withDevTiming<T>(label: string, fn: () => Promise<T>): Promise<T> {
+  const start = Date.now();
+  try {
+    return await fn();
+  } finally {
+    if (process.env.NODE_ENV === "development") {
+      console.log(`${label} took ${Date.now() - start}ms`);
+    }
+  }
+}
+
+function normalizeQuestionSummaryRecord(question: Partial<Question>): Question {
+  return normalizeQuestionRecord({
+    id: question.id || "",
+    exam_name: question.exam_name || question.course || question.subject || "",
+    subject: question.subject || "",
+    course: question.course || question.exam_name || question.subject || "",
+    year: question.year ?? null,
+    section: question.section || "MCQ",
+    exam_type: question.exam_type || "Practice Exam",
+    question_number: question.question_number ?? null,
+    unit: question.unit || "",
+    topic: question.topic || "",
+    difficulty: question.difficulty || "medium",
+    type: question.type || "mcq",
+    selection_type: question.selection_type || "single",
+    required_selections: question.required_selections ?? 1,
+    max_selections: question.max_selections ?? 1,
+    question_text: question.question_text || "",
+    question_images: [],
+    choices: [],
+    correct_answer: null,
+    explanation: "",
+    source_pdf: null,
+    tags: question.tags || [],
+    status: question.status || "draft",
+    points: question.points || 1,
+    time_estimate_seconds: question.time_estimate_seconds ?? null,
+    created_by: question.created_by || null,
+    created_at: question.created_at || nowIso(),
+    updated_at: question.updated_at || nowIso()
+  });
+}
+
 function mapExamSectionRow(row: ExamSectionRow): ExamSection {
   return {
     id: row.id,
@@ -497,6 +614,24 @@ async function attachQuestionImages(questions: Question[]) {
   );
 }
 
+function applyQuestionFiltersToQuery(query: any, filters: QuestionFilters = {}) {
+  let nextQuery = query;
+  if (filters.examName) nextQuery = nextQuery.ilike("exam_name", `%${filters.examName}%`);
+  if (filters.subject) nextQuery = nextQuery.eq("subject", filters.subject);
+  if (filters.course) nextQuery = nextQuery.eq("course", filters.course);
+  if (filters.unit) nextQuery = nextQuery.eq("unit", filters.unit);
+  if (filters.topic) nextQuery = nextQuery.ilike("topic", `%${filters.topic}%`);
+  if (filters.difficulty) nextQuery = nextQuery.eq("difficulty", filters.difficulty);
+  if (filters.type) nextQuery = nextQuery.eq("type", filters.type);
+  if (filters.status) nextQuery = nextQuery.eq("status", filters.status);
+  if (filters.year) nextQuery = nextQuery.eq("year", Number(filters.year));
+  if (filters.section) nextQuery = nextQuery.eq("section", filters.section);
+  if (filters.examType) nextQuery = nextQuery.eq("exam_type", filters.examType);
+  if (filters.tag) nextQuery = nextQuery.contains("tags", [filters.tag]);
+  if (filters.search) nextQuery = nextQuery.ilike("question_text", `%${filters.search}%`);
+  return nextQuery;
+}
+
 async function syncExamSections(examId: string, sections: ExamSection[]) {
   const supabase = adminClient();
   await supabase.from("exam_sections").delete().eq("exam_id", examId);
@@ -568,6 +703,44 @@ async function upsertStudentAnswer(answer: Answer) {
     .single();
   if (error) throw new Error(error.message);
   return mapStudentAnswerRow(data as StudentAnswerRow);
+}
+
+async function upsertStudentAnswers(answers: Answer[]) {
+  if (answers.length === 0) return;
+  const { error } = await adminClient()
+    .from("student_answers")
+    .upsert(
+      answers.map((answer) => ({
+        attempt_id: answer.submission_id,
+        question_id: answer.question_id,
+        answer_text: answer.answer_text,
+        selected_choice: answer.selected_choice,
+        is_correct: answer.is_correct,
+        auto_score: answer.auto_score,
+        manual_score: answer.manual_score,
+        final_score: answer.final_score,
+        time_spent_seconds: answer.time_spent_seconds,
+        flagged: answer.flagged,
+        updated_at: answer.updated_at
+      })),
+      { onConflict: "attempt_id,question_id" }
+    );
+  if (error) throw new Error(error.message);
+
+  const frqRows = answers
+    .filter((answer) => answer.answer_text !== null)
+    .map((answer) => ({
+      attempt_id: answer.submission_id,
+      question_id: answer.question_id,
+      response_text: answer.answer_text || "",
+      updated_at: answer.updated_at
+    }));
+  if (frqRows.length > 0) {
+    const { error: frqError } = await adminClient()
+      .from("frq_responses")
+      .upsert(frqRows, { onConflict: "attempt_id,question_id" });
+    if (frqError) throw new Error(frqError.message);
+  }
 }
 
 async function upsertFrqResponseFromAnswer(answer: Answer) {
@@ -679,22 +852,170 @@ export async function getExamWithQuestions(examId: string, includeDraft = false)
   return { ...exam, exam_questions: rows };
 }
 
+export async function getPublishedExamSummaries(): Promise<ExamWithQuestions[]> {
+  return withDevTiming("getAvailableExams", async () => {
+    if (hasSupabaseEnv()) {
+      const cached = getTimedCache(dataCache.publishedExamSummaries);
+      if (cached) return cached;
+
+      const supabase = adminClient();
+      const { data: exams, error } = await supabase
+        .from("exams")
+        .select("*")
+        .eq("status", "published")
+        .order("updated_at", { ascending: false });
+      if (error) throw new Error(error.message);
+      const examRecords = await attachExamSections((exams || []) as Exam[]);
+      const examIds = examRecords.map((exam) => exam.id);
+      if (examIds.length === 0) return [];
+
+      const { data: rows, error: rowError } = await supabase
+        .from("exam_questions")
+        .select(EXAM_QUESTION_SUMMARY_SELECT)
+        .in("exam_id", examIds)
+        .order("exam_id", { ascending: true })
+        .order("order_index", { ascending: true });
+      if (rowError) throw new Error(rowError.message);
+
+      const byExam = new Map<string, ExamQuestionWithQuestion[]>();
+      for (const row of (rows || []) as unknown as Array<ExamQuestion & { question: Partial<Question> }>) {
+        const items = byExam.get(row.exam_id) || [];
+        items.push({
+          ...row,
+          question: normalizeQuestionSummaryRecord(row.question)
+        });
+        byExam.set(row.exam_id, items);
+      }
+
+      const summaries = examRecords.map((exam) => ({
+        ...exam,
+        exam_questions: byExam.get(exam.id) || []
+      }));
+      dataCache.publishedExamSummaries = setTimedCache(summaries);
+      return summaries;
+    }
+
+    await ensureMockStore();
+    return mockExams
+      .map(normalizeExamRecord)
+      .filter((exam) => exam.status === "published")
+      .map((exam) => ({
+        ...exam,
+        exam_questions: mockExamQuestions
+          .filter((row) => row.exam_id === exam.id)
+          .sort((a, b) => a.order_index - b.order_index)
+          .map((row) => {
+            const question = mockQuestions.map(normalizeQuestionRecord).find((item) => item.id === row.question_id);
+            return question
+              ? {
+                  ...row,
+                  question: normalizeQuestionSummaryRecord(question)
+                }
+              : null;
+          })
+          .filter(Boolean) as ExamQuestionWithQuestion[]
+      }));
+  });
+}
+
+export async function getExamWithQuestionSummaries(examId: string, includeDraft = false): Promise<ExamWithQuestions | null> {
+  if (hasSupabaseEnv()) {
+    const cacheKey = `${examId}:${includeDraft ? "draft" : "published"}`;
+    const cached = getTimedCache(dataCache.examSummaries.get(cacheKey));
+    if (cached !== undefined) return cached;
+
+    const supabase = adminClient();
+    const { data: exam, error } = await supabase.from("exams").select("*").eq("id", examId).single();
+    if (error || !exam) {
+      dataCache.examSummaries.set(cacheKey, setTimedCache(null));
+      return null;
+    }
+    if (!includeDraft && exam.status !== "published") {
+      dataCache.examSummaries.set(cacheKey, setTimedCache(null));
+      return null;
+    }
+    const [examWithSections] = await attachExamSections([exam as Exam]);
+    const { data: rows, error: rowError } = await supabase
+      .from("exam_questions")
+      .select(EXAM_QUESTION_SUMMARY_SELECT)
+      .eq("exam_id", examId)
+      .order("order_index", { ascending: true });
+    if (rowError) throw new Error(rowError.message);
+    const summary = {
+      ...examWithSections,
+      exam_questions: ((rows || []) as unknown as Array<ExamQuestion & { question: Partial<Question> }>).map((row) => ({
+        ...row,
+        question: normalizeQuestionSummaryRecord(row.question)
+      }))
+    };
+    dataCache.examSummaries.set(cacheKey, setTimedCache(summary));
+    return summary;
+  }
+
+  await ensureMockStore();
+  const fullExam = await getExamWithQuestions(examId, includeDraft);
+  if (!fullExam) return null;
+  return {
+    ...fullExam,
+    exam_questions: fullExam.exam_questions.map((row) => ({
+      ...row,
+      question: normalizeQuestionSummaryRecord(row.question)
+    }))
+  };
+}
+
+export async function getExamWithSectionQuestions(examId: string, section?: string | null, includeDraft = false): Promise<ExamWithQuestions | null> {
+  return withDevTiming("getQuestionsForCurrentSection", async () => {
+    if (hasSupabaseEnv()) {
+      const supabase = adminClient();
+      const { data: exam, error } = await supabase.from("exams").select("*").eq("id", examId).single();
+      if (error || !exam) return null;
+      if (!includeDraft && exam.status !== "published") return null;
+      const [examWithSections] = await attachExamSections([exam as Exam]);
+
+      const { data: examQuestionRows, error: rowError } = await supabase
+        .from("exam_questions")
+        .select("*")
+        .eq("exam_id", examId)
+        .order("order_index", { ascending: true });
+      if (rowError) throw new Error(rowError.message);
+      const rows = (examQuestionRows || []) as ExamQuestion[];
+      const questionIds = rows.map((row) => row.question_id);
+      if (questionIds.length === 0) return { ...examWithSections, exam_questions: [] };
+
+      let questionQuery = supabase.from("questions").select("*").in("id", questionIds);
+      if (section) questionQuery = questionQuery.eq("section", section);
+      const { data: questionRows, error: questionError } = await questionQuery;
+      if (questionError) throw new Error(questionError.message);
+      const questionsWithImages = await attachQuestionImages((questionRows || []) as Question[]);
+      const questionsById = new Map(questionsWithImages.map((question) => [question.id, question]));
+      return {
+        ...examWithSections,
+        exam_questions: rows
+          .filter((row) => questionsById.has(row.question_id))
+          .map((row) => ({
+            ...row,
+            question: questionsById.get(row.question_id)!
+          }))
+      };
+    }
+
+    await ensureMockStore();
+    const fullExam = await getExamWithQuestions(examId, includeDraft);
+    if (!fullExam) return null;
+    return {
+      ...fullExam,
+      exam_questions: section
+        ? fullExam.exam_questions.filter((row) => row.question.section === section)
+        : fullExam.exam_questions
+    };
+  });
+}
+
 export async function listQuestions(filters: QuestionFilters = {}) {
   if (hasSupabaseEnv()) {
     let query = adminClient().from("questions").select("*").order("updated_at", { ascending: false });
-    if (filters.examName) query = query.ilike("exam_name", `%${filters.examName}%`);
-    if (filters.subject) query = query.eq("subject", filters.subject);
-    if (filters.course) query = query.eq("course", filters.course);
-    if (filters.unit) query = query.eq("unit", filters.unit);
-    if (filters.topic) query = query.ilike("topic", `%${filters.topic}%`);
-    if (filters.difficulty) query = query.eq("difficulty", filters.difficulty);
-    if (filters.type) query = query.eq("type", filters.type);
-    if (filters.status) query = query.eq("status", filters.status);
-    if (filters.year) query = query.eq("year", Number(filters.year));
-    if (filters.section) query = query.eq("section", filters.section);
-    if (filters.examType) query = query.eq("exam_type", filters.examType);
-    if (filters.tag) query = query.contains("tags", [filters.tag]);
-    if (filters.search) query = query.ilike("question_text", `%${filters.search}%`);
+    query = applyQuestionFiltersToQuery(query, filters);
     const { data, error } = await query;
     if (error) throw new Error(error.message);
     return attachQuestionImages((data || []) as Question[]);
@@ -702,6 +1023,47 @@ export async function listQuestions(filters: QuestionFilters = {}) {
 
   await ensureMockStore();
   return sortByUpdatedDesc(filterQuestions(mockQuestions.map(normalizeQuestionRecord), filters));
+}
+
+export async function listQuestionsPage(filters: QuestionFilters = {}, options: QuestionListPageOptions = {}) {
+  return withDevTiming("getAdminQuestionsPage", async () => {
+    const pageSize = Math.max(1, Math.min(100, Number(options.pageSize || 25)));
+    const page = Math.max(1, Number(options.page || 1));
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+
+    if (hasSupabaseEnv()) {
+      const select = options.summaryOnly ? QUESTION_SUMMARY_SELECT : "*";
+      let query = adminClient()
+        .from("questions")
+        .select(select, { count: "exact" })
+        .order("updated_at", { ascending: false });
+      query = applyQuestionFiltersToQuery(query, filters);
+      const { data, error, count } = await query.range(from, to);
+      if (error) throw new Error(error.message);
+      const rows = options.summaryOnly
+        ? ((data || []) as unknown as Partial<Question>[]).map(normalizeQuestionSummaryRecord)
+        : await attachQuestionImages((data || []) as unknown as Question[]);
+      return {
+        questions: rows,
+        total: count || 0,
+        page,
+        pageSize,
+        pageCount: Math.max(1, Math.ceil((count || 0) / pageSize))
+      };
+    }
+
+    await ensureMockStore();
+    const filtered = sortByUpdatedDesc(filterQuestions(mockQuestions.map(normalizeQuestionRecord), filters));
+    const rows = filtered.slice(from, to + 1);
+    return {
+      questions: options.summaryOnly ? rows.map(normalizeQuestionSummaryRecord) : rows,
+      total: filtered.length,
+      page,
+      pageSize,
+      pageCount: Math.max(1, Math.ceil(filtered.length / pageSize))
+    };
+  });
 }
 
 export async function getQuestion(questionId: string) {
@@ -760,6 +1122,7 @@ export async function upsertQuestion(input: Partial<Question> & Omit<QuestionImp
       tags: payload.tags,
       updated_at: payload.updated_at
     });
+    invalidateQuestionBankCache();
     const [question] = await attachQuestionImages([data as Question]);
     return question;
   }
@@ -771,6 +1134,7 @@ export async function upsertQuestion(input: Partial<Question> & Omit<QuestionImp
     mockQuestions.push(payload);
   }
   await saveMockStore();
+  invalidateQuestionBankCache();
   return payload;
 }
 
@@ -778,6 +1142,7 @@ export async function deleteQuestion(questionId: string) {
   if (hasSupabaseEnv()) {
     const { error } = await adminClient().from("questions").delete().eq("id", questionId);
     if (error) throw new Error(error.message);
+    invalidateQuestionBankCache();
     return;
   }
 
@@ -787,6 +1152,7 @@ export async function deleteQuestion(questionId: string) {
     if (mockExamQuestions[i].question_id === questionId) mockExamQuestions.splice(i, 1);
   }
   await saveMockStore();
+  invalidateQuestionBankCache();
 }
 
 export async function importQuestions(items: QuestionImportItem[], adminId: string) {
@@ -837,6 +1203,7 @@ export async function importQuestionBatch(batch: QuestionImportBatch, adminId: s
     }
   }
   await saveMockStore();
+  invalidateQuestionBankCache();
   return { exam, questions: created };
 }
 
@@ -873,6 +1240,7 @@ export async function upsertExam(input: Partial<Exam>, adminId: string) {
       section_count: sections?.length || 0,
       updated_at: exam.updated_at
     });
+    invalidateQuestionBankCache();
     const [savedExam] = await attachExamSections([data as Exam]);
     return savedExam;
   }
@@ -881,6 +1249,7 @@ export async function upsertExam(input: Partial<Exam>, adminId: string) {
   if (index >= 0) mockExams[index] = { ...mockExams[index], ...exam };
   else mockExams.push(exam);
   await saveMockStore();
+  invalidateQuestionBankCache();
   return exam;
 }
 
@@ -888,12 +1257,14 @@ export async function deleteExam(examId: string) {
   if (hasSupabaseEnv()) {
     const { error } = await adminClient().from("exams").delete().eq("id", examId);
     if (error) throw new Error(error.message);
+    invalidateQuestionBankCache();
     return;
   }
 
   const index = mockExams.findIndex((exam) => exam.id === examId);
   if (index >= 0) mockExams.splice(index, 1);
   await saveMockStore();
+  invalidateQuestionBankCache();
 }
 
 export async function addQuestionToExam(examId: string, questionId: string) {
@@ -911,6 +1282,7 @@ export async function addQuestionToExam(examId: string, questionId: string) {
     };
     const { error } = await supabase.from("exam_questions").insert(payload);
     if (error) throw new Error(error.message);
+    invalidateQuestionBankCache();
     return;
   }
 
@@ -926,18 +1298,21 @@ export async function addQuestionToExam(examId: string, questionId: string) {
     points_override: null
   });
   await saveMockStore();
+  invalidateQuestionBankCache();
 }
 
 export async function removeQuestionFromExam(examQuestionId: string) {
   if (hasSupabaseEnv()) {
     const { error } = await adminClient().from("exam_questions").delete().eq("id", examQuestionId);
     if (error) throw new Error(error.message);
+    invalidateQuestionBankCache();
     return;
   }
 
   const index = mockExamQuestions.findIndex((row) => row.id === examQuestionId);
   if (index >= 0) mockExamQuestions.splice(index, 1);
   await saveMockStore();
+  invalidateQuestionBankCache();
 }
 
 export async function reorderExamQuestion(examQuestionId: string, direction: "up" | "down") {
@@ -961,6 +1336,7 @@ export async function reorderExamQuestion(examQuestionId: string, direction: "up
     await supabase.from("exam_questions").update({ order_index: -1 }).eq("id", current.id);
     await supabase.from("exam_questions").update({ order_index: current.order_index }).eq("id", neighbor.id);
     await supabase.from("exam_questions").update({ order_index: neighbor.order_index }).eq("id", current.id);
+    invalidateQuestionBankCache();
     return;
   }
 
@@ -977,29 +1353,29 @@ export async function reorderExamQuestion(examQuestionId: string, direction: "up
   current.order_index = other.order_index;
   other.order_index = oldOrder;
   await saveMockStore();
+  invalidateQuestionBankCache();
 }
 
 export async function getStudentDashboard(profileId: string) {
-  const [exams, submissions, guides] = await Promise.all([
-    listPublishedExams(),
-    listStudentSubmissions(profileId),
-    listPublishedReviewGuides({})
-  ]);
-  const examDetails = (await Promise.all(exams.map((exam) => getExamWithQuestions(exam.id)))).filter(
-    Boolean
-  ) as ExamWithQuestions[];
+  return withDevTiming("getDashboardData", async () => {
+    const [examDetails, submissions, guides] = await Promise.all([
+      getPublishedExamSummaries(),
+      listStudentSubmissions(profileId),
+      listPublishedReviewGuides({})
+    ]);
 
-  return {
-    exams,
-    examDetails,
-    submissions,
-    guides: guides.slice(0, 3),
-    latestSubmission:
-      submissions.find(
-        (submission) =>
-          (submission.status === "graded" || submission.status === "completed") && submission.max_score > 0
-      ) || null
-  };
+    return {
+      exams: examDetails.map(({ exam_questions, ...exam }) => exam),
+      examDetails,
+      submissions,
+      guides: guides.slice(0, 3),
+      latestSubmission:
+        submissions.find(
+          (submission) =>
+            (submission.status === "graded" || submission.status === "completed") && submission.max_score > 0
+        ) || null
+    };
+  });
 }
 
 export async function listStudentSubmissions(studentId: string) {
@@ -1030,7 +1406,7 @@ export async function listStudentSubmissions(studentId: string) {
 }
 
 export async function createOrContinueSubmission(examId: string, studentId: string) {
-  const exam = await getExamWithQuestions(examId, true);
+  const exam = await getExamWithQuestionSummaries(examId, true);
   const sectionsProgress = exam ? buildSectionsProgress(exam) : [];
   if (hasSupabaseEnv()) {
     const supabase = adminClient();
@@ -1228,74 +1604,112 @@ export async function listAnswersForSubmission(submissionId: string) {
   return mockAnswers.filter((answer) => answer.submission_id === submissionId);
 }
 
-export async function saveAnswer(input: {
+interface SaveAnswerInput {
   submissionId: string;
   questionId: string;
   selectedChoice?: string | null;
   answerText?: string | null;
   flagged?: boolean;
   timeSpentSeconds?: number | null;
-}) {
+}
+
+export async function saveAnswers(inputs: SaveAnswerInput[]) {
+  if (inputs.length === 0) return [];
   const timestamp = nowIso();
-  const payload = {
-    submission_id: input.submissionId,
-    question_id: input.questionId,
-    selected_choice: input.selectedChoice ?? null,
-    answer_text: input.answerText ?? null,
-    flagged: input.flagged ?? false,
-    time_spent_seconds: input.timeSpentSeconds ?? null,
-    updated_at: timestamp
-  };
+  const deduped = Array.from(
+    inputs
+      .reduce((map, input) => {
+        map.set(`${input.submissionId}:${input.questionId}`, input);
+        return map;
+      }, new Map<string, SaveAnswerInput>())
+      .values()
+  );
 
   if (hasSupabaseEnv()) {
-    const answer = await upsertStudentAnswer({
-      id: uid("answer"),
-      submission_id: payload.submission_id,
-      question_id: payload.question_id,
-      answer_text: payload.answer_text,
-      selected_choice: payload.selected_choice,
+    const answerRows = deduped.map((input) => ({
+      attempt_id: input.submissionId,
+      question_id: input.questionId,
+      selected_choice: input.selectedChoice ?? null,
+      answer_text: input.answerText ?? null,
       is_correct: null,
       auto_score: 0,
       manual_score: null,
       final_score: 0,
-      time_spent_seconds: payload.time_spent_seconds,
-      flagged: payload.flagged,
-      created_at: timestamp,
+      time_spent_seconds: input.timeSpentSeconds ?? null,
+      flagged: input.flagged ?? false,
       updated_at: timestamp
-    });
-    await upsertFrqResponseFromAnswer(answer);
-    return answer;
+    }));
+    const { data, error } = await adminClient()
+      .from("student_answers")
+      .upsert(answerRows, { onConflict: "attempt_id,question_id" })
+      .select("*");
+    if (error) throw new Error(error.message);
+
+    const frqRows = deduped
+      .filter((input) => input.answerText !== undefined && input.answerText !== null)
+      .map((input) => ({
+        attempt_id: input.submissionId,
+        question_id: input.questionId,
+        response_text: input.answerText || "",
+        updated_at: timestamp
+      }));
+    if (frqRows.length > 0) {
+      const { error: frqError } = await adminClient()
+        .from("frq_responses")
+        .upsert(frqRows, { onConflict: "attempt_id,question_id" });
+      if (frqError) throw new Error(frqError.message);
+    }
+
+    return ((data || []) as StudentAnswerRow[]).map(mapStudentAnswerRow);
   }
 
   await ensureMockStore();
-  let answer = mockAnswers.find(
-    (item) => item.submission_id === input.submissionId && item.question_id === input.questionId
-  );
-  if (!answer) {
-    answer = {
-      id: uid("answer"),
+  const saved: Answer[] = [];
+  for (const input of deduped) {
+    const payload = {
       submission_id: input.submissionId,
       question_id: input.questionId,
-      answer_text: payload.answer_text,
-      selected_choice: payload.selected_choice,
-      is_correct: null,
-      auto_score: 0,
-      manual_score: null,
-      final_score: 0,
-      time_spent_seconds: payload.time_spent_seconds,
-      flagged: payload.flagged,
-      created_at: timestamp,
+      selected_choice: input.selectedChoice ?? null,
+      answer_text: input.answerText ?? null,
+      flagged: input.flagged ?? false,
+      time_spent_seconds: input.timeSpentSeconds ?? null,
       updated_at: timestamp
     };
-    mockAnswers.push(answer);
-  } else {
-    answer.answer_text = payload.answer_text;
-    answer.selected_choice = payload.selected_choice;
-    answer.flagged = payload.flagged;
-    answer.time_spent_seconds = payload.time_spent_seconds;
-    answer.updated_at = timestamp;
+    let answer = mockAnswers.find(
+      (item) => item.submission_id === input.submissionId && item.question_id === input.questionId
+    );
+    if (!answer) {
+      answer = {
+        id: uid("answer"),
+        submission_id: input.submissionId,
+        question_id: input.questionId,
+        answer_text: payload.answer_text,
+        selected_choice: payload.selected_choice,
+        is_correct: null,
+        auto_score: 0,
+        manual_score: null,
+        final_score: 0,
+        time_spent_seconds: payload.time_spent_seconds,
+        flagged: payload.flagged,
+        created_at: timestamp,
+        updated_at: timestamp
+      };
+      mockAnswers.push(answer);
+    } else {
+      answer.answer_text = payload.answer_text;
+      answer.selected_choice = payload.selected_choice;
+      answer.flagged = payload.flagged;
+      answer.time_spent_seconds = payload.time_spent_seconds;
+      answer.updated_at = timestamp;
+    }
+    saved.push(answer);
   }
   await saveMockStore();
+  return saved;
+}
+
+export async function saveAnswer(input: SaveAnswerInput) {
+  const [answer] = await saveAnswers([input]);
   return answer;
 }
 
@@ -1304,8 +1718,20 @@ export async function submitSubmission(submissionId: string, timeSpentOverrideSe
   if (!submission) throw new Error("Submission not found.");
   const exam = await getExamWithQuestions(submission.exam_id, true);
   if (!exam) throw new Error("Exam not found.");
-  const answers = await listAnswersForSubmission(submissionId);
+  let answers = await listAnswersForSubmission(submissionId);
   const rowsForSubmission = filterExamQuestionsForSubmission(exam, submission);
+  const missingAnswers = rowsForSubmission
+    .filter((row) => !answers.some((item) => item.question_id === row.question.id))
+    .map((row) => ({
+      submissionId,
+      questionId: row.question.id,
+      selectedChoice: null,
+      answerText: null,
+      flagged: false
+    }));
+  if (missingAnswers.length > 0) {
+    answers = [...answers, ...(await saveAnswers(missingAnswers))];
+  }
 
   let total = 0;
   let max = 0;
@@ -1316,16 +1742,8 @@ export async function submitSubmission(submissionId: string, timeSpentOverrideSe
     const question = row.question;
     const points = row.points_override ?? question.points;
     max += points;
-    let answer = answers.find((item) => item.question_id === question.id);
-    if (!answer) {
-      answer = await saveAnswer({
-        submissionId,
-        questionId: question.id,
-        selectedChoice: null,
-        answerText: null,
-        flagged: false
-      });
-    }
+    const answer = answers.find((item) => item.question_id === question.id);
+    if (!answer) continue;
 
     if (question.type === "mcq") {
       const expectedAnswer = canonicalChoiceAnswer(question.correct_answer);
@@ -1358,10 +1776,7 @@ export async function submitSubmission(submissionId: string, timeSpentOverrideSe
 
   if (hasSupabaseEnv()) {
     const supabase = adminClient();
-    for (const answer of answerUpdates) {
-      await upsertStudentAnswer(answer);
-      await upsertFrqResponseFromAnswer(answer);
-    }
+    await upsertStudentAnswers(answerUpdates);
     const { data, error } = await supabase
       .from("exam_attempts")
       .update({
@@ -1406,17 +1821,31 @@ export async function submitSubmission(submissionId: string, timeSpentOverrideSe
 export async function submitCurrentSection(submissionId: string, timeSpentOverrideSeconds?: number) {
   const submission = await getSubmission(submissionId);
   if (!submission) throw new Error("Submission not found.");
-  const exam = await getExamWithQuestions(submission.exam_id, true);
-  if (!exam) throw new Error("Exam not found.");
-  const sections = getPlayableExamSections(exam);
+  const examSummary = await getExamWithQuestionSummaries(submission.exam_id, true);
+  if (!examSummary) throw new Error("Exam not found.");
+  const sections = getPlayableExamSections(examSummary);
   if (!sections.length) return submitSubmission(submissionId, timeSpentOverrideSeconds);
 
   const currentIndex = Math.min(Math.max(0, Number(submission.current_section_index || 0)), sections.length - 1);
   const section = sections[currentIndex];
-  const rowsForSection = sectionRows(exam, section.section);
-  const answers = await listAnswersForSubmission(submissionId);
+  const sectionExam = await getExamWithSectionQuestions(submission.exam_id, section.section, true);
+  if (!sectionExam) throw new Error("Exam section not found.");
+  const rowsForSection = sectionExam.exam_questions;
+  let answers = await listAnswersForSubmission(submissionId);
+  const missingAnswers = rowsForSection
+    .filter((row) => !answers.some((item) => item.question_id === row.question.id))
+    .map((row) => ({
+      submissionId,
+      questionId: row.question.id,
+      selectedChoice: null,
+      answerText: null,
+      flagged: false
+    }));
+  if (missingAnswers.length > 0) {
+    answers = [...answers, ...(await saveAnswers(missingAnswers))];
+  }
   const submittedAt = nowIso();
-  const progress = ensureSectionsProgress(exam, submission);
+  const progress = ensureSectionsProgress(examSummary, submission);
   const timeSpent = Math.max(
     0,
     Math.floor(timeSpentOverrideSeconds ?? progress[currentIndex]?.timeSpentSeconds ?? submission.time_spent_seconds ?? 0)
@@ -1428,16 +1857,8 @@ export async function submitCurrentSection(submissionId: string, timeSpentOverri
 
   for (const row of rowsForSection) {
     const question = row.question;
-    let answer = answers.find((item) => item.question_id === question.id);
-    if (!answer) {
-      answer = await saveAnswer({
-        submissionId,
-        questionId: question.id,
-        selectedChoice: null,
-        answerText: null,
-        flagged: false
-      });
-    }
+    const answer = answers.find((item) => item.question_id === question.id);
+    if (!answer) continue;
 
     if (question.type === "mcq") {
       sectionTotal += 1;
@@ -1473,8 +1894,8 @@ export async function submitCurrentSection(submissionId: string, timeSpentOverri
     nextSection &&
     !submission.break_completed_at &&
     !submission.break_skipped &&
-    !isFrqSection(exam, section) &&
-    isFrqSection(exam, nextSection);
+    !isFrqSection(examSummary, section) &&
+    isFrqSection(examSummary, nextSection);
   const finalScore = mcqScoreFromProgress(progress);
   let nextStep: Submission["current_step"] = nextSection ? "section" : "completed";
   let status: SubmissionStatus = nextSection ? "in_progress" : "completed";
@@ -1500,10 +1921,7 @@ export async function submitCurrentSection(submissionId: string, timeSpentOverri
 
   if (hasSupabaseEnv()) {
     const supabase = adminClient();
-    for (const answer of answerUpdates) {
-      await upsertStudentAnswer(answer);
-      await upsertFrqResponseFromAnswer(answer);
-    }
+    await upsertStudentAnswers(answerUpdates);
     const { data, error } = await supabase
       .from("exam_attempts")
       .update({
@@ -1560,7 +1978,7 @@ export async function submitCurrentSection(submissionId: string, timeSpentOverri
 export async function completeSubmissionBreak(submissionId: string, skipped: boolean) {
   const submission = await getSubmission(submissionId);
   if (!submission) throw new Error("Submission not found.");
-  const exam = await getExamWithQuestions(submission.exam_id, true);
+  const exam = await getExamWithQuestionSummaries(submission.exam_id, true);
   if (!exam) throw new Error("Exam not found.");
   const progress = ensureSectionsProgress(exam, submission);
   const index = Math.min(Math.max(0, Number(submission.current_section_index || 0)), Math.max(0, progress.length - 1));

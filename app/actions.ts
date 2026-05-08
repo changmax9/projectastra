@@ -13,7 +13,7 @@ import {
   deleteMediaFile,
   deleteQuestion,
   deleteReviewGuide,
-  getExamWithQuestions,
+  getExamWithQuestionSummaries,
   getQuestion,
   getSubmission,
   importQuestionBatch,
@@ -25,6 +25,7 @@ import {
   recoverMockSubmission,
   reorderExamQuestion,
   saveAnswer,
+  saveAnswers,
   saveMediaFile,
   savePdfUpload,
   submitSubmission,
@@ -46,6 +47,17 @@ export interface ActionState {
   ok?: boolean;
   error?: string;
   message?: string;
+}
+
+async function withActionTiming<T>(label: string, action: () => Promise<T>): Promise<T> {
+  const start = Date.now();
+  try {
+    return await action();
+  } finally {
+    if (process.env.NODE_ENV === "development") {
+      console.log(`${label} took ${Date.now() - start}ms`);
+    }
+  }
 }
 
 export async function signInAction(_: ActionState, formData: FormData): Promise<ActionState> {
@@ -86,7 +98,7 @@ export async function startExamAction(formData: FormData) {
   const profile = await requireProfile();
   const examId = String(formData.get("exam_id") || "");
   if (!examId) throw new Error("Missing exam id.");
-  const exam = await getExamWithQuestions(examId);
+  const exam = await getExamWithQuestionSummaries(examId);
   if (!exam) throw new Error("Exam not found.");
   const submission = await createOrContinueSubmission(examId, profile.id);
   revalidatePath("/dashboard");
@@ -101,18 +113,24 @@ export async function saveAnswerAction(input: {
   flagged?: boolean;
   timeSpentSeconds?: number | null;
 }) {
-  const profile = await requireProfile();
-  const submission = await getSubmission(input.submissionId);
-  if (!submission) return { error: "Submission not found." };
-  if (profile.role !== "admin" && submission.student_id !== profile.id) {
-    return { error: "You can only edit your own answers." };
-  }
-  if (submission.status !== "in_progress") {
-    return { error: "This exam has already been submitted." };
-  }
+  return withActionTiming("saveAnswerAction", async () => {
+    const profile = await requireProfile();
+    try {
+      const submission = await getSubmission(input.submissionId);
+      if (!submission) return { error: "Submission not found." };
+      if (profile.role !== "admin" && submission.student_id !== profile.id) {
+        return { error: "You can only edit your own answers." };
+      }
+      if (submission.status !== "in_progress") {
+        return { error: "This exam has already been submitted." };
+      }
 
-  await saveAnswer(input);
-  return { ok: true, savedAt: nowIso() };
+      await saveAnswer(input);
+      return { ok: true, savedAt: nowIso() };
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : "Save failed. Please try again." };
+    }
+  });
 }
 
 export async function submitExamAction(submissionId: string) {
@@ -142,48 +160,56 @@ export async function submitExamWithResponsesAction(input: {
     timeSpentSeconds?: number | null;
   }>;
 }) {
-  const profile = await requireProfile();
-  let submission = await getSubmission(input.submissionId);
+  return withActionTiming("submitExamAction", async () => {
+    const profile = await requireProfile();
+    let submittedId = "";
+    try {
+      let submission = await getSubmission(input.submissionId);
 
-  if (!submission) {
-    const exam = await getExamWithQuestions(input.examId, true);
-    const section = input.section
-      ? exam?.sections?.find((item) => item.section === input.section || item.id === input.section) || null
-      : null;
-    submission = await recoverMockSubmission({
-      id: input.submissionId,
-      examId: input.examId,
-      studentId: profile.id,
-      startedAt: input.startedAt,
-      section
-    });
-  }
+      if (!submission) {
+        const exam = await getExamWithQuestionSummaries(input.examId, true);
+        const section = input.section
+          ? exam?.sections?.find((item) => item.section === input.section || item.id === input.section) || null
+          : null;
+        submission = await recoverMockSubmission({
+          id: input.submissionId,
+          examId: input.examId,
+          studentId: profile.id,
+          startedAt: input.startedAt,
+          section
+        });
+      }
 
-  if (!submission) throw new Error("Submission not found.");
-  if (profile.role !== "admin" && submission.student_id !== profile.id) {
-    throw new Error("You can only submit your own exam.");
-  }
+      if (!submission) return { error: "Submission not found." };
+      if (profile.role !== "admin" && submission.student_id !== profile.id) {
+        return { error: "You can only submit your own exam." };
+      }
 
-  for (const response of input.responses) {
-    await saveAnswer({
-      submissionId: submission.id,
-      questionId: response.questionId,
-      selectedChoice: response.selectedChoice ?? null,
-      answerText: response.answerText ?? null,
-      flagged: response.flagged ?? false,
-      timeSpentSeconds: response.timeSpentSeconds ?? null
-    });
-  }
+      await saveAnswers(
+        input.responses.map((response) => ({
+          submissionId: submission.id,
+          questionId: response.questionId,
+          selectedChoice: response.selectedChoice ?? null,
+          answerText: response.answerText ?? null,
+          flagged: response.flagged ?? false,
+          timeSpentSeconds: response.timeSpentSeconds ?? null
+        }))
+      );
 
-  await updateSubmissionProgress({
-    submissionId: submission.id,
-    currentQuestionIndex: 0,
-    timeSpentSeconds: input.timeSpentSeconds ?? submission.time_spent_seconds
+      await updateSubmissionProgress({
+        submissionId: submission.id,
+        currentQuestionIndex: 0,
+        timeSpentSeconds: input.timeSpentSeconds ?? submission.time_spent_seconds
+      });
+
+      const submitted = await submitSubmission(submission.id, input.timeSpentSeconds);
+      submittedId = submitted.id;
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : "Submit failed. Please try again." };
+    }
+    revalidatePath("/dashboard");
+    redirect(`/results/${submittedId}`);
   });
-
-  const submitted = await submitSubmission(submission.id, input.timeSpentSeconds);
-  revalidatePath("/dashboard");
-  redirect(`/results/${submitted.id}`);
 }
 
 export async function submitSectionWithResponsesAction(input: {
@@ -198,30 +224,38 @@ export async function submitSectionWithResponsesAction(input: {
     timeSpentSeconds?: number | null;
   }>;
 }) {
-  const profile = await requireProfile();
-  const submission = await getSubmission(input.submissionId);
-  if (!submission) throw new Error("Submission not found.");
-  if (profile.role !== "admin" && submission.student_id !== profile.id) {
-    throw new Error("You can only submit your own exam.");
-  }
+  return withActionTiming("endSectionAction", async () => {
+    const profile = await requireProfile();
+    let destination = "";
+    try {
+      const submission = await getSubmission(input.submissionId);
+      if (!submission) return { error: "Submission not found." };
+      if (profile.role !== "admin" && submission.student_id !== profile.id) {
+        return { error: "You can only submit your own exam." };
+      }
 
-  for (const response of input.responses) {
-    await saveAnswer({
-      submissionId: submission.id,
-      questionId: response.questionId,
-      selectedChoice: response.selectedChoice ?? null,
-      answerText: response.answerText ?? null,
-      flagged: response.flagged ?? false,
-      timeSpentSeconds: response.timeSpentSeconds ?? null
-    });
-  }
+      await saveAnswers(
+        input.responses.map((response) => ({
+          submissionId: submission.id,
+          questionId: response.questionId,
+          selectedChoice: response.selectedChoice ?? null,
+          answerText: response.answerText ?? null,
+          flagged: response.flagged ?? false,
+          timeSpentSeconds: response.timeSpentSeconds ?? null
+        }))
+      );
 
-  const updated = await submitCurrentSection(submission.id, input.timeSpentSeconds);
-  revalidatePath("/dashboard");
-  if (updated.current_step === "completed" || updated.status === "completed") {
-    redirect(`/results/${updated.id}`);
-  }
-  redirect(`/exam/${updated.exam_id}/take?submission=${updated.id}`);
+      const updated = await submitCurrentSection(submission.id, input.timeSpentSeconds);
+      destination =
+        updated.current_step === "completed" || updated.status === "completed"
+          ? `/results/${updated.id}`
+          : `/exam/${updated.exam_id}/take?submission=${updated.id}`;
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : "Submit failed. Please try again." };
+    }
+    revalidatePath("/dashboard");
+    redirect(destination);
+  });
 }
 
 export async function completeBreakAction(submissionId: string, skipped = true) {
@@ -249,34 +283,40 @@ export async function saveExamProgressAction(input: {
     timeSpentSeconds?: number | null;
   }>;
 }) {
-  const profile = await requireProfile();
-  const submission = await getSubmission(input.submissionId);
-  if (!submission) return { error: "Submission not found." };
-  if (profile.role !== "admin" && submission.student_id !== profile.id) {
-    return { error: "You can only save your own exam." };
-  }
-  if (submission.status !== "in_progress") {
-    return { error: "This exam has already been submitted." };
-  }
+  return withActionTiming("saveExamProgressAction", async () => {
+    const profile = await requireProfile();
+    try {
+      const submission = await getSubmission(input.submissionId);
+      if (!submission) return { error: "Submission not found." };
+      if (profile.role !== "admin" && submission.student_id !== profile.id) {
+        return { error: "You can only save your own exam." };
+      }
+      if (submission.status !== "in_progress") {
+        return { error: "This exam has already been submitted." };
+      }
 
-  for (const response of input.responses) {
-    await saveAnswer({
-      submissionId: submission.id,
-      questionId: response.questionId,
-      selectedChoice: response.selectedChoice ?? null,
-      answerText: response.answerText ?? null,
-      flagged: response.flagged ?? false,
-      timeSpentSeconds: response.timeSpentSeconds ?? null
-    });
-  }
+      await saveAnswers(
+        input.responses.map((response) => ({
+          submissionId: submission.id,
+          questionId: response.questionId,
+          selectedChoice: response.selectedChoice ?? null,
+          answerText: response.answerText ?? null,
+          flagged: response.flagged ?? false,
+          timeSpentSeconds: response.timeSpentSeconds ?? null
+        }))
+      );
 
-  await updateSubmissionProgress({
-    submissionId: submission.id,
-    currentQuestionIndex: input.currentQuestionIndex,
-    timeSpentSeconds: input.timeSpentSeconds
+      await updateSubmissionProgress({
+        submissionId: submission.id,
+        currentQuestionIndex: input.currentQuestionIndex,
+        timeSpentSeconds: input.timeSpentSeconds
+      });
+      revalidatePath("/dashboard");
+      return { ok: true };
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : "Save failed. Please try again." };
+    }
   });
-  revalidatePath("/dashboard");
-  return { ok: true };
 }
 
 export async function adminSaveExamAction(formData: FormData) {

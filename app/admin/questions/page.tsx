@@ -2,7 +2,7 @@ import Link from "next/link";
 import { adminCreateQuestionFromMinimalAction, adminDeleteQuestionAction } from "@/app/actions";
 import { DataTable } from "@/components/admin/DataTable";
 import { QuestionForm } from "@/components/admin/QuestionForm";
-import { listQuestions } from "@/lib/data";
+import { listQuestionsPage } from "@/lib/data";
 import type { Difficulty, QuestionStatus, QuestionType } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -23,10 +23,29 @@ export default async function AdminQuestionsPage({
     type?: QuestionType | "";
     tag?: string;
     search?: string;
+    page?: string;
   };
 }) {
-  const questions = await listQuestions(searchParams);
-  const needsReviewCount = questions.filter((question) => question.tags.includes("needs-admin-review")).length;
+  const currentPage = Math.max(1, Number(searchParams.page || 1));
+  const questionPage = await listQuestionsPage(searchParams, {
+    page: currentPage,
+    pageSize: 25,
+    summaryOnly: true
+  });
+  const questions = questionPage.questions;
+  const needsReviewCount = searchParams.tag === "needs-admin-review"
+    ? questionPage.total
+    : questions.filter((question) => question.tags.includes("needs-admin-review")).length;
+
+  const pageHref = (page: number) => {
+    const params = new URLSearchParams();
+    Object.entries(searchParams).forEach(([key, value]) => {
+      if (value && key !== "page") params.set(key, String(value));
+    });
+    if (page > 1) params.set("page", String(page));
+    const query = params.toString();
+    return `/admin/questions${query ? `?${query}` : ""}`;
+  };
 
   return (
     <div className="space-y-6">
@@ -140,6 +159,23 @@ export default async function AdminQuestionsPage({
           </form>
         ])}
       />
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm">
+        <span>
+          Showing {questions.length} of {questionPage.total} questions · Page {questionPage.page} of {questionPage.pageCount}
+        </span>
+        <div className="flex gap-2">
+          {questionPage.page > 1 ? (
+            <Link href={pageHref(questionPage.page - 1)} className="rounded-md border border-slate-200 px-3 py-2 font-medium text-slate-700 hover:bg-slate-50">
+              Previous
+            </Link>
+          ) : null}
+          {questionPage.page < questionPage.pageCount ? (
+            <Link href={pageHref(questionPage.page + 1)} className="rounded-md border border-slate-200 px-3 py-2 font-medium text-slate-700 hover:bg-slate-50">
+              Next
+            </Link>
+          ) : null}
+        </div>
+      </div>
     </div>
   );
 }

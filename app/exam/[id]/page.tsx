@@ -3,7 +3,7 @@ import { CheckCircle2, Clock, FileQuestion } from "lucide-react";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { startExamAction } from "@/app/actions";
 import { requireProfile } from "@/lib/auth";
-import { getExamWithQuestions, listStudentSubmissions } from "@/lib/data";
+import { getExamWithQuestionSummaries, listStudentSubmissions } from "@/lib/data";
 import type { ExamWithQuestions } from "@/lib/types";
 import { isResumableSubmission } from "@/lib/utils";
 
@@ -23,7 +23,7 @@ export default async function ExamStartPage({
   params: { id: string };
 }) {
   const profile = await requireProfile();
-  const exam = await getExamWithQuestions(params.id);
+  const exam = await getExamWithQuestionSummaries(params.id);
   if (!exam) notFound();
   const submissions = await listStudentSubmissions(profile.id);
   const inProgress = submissions.find(
