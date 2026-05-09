@@ -4,6 +4,7 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { createSupabaseAdminClient, createSupabaseAnonClient, hasSupabaseEnv } from "@/lib/supabase";
 import { mockPasswords, mockProfiles } from "@/lib/mock-data";
 import { hydrateMockStore, persistMockStore } from "@/lib/mock-store";
+import { hashPassword, isPasswordHash, verifyPassword } from "@/lib/password";
 import type { Profile } from "@/lib/types";
 import { nowIso, uid } from "@/lib/utils";
 
@@ -95,7 +96,7 @@ export async function signInWithEmail(email: string, password: string) {
       password
     });
     if (error || !data.user) {
-      throw new Error(error?.message || "Invalid email or password.");
+      throw new Error("Invalid login credentials.");
     }
 
     const admin = createSupabaseAdminClient();
@@ -114,8 +115,15 @@ export async function signInWithEmail(email: string, password: string) {
   }
 
   await hydrateMockStore();
-  if (mockPasswords[normalizedEmail] !== password) {
+  const storedPassword = mockPasswords[normalizedEmail];
+  const passwordMatches = verifyPassword(password, storedPassword);
+  const legacyPasswordMatches = !isPasswordHash(storedPassword) && storedPassword === password;
+  if (!passwordMatches && !legacyPasswordMatches) {
     throw new Error("Invalid mock email or password.");
+  }
+  if (legacyPasswordMatches) {
+    mockPasswords[normalizedEmail] = hashPassword(password);
+    await persistMockStore();
   }
 
   const profile = mockProfiles.find((item) => item.email === normalizedEmail);
@@ -129,15 +137,23 @@ export async function registerStudent(email: string, password: string, fullName:
   const normalizedEmail = email.trim().toLowerCase();
 
   if (hasSupabaseEnv()) {
-    const supabase = createSupabaseAnonClient();
-    const { data, error } = await supabase.auth.signUp({
+    const admin = createSupabaseAdminClient();
+    const { data: existingUsers, error: listError } = await admin.auth.admin.listUsers();
+    if (listError) {
+      throw new Error(listError.message || "Unable to check existing users.");
+    }
+    const existingUser = existingUsers.users.find((user) => user.email?.toLowerCase() === normalizedEmail);
+    if (existingUser) {
+      throw new Error("Email already exists.");
+    }
+
+    const { data, error } = await admin.auth.admin.createUser({
       email: normalizedEmail,
       password,
-      options: {
-        data: {
-          full_name: fullName,
-          role: "student"
-        }
+      email_confirm: true,
+      user_metadata: {
+        full_name: fullName,
+        role: "student"
       }
     });
 
@@ -145,7 +161,6 @@ export async function registerStudent(email: string, password: string, fullName:
       throw new Error(error?.message || "Unable to register.");
     }
 
-    const admin = createSupabaseAdminClient();
     const { data: profile, error: profileError } = await admin
       .from("profiles")
       .upsert({
@@ -179,7 +194,7 @@ export async function registerStudent(email: string, password: string, fullName:
     updated_at: nowIso()
   };
   mockProfiles.push(profile);
-  mockPasswords[normalizedEmail] = password;
+  mockPasswords[normalizedEmail] = hashPassword(password);
   await persistMockStore();
 
   cookies().set(AUTH_COOKIE, signProfileId(profile.id), cookieOptions());

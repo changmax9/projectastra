@@ -10,6 +10,7 @@ import type {
   ReviewGuideQuestion,
   Submission
 } from "./types";
+import { hashPassword } from "./password";
 
 const created = "2026-01-15T12:00:00.000Z";
 const mockAdminEmail = process.env.ADMIN_EMAIL || "admin@local.invalid";
@@ -38,8 +39,8 @@ export const mockProfiles: Profile[] = [
 export const mockPasswords: Record<string, string> = showDemoCredentials
   ? Object.fromEntries(
       [
-        [mockAdminEmail, process.env.ADMIN_PASSWORD],
-        [mockStudentEmail, process.env.STUDENT_PASSWORD]
+        [mockAdminEmail, process.env.ADMIN_PASSWORD ? hashPassword(process.env.ADMIN_PASSWORD) : undefined],
+        [mockStudentEmail, process.env.STUDENT_PASSWORD ? hashPassword(process.env.STUDENT_PASSWORD) : undefined]
       ].filter((entry): entry is [string, string] => Boolean(entry[1]))
     )
   : {};

@@ -338,6 +338,16 @@ async function ensureUser(supabase, email, password, fullName, role) {
   if (listError) throw listError;
   const existing = list.users.find((user) => user.email?.toLowerCase() === email.toLowerCase());
   if (existing) {
+    const { error: authError } = await supabase.auth.admin.updateUserById(existing.id, {
+      password,
+      email_confirm: true,
+      user_metadata: { full_name: fullName, role }
+    });
+    if (authError) {
+      console.error(`update auth user for ${email}: error`);
+      console.error(formatSupabaseError(authError));
+      throw authError;
+    }
     const { error } = await supabase.from("profiles").upsert({
       id: existing.id,
       email,
@@ -349,7 +359,7 @@ async function ensureUser(supabase, email, password, fullName, role) {
       console.error(formatSupabaseError(error));
       throw error;
     }
-    console.log(`upsert profiles: ${email} exists, profile updated`);
+    console.log(`upsert profiles: ${email} exists, auth password and profile updated`);
     return existing.id;
   }
 
@@ -481,8 +491,10 @@ async function main() {
   }
 
   console.log("Supabase seed complete.");
-  console.log(`Admin: ${adminEmail} / ${adminPassword}`);
-  console.log(`Student: ${studentEmail} / ${studentPassword}`);
+  console.log(`Admin user ready: ${adminEmail}`);
+  if (studentEmail && studentPassword) {
+    console.log(`Student user ready: ${studentEmail}`);
+  }
 }
 
 main().catch((error) => {

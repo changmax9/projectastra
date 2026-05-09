@@ -198,6 +198,32 @@ const actionsSource = source("app/actions.ts");
 assert.doesNotMatch(actionsSource, /revalidatePath\(`\/exam\/\$\{submission\.exam_id\}\/take`\)/, "background answer saves do not revalidate the current exam route");
 assert.doesNotMatch(actionsSource, /revalidatePath\(`\/exam\/\$\{input\.examId\}\/take`\)/, "Save & Exit does not revalidate the current exam route before leaving");
 
+const authSource = source("lib/auth.ts");
+assert.match(authSource, /auth\.signInWithPassword/, "login uses Supabase Auth password verification");
+assert.match(authSource, /auth\.admin\.createUser/, "register creates Supabase Auth users server-side");
+assert.match(authSource, /role: "student"/, "public registration always creates student profiles");
+assert.match(authSource, /signProfileId/, "session cookies are signed before being set");
+assert.match(authSource, /httpOnly: true/, "session cookies are HttpOnly");
+assert.match(authSource, /sameSite: "lax"/, "session cookies use SameSite=Lax");
+assert.match(authSource, /secure: isProduction/, "session cookies are Secure in production");
+assert.match(authSource, /path: "\/"/, "session cookies are scoped to the app root");
+
+const seedSource = source("scripts/seed-supabase-from-mock.cjs");
+assert.match(seedSource, /process\.env\.ADMIN_PASSWORD/, "admin seed password comes from environment variables");
+assert.match(seedSource, /updateUserById\(existing\.id/, "seed updates existing Supabase Auth user passwords");
+
+const authFormSource = source("components/forms/AuthForm.tsx");
+const exposedCredentialPattern = new RegExp(
+  [
+    "admin" + "@" + "example" + "\\.com",
+    "admin" + "123456",
+    "student" + "@" + "example" + "\\.com",
+    "student" + "123456",
+    "Mock fallback " + "accounts"
+  ].join("|")
+);
+assert.doesNotMatch(authFormSource, exposedCredentialPattern, "login form does not expose demo credentials");
+
 const dashboardPage = source("app/dashboard/page.tsx");
 assert.doesNotMatch(dashboardPage, /\{submission\.status\}/, "dashboard history does not render raw status variables");
 assert.match(dashboardPage, /submissionStatusLabel/, "dashboard maps attempt statuses to user-facing labels");
@@ -220,5 +246,24 @@ const tailwindConfig = source("tailwind.config.ts");
 assert.match(tailwindConfig, /\.\/app\/\*\*\/\*\.\{js,ts,jsx,tsx,mdx\}/, "Tailwind scans app directory");
 assert.match(tailwindConfig, /\.\/components\/\*\*\/\*\.\{js,ts,jsx,tsx,mdx\}/, "Tailwind scans components directory");
 assert.match(tailwindConfig, /\.\/src\/\*\*\/\*\.\{js,ts,jsx,tsx,mdx\}/, "Tailwind scans optional src directory");
+
+const checkedFiles = [
+  "README.md",
+  ".env.example",
+  "docs/DEPLOY_VERCEL_FREE.md",
+  "docs/DEVELOPMENT_LOG.md",
+  "components/forms/AuthForm.tsx",
+  "lib/auth.ts",
+  "lib/mock-data.ts",
+  "scripts/seed-supabase-from-mock.cjs",
+  "scripts/seed.ts"
+];
+for (const file of checkedFiles) {
+  assert.doesNotMatch(
+    source(file),
+    exposedCredentialPattern,
+    `${file} does not expose hardcoded credentials`
+  );
+}
 
 console.log("Import, rendering, and auth guard tests passed.");
