@@ -55,11 +55,11 @@ AP Mock Exam Platform 是一个 AP 风格模考网站，目前已经支持：
 当前有两个 GitHub repo remote：
 
 1. organization repo
-   - `apresources27/ap-website`
+   - `theastraproject/projectastra`
    - 当前 remote 名称：`origin`
 
 2. personal repo
-   - `changmax9/ap-website-vercel`
+   - `changmax9/projectastra`
    - 当前 remote 名称：`personal`
 
 当前部署约定：
