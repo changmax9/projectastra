@@ -10,14 +10,19 @@ import {
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const adminEmail = process.env.ADMIN_EMAIL || "admin@example.com";
-const adminPassword = process.env.ADMIN_PASSWORD || "admin123456";
-const studentEmail = "student@example.com";
-const studentPassword = "student123456";
+const adminEmail = process.env.ADMIN_EMAIL;
+const adminPassword = process.env.ADMIN_PASSWORD;
+const studentEmail = process.env.STUDENT_EMAIL;
+const studentPassword = process.env.STUDENT_PASSWORD;
 
 if (!url || !serviceKey) {
   throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY. Copy .env.example to .env.local first.");
 }
+if (!adminEmail || !adminPassword) {
+  throw new Error("Missing ADMIN_EMAIL or ADMIN_PASSWORD. Seed credentials must come from environment variables.");
+}
+const requiredAdminEmail = adminEmail;
+const requiredAdminPassword = adminPassword;
 
 const supabase = createClient(url, serviceKey, {
   auth: {
@@ -60,8 +65,10 @@ async function ensureUser(email: string, password: string, fullName: string, rol
 }
 
 async function main() {
-  const adminId = await ensureUser(adminEmail, adminPassword, "Platform Admin", "admin");
-  await ensureUser(studentEmail, studentPassword, "Demo Student", "student");
+  const adminId = await ensureUser(requiredAdminEmail, requiredAdminPassword, "Platform Admin", "admin");
+  if (studentEmail && studentPassword) {
+    await ensureUser(studentEmail, studentPassword, "Demo Student", "student");
+  }
 
   const questions = mockQuestions.map((question) => ({
     ...question,

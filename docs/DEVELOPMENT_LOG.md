@@ -341,10 +341,12 @@ SUPABASE_SERVICE_ROLE_KEY=
 可选开发 seed 变量：
 
 ```env
-ADMIN_EMAIL=admin@example.com
-ADMIN_PASSWORD=admin123456
-STUDENT_EMAIL=student@example.com
-STUDENT_PASSWORD=student123456
+ADMIN_EMAIL=
+ADMIN_PASSWORD=
+STUDENT_EMAIL=
+STUDENT_PASSWORD=
+SESSION_SECRET=
+SHOW_DEMO_CREDENTIALS=false
 NEXT_PUBLIC_SITE_URL=http://localhost:3000
 ```
 
@@ -730,9 +732,7 @@ Checklist：
 4. 填入 Supabase env
 5. `npm run dev`
 6. 打开 localhost
-7. 用 demo account 登录：
-   - `student@example.com` / `student123456`
-   - `admin@example.com` / `admin123456`
+7. 用 `.env.local` 中配置的本地账号登录
 8. 修改代码
 9. `npm run test`
 10. `npm run lint`

@@ -12,11 +12,14 @@ import type {
 } from "./types";
 
 const created = "2026-01-15T12:00:00.000Z";
+const mockAdminEmail = process.env.ADMIN_EMAIL || "admin@local.invalid";
+const mockStudentEmail = process.env.STUDENT_EMAIL || "student@local.invalid";
+const showDemoCredentials = process.env.NODE_ENV === "development" && process.env.SHOW_DEMO_CREDENTIALS === "true";
 
 export const mockProfiles: Profile[] = [
   {
     id: "00000000-0000-4000-8000-000000000001",
-    email: "admin@example.com",
+    email: mockAdminEmail,
     full_name: "Platform Admin",
     role: "admin",
     created_at: created,
@@ -24,7 +27,7 @@ export const mockProfiles: Profile[] = [
   },
   {
     id: "00000000-0000-4000-8000-000000000002",
-    email: "student@example.com",
+    email: mockStudentEmail,
     full_name: "Demo Student",
     role: "student",
     created_at: created,
@@ -32,10 +35,14 @@ export const mockProfiles: Profile[] = [
   }
 ];
 
-export const mockPasswords: Record<string, string> = {
-  "admin@example.com": "admin123456",
-  "student@example.com": "student123456"
-};
+export const mockPasswords: Record<string, string> = showDemoCredentials
+  ? Object.fromEntries(
+      [
+        [mockAdminEmail, process.env.ADMIN_PASSWORD],
+        [mockStudentEmail, process.env.STUDENT_PASSWORD]
+      ].filter((entry): entry is [string, string] => Boolean(entry[1]))
+    )
+  : {};
 
 export const mockQuestions: Question[] = [
   {

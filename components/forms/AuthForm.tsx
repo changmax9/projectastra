@@ -49,7 +49,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
           type="email"
           name="email"
           className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-brand focus:ring-2 focus:ring-blue-100"
-          placeholder="student@example.com"
+          placeholder="you@example.com"
         />
       </label>
       <label className="block text-sm font-medium text-slate-700">
@@ -84,9 +84,6 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
           </>
         )}
       </p>
-      <div className="rounded-md bg-slate-50 p-3 text-xs text-slate-500">
-        Mock fallback accounts: admin@example.com / admin123456, student@example.com / student123456.
-      </div>
     </form>
   );
 }

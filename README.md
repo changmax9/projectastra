@@ -34,10 +34,12 @@ NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 NEXT_PUBLIC_SITE_URL=http://localhost:3000
-ADMIN_EMAIL=admin@example.com
-ADMIN_PASSWORD=admin123456
-STUDENT_EMAIL=student@example.com
-STUDENT_PASSWORD=student123456
+ADMIN_EMAIL=
+ADMIN_PASSWORD=
+STUDENT_EMAIL=
+STUDENT_PASSWORD=
+SESSION_SECRET=
+SHOW_DEMO_CREDENTIALS=false
 ```
 
 Never expose `SUPABASE_SERVICE_ROLE_KEY` to client code. This project only reads it in server-side helpers and seed scripts.
@@ -107,12 +109,10 @@ npm run check:supabase
 
 The migration creates tables, constraints, indexes, `updated_at` triggers, profile creation trigger, RLS policies, and Storage buckets.
 
-## Test Accounts
+## Local Test Accounts
 
-Mock mode and seeded Supabase mode both use:
-
-- Admin: `admin@example.com` / `admin123456`
-- Student: `student@example.com` / `student123456`
+Set local-only `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `STUDENT_EMAIL`, and `STUDENT_PASSWORD` values in `.env.local`.
+Do not commit real passwords or publish demo credentials in client-facing pages.
 
 Seed content is original AP-style material, not College Board/AP copyrighted questions.
 

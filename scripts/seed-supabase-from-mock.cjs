@@ -425,12 +425,17 @@ async function main() {
     auth: { autoRefreshToken: false, persistSession: false }
   });
 
-  const adminEmail = process.env.ADMIN_EMAIL || "admin@example.com";
-  const adminPassword = process.env.ADMIN_PASSWORD || "admin123456";
-  const studentEmail = process.env.STUDENT_EMAIL || "student@example.com";
-  const studentPassword = process.env.STUDENT_PASSWORD || "student123456";
+  const adminEmail = process.env.ADMIN_EMAIL;
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  const studentEmail = process.env.STUDENT_EMAIL;
+  const studentPassword = process.env.STUDENT_PASSWORD;
+  if (!adminEmail || !adminPassword) {
+    throw new Error("Missing ADMIN_EMAIL or ADMIN_PASSWORD. Seed credentials must come from environment variables.");
+  }
   const adminId = await ensureUser(supabase, adminEmail, adminPassword, "Platform Admin", "admin");
-  await ensureUser(supabase, studentEmail, studentPassword, "Demo Student", "student");
+  if (studentEmail && studentPassword) {
+    await ensureUser(supabase, studentEmail, studentPassword, "Demo Student", "student");
+  }
 
   const exams = (db.exams || []).map((exam) => normalizeExamForSeed(exam, adminId));
   const questions = (db.questions || []).map((question) => normalizeQuestionForSeed(question, adminId));

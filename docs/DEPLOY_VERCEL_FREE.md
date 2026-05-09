@@ -58,10 +58,8 @@ The seed script imports:
 - `review_guides`
 - `review_guide_questions`
 
-It also creates or updates demo Supabase Auth users for:
-
-- `admin@example.com`
-- `student@example.com`
+It also creates or updates Supabase Auth users from server-only seed environment variables.
+Do not hardcode or publish demo passwords.
 
 The seed script does not import local test attempts, legacy per-section attempts, or local answer history. It rejects forbidden full-page/question screenshot-like image paths such as `mcq-page`, `frq-page`, `pdf-page`, `full-page`, `whole-page`, `full-question`, `question-screenshot`, and `page-screenshot`.
 

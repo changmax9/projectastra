@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { createHmac, timingSafeEqual } from "crypto";
 import { createSupabaseAdminClient, createSupabaseAnonClient, hasSupabaseEnv } from "@/lib/supabase";
 import { mockPasswords, mockProfiles } from "@/lib/mock-data";
 import { hydrateMockStore, persistMockStore } from "@/lib/mock-store";
@@ -7,9 +8,54 @@ import type { Profile } from "@/lib/types";
 import { nowIso, uid } from "@/lib/utils";
 
 const AUTH_COOKIE = "ap_mock_profile_id";
+const isProduction = process.env.NODE_ENV === "production";
+
+function cookieOptions() {
+  return {
+    httpOnly: true,
+    sameSite: "lax" as const,
+    secure: isProduction,
+    path: "/"
+  };
+}
+
+function getSessionSecret() {
+  return process.env.SESSION_SECRET || "";
+}
+
+function signProfileId(profileId: string) {
+  const secret = getSessionSecret();
+  if (!secret) {
+    if (isProduction) {
+      throw new Error("SESSION_SECRET is required in production.");
+    }
+    return profileId;
+  }
+
+  const signature = createHmac("sha256", secret).update(profileId).digest("hex");
+  return `${profileId}.${signature}`;
+}
+
+function readProfileIdFromSession(value: string | undefined) {
+  if (!value) return null;
+
+  const secret = getSessionSecret();
+  if (!secret) {
+    return isProduction ? null : value.split(".")[0] || null;
+  }
+
+  const [profileId, signature] = value.split(".");
+  if (!profileId || !signature) return null;
+
+  const expected = createHmac("sha256", secret).update(profileId).digest("hex");
+  const providedBuffer = Buffer.from(signature, "hex");
+  const expectedBuffer = Buffer.from(expected, "hex");
+  if (providedBuffer.length !== expectedBuffer.length) return null;
+  return timingSafeEqual(providedBuffer, expectedBuffer) ? profileId : null;
+}
 
 export async function getCurrentProfile(): Promise<Profile | null> {
-  const id = cookies().get(AUTH_COOKIE)?.value;
+  const id = readProfileIdFromSession(cookies().get(AUTH_COOKIE)?.value);
   if (!id) return null;
 
   if (hasSupabaseEnv()) {
@@ -63,11 +109,7 @@ export async function signInWithEmail(email: string, password: string) {
       throw new Error("Signed in, but no profile row was found. Run migrations and seed again.");
     }
 
-    cookies().set(AUTH_COOKIE, data.user.id, {
-      httpOnly: true,
-      sameSite: "lax",
-      path: "/"
-    });
+    cookies().set(AUTH_COOKIE, signProfileId(data.user.id), cookieOptions());
     return profile as Profile;
   }
 
@@ -79,11 +121,7 @@ export async function signInWithEmail(email: string, password: string) {
   const profile = mockProfiles.find((item) => item.email === normalizedEmail);
   if (!profile) throw new Error("No mock profile was found.");
 
-  cookies().set(AUTH_COOKIE, profile.id, {
-    httpOnly: true,
-    sameSite: "lax",
-    path: "/"
-  });
+  cookies().set(AUTH_COOKIE, signProfileId(profile.id), cookieOptions());
   return profile;
 }
 
@@ -123,11 +161,7 @@ export async function registerStudent(email: string, password: string, fullName:
       throw new Error(profileError?.message || "Unable to create profile.");
     }
 
-    cookies().set(AUTH_COOKIE, profile.id, {
-      httpOnly: true,
-      sameSite: "lax",
-      path: "/"
-    });
+    cookies().set(AUTH_COOKIE, signProfileId(profile.id), cookieOptions());
     return profile as Profile;
   }
 
@@ -148,11 +182,7 @@ export async function registerStudent(email: string, password: string, fullName:
   mockPasswords[normalizedEmail] = password;
   await persistMockStore();
 
-  cookies().set(AUTH_COOKIE, profile.id, {
-    httpOnly: true,
-    sameSite: "lax",
-    path: "/"
-  });
+  cookies().set(AUTH_COOKIE, signProfileId(profile.id), cookieOptions());
   return profile;
 }
 
