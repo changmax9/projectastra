@@ -14,6 +14,9 @@
     "check:supabase": "node scripts/check-supabase-data.cjs",
     "backup:supabase": "node scripts/export-supabase-to-backup.cjs",
     "restore:supabase:dry": "node scripts/restore-supabase-from-backup.cjs --dry-run",
+    "build:ap-psych-guides": "node scripts/build-ap-psych-review-guides.cjs",
+    "upsert:ap-psych-guides": "node scripts/upsert-ap-psych-review-guides.cjs",
+    "update:calc-explanations": "node scripts/update-calc-ab-2019-explanations.cjs",
     "predeploy": "node scripts/predeploy-check.cjs"
   },
   "dependencies": {

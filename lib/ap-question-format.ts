@@ -29,6 +29,10 @@ const apFrqPartSchema = z.object({
   prompt: z.string().min(1)
 });
 
+type ApQuestionImage = z.infer<typeof apQuestionImageSchema>;
+type ApQuestionChoice = z.infer<typeof apQuestionChoiceSchema>;
+type ApFrqPart = z.infer<typeof apFrqPartSchema>;
+
 export const apQuestionDraftSchema = z
   .object({
     id: z.string().min(1),
@@ -52,8 +56,8 @@ export const apQuestionDraftSchema = z
     status: statusSchema
   })
   .superRefine((item, ctx) => {
-    const choiceLabels = item.choices.map((choice) => choice.label.trim()).filter(Boolean);
-    const duplicateChoice = choiceLabels.find((label, index) => choiceLabels.indexOf(label) !== index);
+    const choiceLabels = item.choices.map((choice: ApQuestionChoice) => choice.label.trim()).filter(Boolean);
+    const duplicateChoice = choiceLabels.find((label: string, index: number) => choiceLabels.indexOf(label) !== index);
     if (duplicateChoice) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -77,8 +81,8 @@ export const apQuestionDraftSchema = z
           message: "MCQ questions require an answer."
         });
       }
-      const answerLabels = (item.answer || "").split(",").map((label) => label.trim()).filter(Boolean);
-      if (answerLabels.length > 0 && !answerLabels.every((label) => choiceLabels.includes(label))) {
+      const answerLabels = (item.answer || "").split(",").map((label: string) => label.trim()).filter(Boolean);
+      if (answerLabels.length > 0 && !answerLabels.every((label: string) => choiceLabels.includes(label))) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["answer"],
@@ -95,7 +99,7 @@ export const apQuestionDraftSchema = z
       });
     }
 
-    item.images.forEach((image, index) => {
+    item.images.forEach((image: ApQuestionImage, index: number) => {
       if (isPdfPageImageUrl(image.path)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -105,7 +109,7 @@ export const apQuestionDraftSchema = z
       }
     });
 
-    item.choices.forEach((choice, index) => {
+    item.choices.forEach((choice: ApQuestionChoice, index: number) => {
       if (choice.image && isPdfPageImageUrl(choice.image)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -172,7 +176,7 @@ function formatIssues(error: z.ZodError, rawItems?: unknown) {
 
 function withFrqParts(questionText: string, parts: ApQuestionDraft["parts"]) {
   if (parts.length === 0) return questionText;
-  const partText = parts.map((part) => `(${part.label}) ${part.prompt}`).join("\n\n");
+  const partText = parts.map((part: ApFrqPart) => `(${part.label}) ${part.prompt}`).join("\n\n");
   return `${questionText}\n\n${partText}`;
 }
 
@@ -197,13 +201,13 @@ export function apQuestionDraftToImportItem(item: ApQuestionDraft): QuestionImpo
     difficulty: item.difficulty,
     type: isMcq ? "mcq" : "frq",
     question_text: withFrqParts(item.questionText, item.parts),
-    question_images: item.images.map((image) => ({
+    question_images: item.images.map((image: ApQuestionImage) => ({
       id: image.id,
       url: image.path,
       caption: image.caption ?? null
     })),
     choices: isMcq
-      ? item.choices.map((choice) => ({
+      ? item.choices.map((choice: ApQuestionChoice) => ({
           id: choice.label,
           text: choice.text,
           image_url: choice.image ?? null

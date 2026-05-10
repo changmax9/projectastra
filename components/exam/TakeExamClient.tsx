@@ -22,6 +22,7 @@ interface ResponseState {
   answerText: string;
   flagged: boolean;
   timeSpentSeconds: number | null;
+  eliminatedChoiceIds: string[];
 }
 
 function fallbackSection(section: string, order: number, questionCount: number, examTimeLimitMinutes: number): ExamSection {
@@ -59,7 +60,8 @@ export function TakeExamClient({
         selectedChoice: answer.selected_choice,
         answerText: answer.answer_text || "",
         flagged: answer.flagged,
-        timeSpentSeconds: answer.time_spent_seconds
+        timeSpentSeconds: answer.time_spent_seconds,
+        eliminatedChoiceIds: []
       };
     }
     return state;
@@ -141,7 +143,8 @@ export function TakeExamClient({
     selectedChoice: null,
     answerText: "",
     flagged: false,
-    timeSpentSeconds: null
+    timeSpentSeconds: null,
+    eliminatedChoiceIds: []
   };
   const answered = useMemo(() => {
     const set = new Set<number>();
@@ -200,6 +203,7 @@ export function TakeExamClient({
         answerText: previous[questionId]?.answerText ?? "",
         flagged: previous[questionId]?.flagged ?? false,
         timeSpentSeconds: previous[questionId]?.timeSpentSeconds ?? null,
+        eliminatedChoiceIds: previous[questionId]?.eliminatedChoiceIds ?? [],
         ...patch
       };
       return { ...previous, [questionId]: next };
@@ -210,9 +214,38 @@ export function TakeExamClient({
   const handleChoiceChange = useCallback(
     (choiceId: string) => {
       if (!currentQuestionId) return;
-      updateResponse(currentQuestionId, { selectedChoice: choiceId });
+      const nextEliminated = (responses[currentQuestionId]?.eliminatedChoiceIds || []).filter(
+        (id) => id !== choiceId
+      );
+      updateResponse(currentQuestionId, { selectedChoice: choiceId, eliminatedChoiceIds: nextEliminated });
     },
-    [currentQuestionId, updateResponse]
+    [currentQuestionId, responses, updateResponse]
+  );
+
+  const toggleEliminatedChoice = useCallback(
+    (choiceId: string) => {
+      if (!currentQuestionId) return;
+      setResponses((previous) => {
+        const current = previous[currentQuestionId] || {
+          selectedChoice: null,
+          answerText: "",
+          flagged: false,
+          timeSpentSeconds: null,
+          eliminatedChoiceIds: []
+        };
+        const eliminated = new Set(current.eliminatedChoiceIds);
+        if (eliminated.has(choiceId)) eliminated.delete(choiceId);
+        else eliminated.add(choiceId);
+        return {
+          ...previous,
+          [currentQuestionId]: {
+            ...current,
+            eliminatedChoiceIds: Array.from(eliminated)
+          }
+        };
+      });
+    },
+    [currentQuestionId]
   );
 
   const responseSnapshot = useCallback(() => {
@@ -463,6 +496,8 @@ export function TakeExamClient({
                 requiredSelections={currentQuestion.required_selections || currentMaxSelections}
                 maxSelections={currentMaxSelections}
                 onChange={handleChoiceChange}
+                eliminatedChoiceIds={currentResponse.eliminatedChoiceIds}
+                onToggleEliminated={toggleEliminatedChoice}
               />
             ) : (
               <FRQAnswerBox

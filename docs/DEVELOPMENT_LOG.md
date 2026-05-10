@@ -55,11 +55,11 @@ AP Mock Exam Platform 是一个 AP 风格模考网站，目前已经支持：
 当前有两个 GitHub repo remote：
 
 1. organization repo
-   - `theastraproject/projectastra`
+   - `apresources27/ap-website`
    - 当前 remote 名称：`origin`
 
 2. personal repo
-   - `changmax9/projectastra`
+   - `sjfq/ap-website-vercel`
    - 当前 remote 名称：`personal`
 
 当前部署约定：
@@ -800,3 +800,128 @@ npx tsc --noEmit
 3. 数据层：Supabase production + mock fallback 都要保留。
 
 继续开发时，优先保持稳定，再做功能扩展。
+
+---
+
+## 17. 2026-05-08 Codex Handoff Session
+
+### Initial orientation
+
+- Read the external handoff log supplied from WeChat and reconciled it with the repository copy at `docs/DEVELOPMENT_LOG.md`.
+- Identified the active deployment repository as `sjfq/ap-website-vercel` and the organization backup/collaboration repository as `apresources27/ap-website`.
+- Noted the release policy from the latest handoff message: debug and validate locally first, push to the personal/Vercel-connected repository first, verify the online deployment, and only then push to the organization repository as the one-step-behind backup.
+- Inspected the local AP resources folder at `D:\Ethan\2025上中11\Summer AP Resources`; only `.env.local` was present at the time of inspection.
+- Confirmed that `.env.local` contains Supabase variable names and non-empty values without recording the secret values in this log.
+- Download fallback: direct network clone was not available in the Codex shell, but a local GitHub zipball was found at `C:\Users\ethan\Downloads\ap-website-vercel-main.zip` and extracted into the Codex workspace for development.
+
+### Working constraints for this session
+
+- Do not commit or disclose `.env.local`.
+- Preserve the structured-question rule: no full-page or full-question screenshots as question content.
+- Preserve the exam flow rule: one exam attempt per exam, with sections advancing inside the attempt.
+- Preserve the data-layer rule: Supabase-first production behavior with mock fallback.
+- Keep this development log updated after each meaningful setup, code, verification, or release step.
+
+### Local development setup
+
+- The machine has a Codex-bundled Node.js runtime, but `git`, `npm`, and `npx` were not available on the shell PATH.
+- Extracted the WeChat `AP Website.zip` into a separate `friend-ap-website-full` workspace folder to recover local-only artifacts and installed dependencies.
+- Linked `node_modules` from the full working copy into the clean GitHub archive so local verification commands can run without downloading packages.
+- Copied `.mock-db.json` from the full working copy into the clean archive for mock fallback data.
+- Copied the local Supabase `.env.local` from `D:\Ethan\2025上中11\Summer AP Resources` into the clean archive for local execution only. This file remains ignored and must not be committed.
+
+### Verification fix
+
+- Initial execution of `tests/run-import-tests.cjs` failed on Windows because the runner spawned TypeScript's extensionless `node_modules/typescript/bin/tsc` file directly.
+- Updated the test runner to invoke TypeScript through `process.execPath`, making the import test command portable across Windows and Unix-like environments.
+- After the runner fix, strict TypeScript checking reached the parser layer and exposed implicit callback parameter types in `lib/ap-question-format.ts`.
+- Added local inferred Zod helper types for AP draft choices, images, and FRQ parts so the parser remains strict without weakening compiler settings.
+- Broadened the validation helper input shape in `lib/schemas.ts` so the same `superRefine` validator is compatible with both base and extended question schemas while still validating parsed choices, answers, and image paths.
+- Rehydrated incomplete local dependency folders (`@types/node/ts5.6` and `zod`) from the WeChat working-copy zip after the full extraction timed out.
+- Verified `tests/run-import-tests.cjs` with the bundled Node runtime. Result: passed (`Import, rendering, and auth guard tests passed.`).
+- Re-extracted the full `node_modules` tree from the WeChat working-copy zip with a longer timeout. Windows reported expected errors for Unix-style `.bin` shim files, but package contents were restored sufficiently for direct Node-based verification.
+- Verified `next lint` through `node_modules/next/dist/bin/next`. Result: passed with no ESLint warnings or errors.
+- Verified `tsc --noEmit` through `node_modules/typescript/bin/tsc`. Result: passed.
+
+### UI polish pass
+
+- Updated shared visual tokens in `tailwind.config.ts` toward a calmer Bluebook-inspired but Material-leaning palette: softer paper background, a less saturated brand blue, teal accents, and a restrained Material-style shadow.
+- Added global component utility classes in `app/globals.css` for app surfaces, fields, primary buttons, secondary buttons, and chips. These keep controls consistent without introducing a new component library.
+- Refined `components/layout/AppHeader.tsx` into a more app-like sticky header with a compact icon block, clearer product subtitle, and denser navigation styling.
+- Reworked `app/page.tsx` from a marketing-heavy split into a practical first-screen workspace preview with current exam status, counters, and structured feature rows.
+- Updated `app/dashboard/page.tsx` with a clearer workspace heading, a Browse Exams action, more neutral admin tooling, and calmer history/recommendation panels.
+- Updated `components/exam/AvailableExamsBrowser.tsx` so the filter form is a single Material-style surface and exam cards are not nested inside an outer card shell.
+
+### UI verification
+
+- Re-ran `tests/run-import-tests.cjs`. Result: passed.
+- Re-ran `next lint`. Result: passed with no ESLint warnings or errors.
+- Re-ran `tsc --noEmit`. Result: passed.
+- Ran `scripts/predeploy-check.cjs`. Result: passed with warnings that `.env.local` and `.mock-db.json` are local-only and that the script could not inspect running Next dev processes.
+- Attempted to start `next dev` for browser inspection. It could not run inside the current sandbox because Next.js needed to create/download the Windows SWC cache under `C:\Users\ethan\AppData\Local\next-swc`; sandbox approval for that external write timed out twice. Browser visual QA is therefore still pending.
+- Attempted to mirror this updated log back to the original WeChat `DEVELOPMENT_LOG.md`; sandbox approval for writing outside the workspace timed out twice. The repository copy has been updated successfully.
+
+### 2026-05-08 Calc AB content and option UI pass
+
+- Started a follow-up pass from the user handoff image requesting three checks: confirm AP Calculus AB 2019 uses only necessary images, replace placeholder answer explanations with real database explanations where possible, and remove the unsupported "cancel out" option effect from the exam UI.
+- Located the supplied source PDF at `D:\xwechat_files\wxid_bdd83i6ke01g12_764f\msg\file\2026-05\AP Calc AB 2019.pdf`.
+- Began auditing `.mock-db.json`, `components/exam/ChoiceList.tsx`, `components/exam/ResultQuestionReview.tsx`, and related tests for explanation placeholders and choice-elimination behavior.
+- Confirmed the local `.mock-db.json` recovered from the WeChat working-copy zip is stale and only contains the older Physics fallback data. The AP Calculus AB 2019 question bank appears to be Supabase-resident production data, consistent with the previous handoff log.
+- Tried to run `scripts/check-supabase-data.cjs`; sandboxed network access failed with `fetch failed`. Retried twice with a scoped Supabase network approval request, but approval timed out both times. Live database inspection/update is therefore blocked in this environment until network approval is available.
+- Confirmed the supplied Calc AB PDF is scanned image content: normal PDF text extraction returned empty page text.
+- Rendered PDF contact sheets for pages 60-103 by extracting embedded page images with `pypdf`; these pages include the multiple-choice explanation tables, FRQ scoring guidelines, scoring worksheet, and question descriptors.
+- Added a local option-elimination/cancel-out UI to `ChoiceList` and `TakeExamClient`: students can mark a choice as eliminated with a slashed-circle control, eliminated choices render faded with strikethrough text, and the eliminated state is local-only and not submitted for grading.
+- Added import-test assertions covering the new option-elimination control and ensuring eliminated choices are not included in submitted response snapshots.
+- Added `scripts/update-calc-ab-2019-explanations.cjs`, a dry-run-first Supabase updater for AP Calculus AB 2019 explanations. It reads `data/calc-ab-2019-explanations.json`, matches questions by course/year/question number, updates only empty or placeholder explanations by default, warns on answer mismatches, and requires `--apply` before modifying Supabase rows.
+- Added the package script `update:calc-explanations` for the updater.
+- Added `data/calc-ab-2019-explanations.json` as a structured placeholder for original, concise explanations derived from the PDF answer/scoring pages. It is intentionally empty until the explanations can be transcribed/summarized without copying long copyrighted text verbatim.
+- Verified the explanation updater exits safely when the explanation data file is empty.
+- Re-ran `tests/run-import-tests.cjs`. Result: passed.
+- Re-ran `next lint`. Result: passed with no ESLint warnings or errors.
+- Re-ran `tsc --noEmit`. Result: passed.
+- Re-ran `scripts/predeploy-check.cjs`. Result: passed with the expected local-only `.env.local` / `.mock-db.json` warnings and the existing running-process inspection warning.
+- Attempted user-requested agent-mode browser testing. The normal Next.js localhost route remains blocked because the Windows SWC package is missing and Next.js needs approval to download/cache it under `AppData`; the scoped approval request timed out twice.
+- Attempted the Codex in-app Browser plugin on a temporary static harness; the Node-backed browser runtime failed before executing any JavaScript with `failed to write kernel assets: system cannot find the path`.
+- Attempted a Microsoft Edge headless + DevTools fallback against the same temporary harness; launching Edge required approval and timed out.
+- Removed the temporary static harness after the browser-agent attempts. Current verification remains source/test based rather than visual browser based.
+- User explicitly approved all three browser-enablement options: Next.js SWC download/cache, manual SWC package install, and Edge headless fallback.
+- Retried the Next.js dev server with escalation twice after that approval; the approval reviewer still timed out both times.
+- Retried `next dev` with `NEXT_SWC_PATH` pointed inside the workspace to avoid the external `AppData` cache write. This avoided the original `AppData` permission error, but Next.js still failed because `@next/swc-win32-x64-msvc` is not installed.
+- Tried to manually download `@next/swc-win32-x64-msvc-14.2.35.tgz` from the npm registry. Sandboxed network access failed immediately, and the escalated download approval also timed out.
+- Tried `curl.exe` as a final non-PowerShell network path; it also could not connect to `registry.npmjs.org`.
+- Retried the temporary static harness and removed it afterward. Browser/agent testing remains blocked by the environment's approval/network/browser-runtime failures, not by project code.
+- During manual PowerShell setup, confirmed that the copied `node_modules\next\dist\build\swc\index.js` expects `nextVersion = "14.2.33"` even though `package.json` declares `"next": "14.2.35"`. Corrected the manual npm-registry tarball guidance to use an encoded scoped package URL such as `https://registry.npmjs.org/@next%2fswc-win32-x64-msvc/-/swc-win32-x64-msvc-14.2.33.tgz`.
+
+### 2026-05-10 AP Psychology study guide and current-site follow-up
+
+- Started a new pass from the latest handoff screenshots. Current requirements are: improve the UI against the live `projectastra.uk` baseline, OCR or otherwise handle image-backed content where needed, add fuller AP Psychology explanations into the Study Guide area, split AP Psychology content by units, and preserve the release discipline of validating locally before pushing to the Vercel-connected personal repository.
+- Confirmed the active repository map from this log: `sjfq/ap-website-vercel` is the personal/Vercel-connected repository, while `apresources27/ap-website` is the organization copy.
+- Located the new source packet at `D:\xwechat_files\wxid_bdd83i6ke01g12_764f\msg\file\2026-05\AP Psychology Packet.md` and confirmed it is already a Markdown conversion with referenced media images.
+- Attempted to refresh the current source from GitHub zip/API endpoints for both known repositories. Both returned GitHub `404 Not Found` from the unauthenticated shell, which is consistent with private repository access. Continued from the previously downloaded GitHub archive and live `projectastra.uk` output as the available baseline.
+- Re-ran Supabase data inspection with the local `.env.local`. Network access now succeeds. Production currently contains 3 exams, 107 questions, 45 question images, and 1 review guide, so AP Psychology can be added as new review-guide rows without replacing existing guides.
+- Added `scripts/build-ap-psych-review-guides.cjs`, which converts the supplied AP Psychology packet into seven published review-guide records: Unit 0 Scientific Foundations/Statistics, Units 1-5, and Exam/FRQ Strategy. The builder removes broken image links and replaces each image-dependent location with an accessible "Visual cue" explanation derived from the image alt/context.
+- Generated `data/ap-psychology-review-guides.json` from the packet and wired it into local fallback data through `lib/mock-data.ts`.
+- Added `scripts/upsert-ap-psych-review-guides.cjs`, a dry-run-first Supabase upsert script for publishing the AP Psychology study guides into the production `review_guides` table.
+- Improved the Study Guide UI: refreshed guide cards, filter controls, unit chips, guide metadata, table of contents, callout styling, and renderer handling for Important/Common Mistake/Exam Tip/Visual cue blocks.
+- Ran the AP Psychology upsert script in dry-run mode. It reported seven clean inserts and no existing-row replacements.
+- Re-ran `tests/run-import-tests.cjs`, `next lint`, and `tsc --noEmit`. All passed before applying production review-guide changes.
+- Applied `scripts/upsert-ap-psych-review-guides.cjs --apply` to Supabase. Seven AP Psychology guides were inserted. Re-ran `scripts/check-supabase-data.cjs`; production now reports 8 review guides total and the data check passed.
+- Installed the Windows Next.js SWC package locally at `node_modules/@next/swc-win32-x64-msvc` so localhost can run on this Windows machine.
+- Started local Next.js on `http://localhost:3000` using the bundled Node runtime. Verified locally that `/review` lists AP Psychology guides, `/review/ap-psych-unit-0-scientific-foundations-statistics` returns HTTP 200, and the guide page contains the generated Visual cue replacements.
+- Took Edge headless screenshots for desktop and mobile review-guide pages. Fixed two polish issues found in screenshots: heading autolink wrappers were incorrectly styling headings like normal blue links, and mobile unit chips/header spacing could overflow. Rechecked screenshots after fixes.
+- Checked the live `https://projectastra.uk/review` route after the Supabase insert. It still served the old single-guide output and the new AP Psychology slug returned 404, so the live deployment is not yet reflecting the newly inserted production data and/or is still on the older deployed code/env. Localhost with `.env.local` does reflect the Supabase rows correctly.
+- Final verification after UI tweaks: `tests/run-import-tests.cjs` passed, `next lint` passed, `tsc --noEmit` passed, and `scripts/predeploy-check.cjs` passed with only expected local-env/mock-db warnings.
+- Mirrored this repository development log back to the original WeChat-supplied `DEVELOPMENT_LOG.md` handoff file.
+- Removed temporary Edge screenshot artifacts and added `tmp-*` to `.gitignore` so local dev-server logs/screenshots do not get picked up accidentally.
+
+### 2026-05-10 Personal repository push preparation
+
+- Created a fresh local clone of the Vercel-connected personal repository `sjfq/ap-website-vercel` instead of pushing from the older downloaded archive.
+- Confirmed the fresh personal clone starts from `origin/main` at commit `948f7e7` (`fix Supabase auth login and registration`), preserving the newer auth/security work already present in the personal repository.
+- Copied only the intended UI, review-guide, data, parser, test, and script changes from the working archive into the fresh personal clone. No auth or Supabase credential files were copied.
+- During diff review, restored the personal repository's hardened local mock credential behavior in `lib/mock-data.ts` while keeping the new AP Psychology fallback guide import.
+- Removed legacy example account values from this development log so the personal repository does not reintroduce public demo credentials in documentation.
+- Restored the personal repository's auth/security import-test assertions, then kept the Windows TypeScript runner fix and the new option-elimination test coverage on top.
+- Added this final push-preparation entry before validation, staging, commit, and push so the repository log records the release path as well as the code changes.
+- Linked the existing tested `node_modules` directory into the fresh personal clone for local verification only; the dependency directory remains ignored and is not part of the commit.
+- Re-ran verification from the fresh personal clone after the credential-behavior fix: `tests/run-import-tests.cjs` passed, `next lint` passed, `tsc --noEmit` passed, and `scripts/predeploy-check.cjs` passed with only expected local-only `.mock-db.json` and process-inspection warnings.

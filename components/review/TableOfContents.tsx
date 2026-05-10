@@ -25,14 +25,14 @@ export function extractToc(markdown: string): TocItem[] {
 export function TableOfContents({ items }: { items: TocItem[] }) {
   if (items.length === 0) return null;
   return (
-    <nav className="rounded-lg border border-slate-200 bg-white p-4 text-sm shadow-sm">
+    <nav className="app-surface rounded-lg p-4 text-sm">
       <p className="mb-3 font-semibold text-ink">Table of Contents</p>
       <div className="space-y-2">
         {items.map((item) => (
           <a
             key={item.id}
             href={`#${item.id}`}
-            className={`block text-slate-600 hover:text-brand ${item.depth === 3 ? "pl-4" : ""}`}
+            className={`block rounded-md px-2 py-1 text-slate-600 hover:bg-brand-soft hover:text-brand ${item.depth === 3 ? "ml-3" : ""}`}
           >
             {item.text}
           </a>

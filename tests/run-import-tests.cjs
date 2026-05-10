@@ -8,8 +8,12 @@ const root = path.resolve(__dirname, "..");
 const buildRoot = path.join(root, ".test-build");
 
 execFileSync(
-  path.join(root, "node_modules", "typescript", "bin", "tsc"),
-  ["-p", path.join(root, "tests", "tsconfig.import-tests.json")],
+  process.execPath,
+  [
+    path.join(root, "node_modules", "typescript", "bin", "tsc"),
+    "-p",
+    path.join(root, "tests", "tsconfig.import-tests.json")
+  ],
   { cwd: root, stdio: "inherit" }
 );
 
@@ -156,7 +160,7 @@ assert.match(questionImageAsset, /h-auto max-w-full object-contain/, "QuestionIm
 assert.doesNotMatch(questionImageAsset, /object-cover|max-h|overflow-hidden/, "QuestionImageAsset does not crop images");
 
 const choiceList = source("components/exam/ChoiceList.tsx");
-assert.match(choiceList, /MathMarkdown content=\{choice\.text\}/, "ChoiceList renders choices through MathMarkdown");
+assert.match(choiceList, /MathMarkdown[\s\S]*content=\{choice\.text\}/, "ChoiceList renders choices through MathMarkdown");
 assert.match(choiceList, /QuestionImageAsset/, "ChoiceList renders choice images through QuestionImageAsset");
 assert.doesNotMatch(choiceList, /object-cover|max-h|overflow-hidden/, "ChoiceList does not crop choice images");
 
@@ -193,6 +197,14 @@ const choiceListSource = source("components/exam/ChoiceList.tsx");
 assert.match(choiceListSource, /type="button"/, "choice buttons cannot submit parent forms");
 assert.match(choiceListSource, /next\.size < maxSelections/, "Select Two questions cannot exceed their max selection count");
 assert.match(choiceListSource, /Select \{requiredSelections === 2 \? "TWO"/, "Select Two UI makes the required count clear");
+assert.match(choiceListSource, /Eliminate choice/, "choice list exposes an option-elimination control");
+assert.match(choiceListSource, /line-through/, "eliminated choices receive a cancel-out visual treatment");
+assert.match(takeExamClient, /eliminatedChoiceIds/, "exam client tracks eliminated choices locally");
+const responseSnapshotBlock = takeExamClient.slice(
+  takeExamClient.indexOf("const responseSnapshot"),
+  takeExamClient.indexOf("const elapsedSeconds")
+);
+assert.doesNotMatch(responseSnapshotBlock, /eliminatedChoiceIds/, "eliminated choices are not submitted for grading");
 
 const actionsSource = source("app/actions.ts");
 assert.doesNotMatch(actionsSource, /revalidatePath\(`\/exam\/\$\{submission\.exam_id\}\/take`\)/, "background answer saves do not revalidate the current exam route");

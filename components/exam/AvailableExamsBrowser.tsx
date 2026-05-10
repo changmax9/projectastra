@@ -88,21 +88,21 @@ export function AvailableExamsBrowser({
   const subjectNames = Object.keys(grouped).sort();
 
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+    <section className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-semibold text-ink">Available exams</h2>
           <p className="mt-1 text-sm text-slate-500">Browse by subject, AP course, and exam set.</p>
         </div>
-        <span className="text-sm text-slate-500">{filtered.length} published</span>
+        <span className="app-chip px-3 py-1 text-sm font-semibold">{filtered.length} published</span>
       </div>
 
-      <form className="mb-5 grid gap-3 md:grid-cols-3 lg:grid-cols-4">
-        <input name="search" defaultValue={searchParams.search || ""} placeholder="Search Calculus, 2023, Energy..." className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-        <input name="subject" defaultValue={searchParams.subject || ""} placeholder="Subject group" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-        <input name="course" defaultValue={searchParams.course || ""} placeholder="AP Course" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-        <input name="year" defaultValue={searchParams.year || ""} placeholder="Year" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-        <select name="section" defaultValue={searchParams.section || ""} className="rounded-md border border-slate-300 px-3 py-2 text-sm">
+      <form className="app-surface grid gap-3 rounded-lg p-4 md:grid-cols-3 lg:grid-cols-4">
+        <input name="search" defaultValue={searchParams.search || ""} placeholder="Search Calculus, 2023, Energy..." className="app-field px-3 py-2 text-sm" />
+        <input name="subject" defaultValue={searchParams.subject || ""} placeholder="Subject group" className="app-field px-3 py-2 text-sm" />
+        <input name="course" defaultValue={searchParams.course || ""} placeholder="AP Course" className="app-field px-3 py-2 text-sm" />
+        <input name="year" defaultValue={searchParams.year || ""} placeholder="Year" className="app-field px-3 py-2 text-sm" />
+        <select name="section" defaultValue={searchParams.section || ""} className="app-field px-3 py-2 text-sm">
           <option value="">All sections</option>
           <option value="MCQ">MCQ</option>
           <option value="FRQ">FRQ</option>
@@ -112,21 +112,21 @@ export function AvailableExamsBrowser({
           <option value="FRQ_NON_CALCULATOR">FRQ Non-Calculator</option>
           <option value="Full Exam">Full Exam</option>
         </select>
-        <select name="examType" defaultValue={searchParams.examType || ""} className="rounded-md border border-slate-300 px-3 py-2 text-sm">
+        <select name="examType" defaultValue={searchParams.examType || ""} className="app-field px-3 py-2 text-sm">
           <option value="">All exam types</option>
           <option value="Practice Exam">Practice Exam</option>
           <option value="Released Exam">Released Exam</option>
           <option value="Unit Test">Unit Test</option>
           <option value="Custom Quiz">Custom Quiz</option>
         </select>
-        <input name="topic" defaultValue={searchParams.topic || ""} placeholder="Topic" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-        <select name="difficulty" defaultValue={searchParams.difficulty || ""} className="rounded-md border border-slate-300 px-3 py-2 text-sm">
+        <input name="topic" defaultValue={searchParams.topic || ""} placeholder="Topic" className="app-field px-3 py-2 text-sm" />
+        <select name="difficulty" defaultValue={searchParams.difficulty || ""} className="app-field px-3 py-2 text-sm">
           <option value="">Any difficulty</option>
           <option value="easy">easy</option>
           <option value="medium">medium</option>
           <option value="hard">hard</option>
         </select>
-        <button className="rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white md:col-span-3 lg:col-span-1">Filter</button>
+        <button className="app-primary px-4 py-2 text-sm font-semibold md:col-span-3 lg:col-span-1">Filter</button>
       </form>
 
       <div className="space-y-6">
@@ -135,7 +135,7 @@ export function AvailableExamsBrowser({
             <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">{subject}</h3>
             <div className="mt-3 space-y-4">
               {Object.keys(grouped[subject]).sort().map((course) => (
-                <div key={course} className="rounded-lg border border-slate-100 bg-slate-50/70 p-4">
+                <div key={course} className="rounded-lg border border-slate-200 bg-white/70 p-4">
                   <h4 className="font-semibold text-ink">{course}</h4>
                   <div className="mt-3 grid gap-3 md:grid-cols-2">
                     {grouped[subject][course].map((exam) => {
@@ -143,7 +143,7 @@ export function AvailableExamsBrowser({
                       const inProgress = inProgressForSection(submissions, exam.id, null);
                       const href = inProgress ? `/exam/${exam.id}/take?submission=${inProgress.id}` : `/exam/${exam.id}`;
                       return (
-                        <div key={exam.id} className="rounded-lg border border-slate-200 bg-white p-4">
+                        <div key={exam.id} className="app-surface rounded-lg p-4">
                           <div className="flex items-start justify-between gap-3">
                             <div>
                               <Link href={href} className="font-semibold text-ink hover:text-brand">{exam.title}</Link>
@@ -164,7 +164,7 @@ export function AvailableExamsBrowser({
                               {exam.time_limit_minutes} min
                             </span>
                             <span>{sectionCount(exam)} section{sectionCount(exam) === 1 ? "" : "s"}</span>
-                            <Link href={href} className="ml-auto rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white">
+                            <Link href={href} className="app-primary ml-auto px-3 py-1.5 text-xs font-semibold">
                               {inProgress ? "Resume Exam" : "Start Exam"}
                             </Link>
                           </div>
@@ -173,7 +173,7 @@ export function AvailableExamsBrowser({
                               {exam.sections!.map((section) => {
                                 const count = actualSectionQuestionCount(exam, section.section);
                                 return (
-                                  <div key={section.id} className="rounded-md border border-slate-100 bg-slate-50 px-3 py-3">
+                                  <div key={section.id} className="rounded-md border border-slate-100 bg-slate-50/80 px-3 py-3">
                                     <div>
                                       <p className="font-medium text-ink">{section.title}</p>
                                       <p className="mt-1 text-sm text-slate-500">

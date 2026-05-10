@@ -37,22 +37,28 @@ export default async function DashboardPage({
     <>
       <AppHeader />
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <div className="mb-8">
-          <p className="text-sm text-slate-500">Welcome back</p>
-          <h1 className="text-3xl font-semibold text-ink">{profile.full_name || profile.email}</h1>
+        <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-wide text-brand">Practice workspace</p>
+            <h1 className="mt-2 text-3xl font-semibold text-ink">{profile.full_name || profile.email}</h1>
+            <p className="mt-1 text-sm text-slate-500">Resume attempts, start a sectioned exam, or review your latest work.</p>
+          </div>
+          <Link href="/available-exams" className="app-secondary px-4 py-2 text-sm font-semibold">
+            Browse exams
+          </Link>
         </div>
 
         {profile.role === "admin" ? (
-          <section className="mb-6 rounded-lg border border-blue-100 bg-blue-50 p-5 shadow-sm">
-            <p className="text-sm font-semibold uppercase tracking-wide text-blue-700">Admin tools</p>
+          <section className="app-surface mb-6 rounded-lg p-5">
+            <p className="text-sm font-semibold uppercase tracking-wide text-brand">Admin tools</p>
             <div className="mt-3 flex flex-wrap gap-3">
-              <Link href="/admin/questions" className="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800">
+              <Link href="/admin/questions" className="rounded-md bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800">
                 Question Bank
               </Link>
-              <Link href="/admin/exams" className="rounded-md border border-blue-200 bg-white px-4 py-2 text-sm font-semibold text-blue-800 hover:bg-blue-50">
+              <Link href="/admin/exams" className="app-secondary px-4 py-2 text-sm font-semibold">
                 Manage Exams
               </Link>
-              <Link href="/admin/import" className="rounded-md border border-blue-200 bg-white px-4 py-2 text-sm font-semibold text-blue-800 hover:bg-blue-50">
+              <Link href="/admin/import" className="app-secondary px-4 py-2 text-sm font-semibold">
                 JSON Import
               </Link>
             </div>
@@ -63,7 +69,7 @@ export default async function DashboardPage({
           <section className="space-y-5">
             <AvailableExamsBrowser exams={data.examDetails} submissions={data.submissions} searchParams={searchParams} />
 
-            <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="app-surface rounded-lg p-5">
               <h2 className="text-xl font-semibold text-ink">History</h2>
               <div className="mt-4 space-y-3">
                 {data.submissions.map((submission) => {
@@ -75,7 +81,7 @@ export default async function DashboardPage({
                   const partLabel = submissionPartLabel(submission);
                   const currentSectionLabel = submissionCurrentSectionLabel(submission);
                   return (
-                    <Link key={submission.id} href={href} className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-slate-100 p-3 hover:bg-slate-50">
+                    <Link key={submission.id} href={href} className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-slate-100 bg-[#fbfdff] p-3 hover:bg-slate-50">
                       <div>
                         <p className="font-medium text-ink">{submission.exam?.title || "Exam"}</p>
                         {resumable && currentSectionLabel ? (
@@ -93,12 +99,12 @@ export default async function DashboardPage({
                         <span
                           className={cn(
                             "rounded-full px-2.5 py-1 text-xs font-semibold",
-                            resumable ? "bg-amber-50 text-amber-700" : "bg-green-50 text-green-700"
+                            resumable ? "bg-amber-50 text-amber-700" : "bg-accent-soft text-accent"
                           )}
                         >
                           {label}
                         </span>
-                        <span className="rounded-md bg-slate-900 px-3 py-2 text-sm font-semibold text-white">
+                        <span className="rounded-md bg-ink px-3 py-2 text-sm font-semibold text-white">
                           {resumable ? "Resume" : "Review Results"}
                         </span>
                       </div>
@@ -111,7 +117,7 @@ export default async function DashboardPage({
           </section>
 
           <aside className="space-y-5">
-            <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="app-surface rounded-lg p-5">
               <div className="flex items-center gap-2">
                 <Trophy className="h-5 w-5 text-brand" />
                 <h2 className="font-semibold text-ink">Latest score</h2>
@@ -126,14 +132,14 @@ export default async function DashboardPage({
               )}
             </div>
 
-            <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="app-surface rounded-lg p-5">
               <div className="mb-4 flex items-center gap-2">
                 <BookOpen className="h-5 w-5 text-brand" />
                 <h2 className="font-semibold text-ink">Recommended guides</h2>
               </div>
               <div className="space-y-3">
                 {data.guides.map((guide) => (
-                  <Link key={guide.id} href={`/review/${guide.slug}`} className="block rounded-md border border-slate-100 p-3 hover:bg-slate-50">
+                  <Link key={guide.id} href={`/review/${guide.slug}`} className="block rounded-md border border-slate-100 bg-[#fbfdff] p-3 hover:bg-slate-50">
                     <p className="font-medium text-ink">{guide.title}</p>
                     <p className="text-sm text-slate-500">{guide.estimated_reading_time_minutes} min · {guide.topic}</p>
                   </Link>

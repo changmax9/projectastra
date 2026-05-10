@@ -29,14 +29,15 @@ export const choiceSchema = z.object({
 
 function validateQuestionShape(
   item: {
-    type: "mcq" | "frq";
-    correct_answer: string | null;
-    choices: Array<{ id: string; image_url?: string | null }>;
+    type?: "mcq" | "frq";
+    correct_answer?: string | null;
+    choices?: Array<{ id: string; image_url?: string | null }>;
     question_images?: Array<{ url: string }>;
   },
   ctx: z.RefinementCtx
 ) {
-  const choiceIds = item.choices.map((choice) => choice.id.trim()).filter(Boolean);
+  const choices = item.choices ?? [];
+  const choiceIds = choices.map((choice) => choice.id.trim()).filter(Boolean);
   const duplicateChoice = choiceIds.find((id, index) => choiceIds.indexOf(id) !== index);
   if (duplicateChoice) {
     ctx.addIssue({
@@ -56,7 +57,7 @@ function validateQuestionShape(
     }
   });
 
-  item.choices.forEach((choice, index) => {
+  choices.forEach((choice, index) => {
     if (choice.image_url && isPdfPageImageUrl(choice.image_url)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -74,18 +75,18 @@ function validateQuestionShape(
         message: "MCQ questions require correct_answer"
       });
     }
-    if (item.choices.length < 2) {
+    if (choices.length < 2) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["choices"],
         message: "MCQ questions require at least two choices"
       });
     }
-    if (item.correct_answer && !item.choices.some((choice) => choice.id === item.correct_answer)) {
+    if (item.correct_answer && !choices.some((choice) => choice.id === item.correct_answer)) {
       const selectedIds = item.correct_answer.split(",").map((id) => id.trim()).filter(Boolean);
       if (
         selectedIds.length === 0 ||
-        !selectedIds.every((id) => item.choices.some((choice) => choice.id === id))
+        !selectedIds.every((id) => choices.some((choice) => choice.id === id))
       ) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -104,7 +105,7 @@ function validateQuestionShape(
         message: "FRQ correct_answer must be null"
       });
     }
-    if (item.choices.length > 0) {
+    if (choices.length > 0) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["choices"],

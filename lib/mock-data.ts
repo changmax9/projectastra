@@ -10,6 +10,7 @@ import type {
   ReviewGuideQuestion,
   Submission
 } from "./types";
+import apPsychologyGuideData from "../data/ap-psychology-review-guides.json";
 import { hashPassword } from "./password";
 
 const created = "2026-01-15T12:00:00.000Z";
@@ -332,6 +333,8 @@ At the top of a vertical circle, the center is downward. Gravity points downward
 Try the circular motion MCQ, the Newton's laws force-balance MCQ, and the vertical-circle FRQ after reading this guide.
 `;
 
+const apPsychologyReviewGuides: ReviewGuide[] = apPsychologyGuideData.map(({ source_path: _sourcePath, ...guide }) => guide as ReviewGuide);
+
 export const mockReviewGuides: ReviewGuide[] = [
   {
     id: "40000000-0000-4000-8000-000000000001",
@@ -351,7 +354,8 @@ export const mockReviewGuides: ReviewGuide[] = [
     created_at: created,
     updated_at: created,
     published_at: created
-  }
+  },
+  ...apPsychologyReviewGuides
 ];
 
 export const mockReviewGuideQuestions: ReviewGuideQuestion[] = [
