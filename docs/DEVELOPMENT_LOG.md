@@ -925,6 +925,7 @@ npx tsc --noEmit
 - Added this final push-preparation entry before validation, staging, commit, and push so the repository log records the release path as well as the code changes.
 - Linked the existing tested `node_modules` directory into the fresh personal clone for local verification only; the dependency directory remains ignored and is not part of the commit.
 - Re-ran verification from the fresh personal clone after the credential-behavior fix: `tests/run-import-tests.cjs` passed, `next lint` passed, `tsc --noEmit` passed, and `scripts/predeploy-check.cjs` passed with only expected local-only `.mock-db.json` and process-inspection warnings.
-- Committed the implementation to the personal repository as `9f2dd39` with message `add AP Psychology guides and review UI polish`.
+- Committed the implementation to the personal repository as `c2353ea` with message `add AP Psychology guides and review UI polish`.
 - Pushed `main` to the personal repository. GitHub accepted the push from `https://github.com/sjfq/ap-website-vercel.git` and reported that the repository has moved to `https://github.com/changmax9/projectastra.git`.
 - Updated the local `origin` remote URL to `https://github.com/changmax9/projectastra.git` after the move notice so subsequent personal-repository pushes use the current location directly.
+- Rewrote the two Codex-created commits to use the requested GitHub author identity `Rule909 <3255073608@qq.com>` instead of the previous local identity. The implementation commit is now `c2353ea`; the first log-only push-record commit is now `5ed3a86`.
