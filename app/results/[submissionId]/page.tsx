@@ -64,41 +64,42 @@ export default async function ResultPage({ params }: { params: { submissionId: s
   return (
     <>
       <AppHeader />
-      <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
-        <Link href="/dashboard" className="mb-5 inline-flex items-center gap-2 text-sm font-medium text-brand">
+      <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(99,102,241,0.16),transparent_32%),radial-gradient(circle_at_top_right,rgba(14,165,233,0.14),transparent_28%),#f7f8fb] px-4 py-8 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-5xl">
+        <Link href="/dashboard" className="mb-5 inline-flex items-center gap-2 rounded-full border border-slate-200/80 bg-white/70 px-4 py-2 text-sm font-medium text-slate-700 backdrop-blur-xl transition hover:bg-white/90">
           <ArrowLeft className="h-4 w-4" />
           Back to dashboard
         </Link>
 
-        <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-soft">
+        <section className="rounded-[28px] border border-white/60 bg-white/75 p-6 shadow-[0_20px_60px_-30px_rgba(15,23,42,0.35)] backdrop-blur-xl">
           <p className="text-sm text-slate-500">{detail.exam?.subject}</p>
           <h1 className="mt-1 text-3xl font-semibold text-ink">{detail.exam?.title || "Exam result"}</h1>
           {submissionPartLabel(detail) ? (
             <p className="mt-2 text-lg font-medium text-slate-700">{submissionPartLabel(detail)}</p>
           ) : null}
           <div className="mt-6 grid gap-4 sm:grid-cols-4">
-            <div className="rounded-md bg-blue-50 p-4">
+            <div className="rounded-3xl border border-blue-100 bg-blue-50/90 p-4">
               <p className="text-sm text-blue-700">Percentage</p>
               <p className="mt-1 text-3xl font-semibold text-ink">{hasOnlyFrq ? "Pending" : `${displayPercentage}%`}</p>
             </div>
-            <div className="rounded-md bg-slate-50 p-4">
+            <div className="rounded-3xl border border-white/70 bg-white/85 p-4 shadow-sm">
               <p className="text-sm text-slate-500">Score</p>
               <p className="mt-1 text-xl font-semibold text-ink">
                 {hasOnlyFrq ? `${frqRows.length} FRQ submitted` : `${displayTotalScore}/${displayMaxScore}`}
               </p>
             </div>
-            <div className="rounded-md bg-slate-50 p-4">
+            <div className="rounded-3xl border border-white/70 bg-white/85 p-4 shadow-sm">
               <p className="text-sm text-slate-500">Time spent</p>
               <p className="mt-1 text-xl font-semibold text-ink">{formatFriendlyDuration(detail.time_spent_seconds)}</p>
             </div>
-            <div className="rounded-md bg-slate-50 p-4">
+            <div className="rounded-3xl border border-white/70 bg-white/85 p-4 shadow-sm">
               <p className="text-sm text-slate-500">Status</p>
               <p className="mt-1 text-xl font-semibold text-ink">{submissionStatusLabel(detail.status)}</p>
             </div>
           </div>
         </section>
 
-        <section className="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-soft">
+        <section className="mt-6 rounded-[28px] border border-white/60 bg-white/75 p-6 shadow-[0_20px_60px_-30px_rgba(15,23,42,0.35)] backdrop-blur-xl">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-xl font-semibold text-ink">Performance summary</h2>
@@ -114,7 +115,7 @@ export default async function ResultPage({ params }: { params: { submissionId: s
               {sectionSummaries.map((summary) => {
                 if (!summary) return null;
                 return (
-                  <div key={summary.section.id} className="rounded-md border border-slate-200 p-4">
+                  <div key={summary.section.id} className="rounded-3xl border border-white/70 bg-white/85 p-4 shadow-sm">
                     <p className="font-medium text-ink">{summary.section.title}</p>
                     {summary.mcqCount > 0 ? (
                       <p className="mt-2 text-sm text-slate-600">
@@ -134,7 +135,7 @@ export default async function ResultPage({ params }: { params: { submissionId: s
             <>
               <div className="mt-4 grid gap-3 md:grid-cols-2">
                 {Object.entries(topicStats).map(([topic, stat]) => (
-                  <div key={topic} className="rounded-md border border-slate-200 p-4">
+                  <div key={topic} className="rounded-3xl border border-white/70 bg-white/85 p-4 shadow-sm">
                     <div className="flex items-center justify-between gap-3">
                       <p className="font-medium text-ink">{topic}</p>
                       <p className="text-sm text-slate-500">{stat.total - stat.missed}/{stat.total}</p>
@@ -149,13 +150,13 @@ export default async function ResultPage({ params }: { params: { submissionId: s
                 ))}
               </div>
               {weakTopics.length > 0 ? (
-                <div className="mt-4 rounded-md bg-amber-50 p-4 text-sm text-amber-900">
+                <div className="mt-4 rounded-3xl border border-amber-100 bg-amber-50/90 p-4 text-sm text-amber-900">
                   Weak topics: {weakTopics.map(([topic]) => topic).join(", ")}
                 </div>
               ) : null}
             </>
           ) : (
-            <div className="mt-4 rounded-md bg-blue-50 p-4 text-sm leading-6 text-blue-900">
+            <div className="mt-4 rounded-3xl border border-blue-100 bg-blue-50/90 p-4 text-sm leading-6 text-blue-900">
               This free-response part has been submitted and is waiting for manual grading.
             </div>
           )}
@@ -166,6 +167,7 @@ export default async function ResultPage({ params }: { params: { submissionId: s
             const answer = detail.answers.find((item) => item.question_id === row.question_id) || null;
             return <ResultQuestionReview key={row.id} answer={answer} question={row.question} index={index} />;
           })}
+        </div>
         </div>
       </main>
     </>

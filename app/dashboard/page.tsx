@@ -36,29 +36,24 @@ export default async function DashboardPage({
   return (
     <>
       <AppHeader />
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-wide text-brand">Practice workspace</p>
-            <h1 className="mt-2 text-3xl font-semibold text-ink">{profile.full_name || profile.email}</h1>
-            <p className="mt-1 text-sm text-slate-500">Resume attempts, start a sectioned exam, or review your latest work.</p>
-          </div>
-          <Link href="/available-exams" className="app-secondary px-4 py-2 text-sm font-semibold">
-            Browse exams
-          </Link>
+      <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(99,102,241,0.16),transparent_32%),radial-gradient(circle_at_top_right,rgba(14,165,233,0.14),transparent_28%),#f7f8fb] px-4 py-8 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-7xl">
+        <div className="mb-8">
+          <p className="text-sm text-slate-500">Welcome back</p>
+          <h1 className="text-3xl font-semibold text-ink">{profile.full_name || profile.email}</h1>
         </div>
 
         {profile.role === "admin" ? (
-          <section className="app-surface mb-6 rounded-lg p-5">
-            <p className="text-sm font-semibold uppercase tracking-wide text-brand">Admin tools</p>
+          <section className="mb-6 rounded-[28px] border border-white/60 bg-white/70 p-5 shadow-[0_20px_60px_-30px_rgba(15,23,42,0.35)] backdrop-blur-xl">
+            <p className="text-sm font-semibold uppercase tracking-wide text-blue-700">Admin tools</p>
             <div className="mt-3 flex flex-wrap gap-3">
-              <Link href="/admin/questions" className="rounded-md bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800">
+              <Link href="/admin/questions" className="rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-slate-900/15 transition hover:-translate-y-0.5 hover:shadow-xl">
                 Question Bank
               </Link>
-              <Link href="/admin/exams" className="app-secondary px-4 py-2 text-sm font-semibold">
+              <Link href="/admin/exams" className="rounded-full border border-slate-200/80 bg-white/70 px-4 py-2 text-sm font-semibold text-slate-700 backdrop-blur-xl transition hover:bg-white/90">
                 Manage Exams
               </Link>
-              <Link href="/admin/import" className="app-secondary px-4 py-2 text-sm font-semibold">
+              <Link href="/admin/import" className="rounded-full border border-slate-200/80 bg-white/70 px-4 py-2 text-sm font-semibold text-slate-700 backdrop-blur-xl transition hover:bg-white/90">
                 JSON Import
               </Link>
             </div>
@@ -69,7 +64,7 @@ export default async function DashboardPage({
           <section className="space-y-5">
             <AvailableExamsBrowser exams={data.examDetails} submissions={data.submissions} searchParams={searchParams} />
 
-            <div className="app-surface rounded-lg p-5">
+            <div className="rounded-[28px] border border-white/60 bg-white/70 p-5 shadow-[0_20px_60px_-30px_rgba(15,23,42,0.35)] backdrop-blur-xl">
               <h2 className="text-xl font-semibold text-ink">History</h2>
               <div className="mt-4 space-y-3">
                 {data.submissions.map((submission) => {
@@ -81,7 +76,7 @@ export default async function DashboardPage({
                   const partLabel = submissionPartLabel(submission);
                   const currentSectionLabel = submissionCurrentSectionLabel(submission);
                   return (
-                    <Link key={submission.id} href={href} className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-slate-100 bg-[#fbfdff] p-3 hover:bg-slate-50">
+                    <Link key={submission.id} href={href} className="flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-white/70 bg-white/80 p-4 shadow-sm transition hover:-translate-y-0.5 hover:bg-white">
                       <div>
                         <p className="font-medium text-ink">{submission.exam?.title || "Exam"}</p>
                         {resumable && currentSectionLabel ? (
@@ -98,13 +93,13 @@ export default async function DashboardPage({
                       <div className="flex items-center gap-3">
                         <span
                           className={cn(
-                            "rounded-full px-2.5 py-1 text-xs font-semibold",
-                            resumable ? "bg-amber-50 text-amber-700" : "bg-accent-soft text-accent"
+                            "rounded-full border px-2.5 py-1 text-xs font-medium",
+                            resumable ? "border-amber-200 bg-amber-50 text-amber-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"
                           )}
                         >
                           {label}
                         </span>
-                        <span className="rounded-md bg-ink px-3 py-2 text-sm font-semibold text-white">
+                        <span className="rounded-full bg-slate-950 px-3 py-2 text-sm font-semibold text-white shadow-lg shadow-slate-900/10">
                           {resumable ? "Resume" : "Review Results"}
                         </span>
                       </div>
@@ -117,7 +112,7 @@ export default async function DashboardPage({
           </section>
 
           <aside className="space-y-5">
-            <div className="app-surface rounded-lg p-5">
+            <div className="rounded-[28px] border border-white/60 bg-white/70 p-5 shadow-[0_20px_60px_-30px_rgba(15,23,42,0.35)] backdrop-blur-xl">
               <div className="flex items-center gap-2">
                 <Trophy className="h-5 w-5 text-brand" />
                 <h2 className="font-semibold text-ink">Latest score</h2>
@@ -132,14 +127,14 @@ export default async function DashboardPage({
               )}
             </div>
 
-            <div className="app-surface rounded-lg p-5">
+            <div className="rounded-[28px] border border-white/60 bg-white/70 p-5 shadow-[0_20px_60px_-30px_rgba(15,23,42,0.35)] backdrop-blur-xl">
               <div className="mb-4 flex items-center gap-2">
                 <BookOpen className="h-5 w-5 text-brand" />
                 <h2 className="font-semibold text-ink">Recommended guides</h2>
               </div>
               <div className="space-y-3">
                 {data.guides.map((guide) => (
-                  <Link key={guide.id} href={`/review/${guide.slug}`} className="block rounded-md border border-slate-100 bg-[#fbfdff] p-3 hover:bg-slate-50">
+                  <Link key={guide.id} href={`/review/${guide.slug}`} className="block rounded-3xl border border-white/70 bg-white/80 p-3 shadow-sm transition hover:bg-white">
                     <p className="font-medium text-ink">{guide.title}</p>
                     <p className="text-sm text-slate-500">{guide.estimated_reading_time_minutes} min · {guide.topic}</p>
                   </Link>
@@ -147,6 +142,7 @@ export default async function DashboardPage({
               </div>
             </div>
           </aside>
+        </div>
         </div>
       </main>
     </>

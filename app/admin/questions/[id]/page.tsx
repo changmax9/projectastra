@@ -16,7 +16,7 @@ export default async function AdminQuestionDetailPage({ params }: { params: { id
   return (
     <div className="space-y-6">
       <div>
-        <Link href="/admin/questions" className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-brand">
+        <Link href="/admin/questions" className="mb-4 inline-flex items-center gap-2 rounded-full border border-slate-200/80 bg-white/70 px-4 py-2 text-sm font-medium text-slate-700 backdrop-blur-xl transition hover:bg-white/90">
           <ArrowLeft className="h-4 w-4" />
           Back to question bank
         </Link>
@@ -29,18 +29,18 @@ export default async function AdminQuestionDetailPage({ params }: { params: { id
           </div>
           <div className="flex flex-wrap gap-2">
             {question.tags.includes("needs-admin-review") ? (
-              <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold uppercase text-amber-800">
+              <span className="rounded-full border border-amber-200 bg-amber-100 px-3 py-1 text-xs font-semibold uppercase text-amber-800">
                 Needs Review
               </span>
             ) : null}
-            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase text-slate-500">
+            <span className="rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-xs font-semibold uppercase text-slate-500">
               {question.status}
             </span>
           </div>
         </div>
       </div>
 
-      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="text-lg font-semibold text-ink">Student preview</h2>
         <div className="mt-4">
           <QuestionRenderer question={question} />
@@ -48,7 +48,7 @@ export default async function AdminQuestionDetailPage({ params }: { params: { id
         {question.type === "mcq" ? (
           <div className="mt-5 space-y-3">
             {question.choices.map((choice) => (
-              <div key={choice.id} className="flex gap-4 rounded-lg border-2 border-slate-800 bg-white px-5 py-4">
+              <div key={choice.id} className="flex gap-4 rounded-3xl border-2 border-slate-300 bg-white px-5 py-4">
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-4 border-slate-500 text-lg font-bold text-slate-800">
                   {choice.id}
                 </span>
@@ -66,20 +66,20 @@ export default async function AdminQuestionDetailPage({ params }: { params: { id
         ) : null}
       </section>
 
-      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="rounded-[28px] border border-white/60 bg-white/70 p-5 shadow-[0_20px_60px_-30px_rgba(15,23,42,0.35)] backdrop-blur-xl">
         <h2 className="text-lg font-semibold text-ink">Images</h2>
         {question.question_images.length === 0 && question.choices.every((choice) => !choice.image_url) ? (
           <p className="mt-2 text-sm text-slate-500">No visual assets attached.</p>
         ) : (
           <div className="mt-4 grid gap-4 md:grid-cols-2">
             {question.question_images.map((image) => (
-              <figure key={image.id} className="rounded-md border border-slate-200 bg-slate-50 p-3">
+              <figure key={image.id} className="rounded-3xl border border-white/70 bg-white/85 p-3 shadow-sm">
                 <QuestionImageAsset src={image.url} alt={image.caption || "Question image"} className="w-auto" />
                 <figcaption className="mt-2 text-xs text-slate-500">{image.caption || image.url}</figcaption>
               </figure>
             ))}
             {question.choices.filter((choice) => choice.image_url).map((choice) => (
-              <figure key={choice.id} className="rounded-md border border-slate-200 bg-slate-50 p-3">
+              <figure key={choice.id} className="rounded-3xl border border-white/70 bg-white/85 p-3 shadow-sm">
                 <QuestionImageAsset src={choice.image_url || ""} alt={`Choice ${choice.id}`} className="w-auto" />
                 <figcaption className="mt-2 text-xs text-slate-500">Choice {choice.id}: {choice.image_url}</figcaption>
               </figure>

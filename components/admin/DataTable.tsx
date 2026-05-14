@@ -10,10 +10,10 @@ export function DataTable({
   empty: string;
 }) {
   return (
-    <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+    <div className="overflow-hidden rounded-[24px] border border-white/60 bg-white/85 shadow-[0_20px_60px_-35px_rgba(15,23,42,0.35)] backdrop-blur-xl">
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-slate-200 text-sm">
-          <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+          <thead className="bg-slate-50/90 text-left text-xs uppercase tracking-wide text-slate-500">
             <tr>
               {headers.map((header) => (
                 <th key={header} className="px-4 py-3 font-semibold">
@@ -31,7 +31,7 @@ export function DataTable({
               </tr>
             ) : (
               rows.map((row, rowIndex) => (
-                <tr key={rowIndex} className="align-top hover:bg-slate-50">
+                <tr key={rowIndex} className="align-top transition hover:bg-slate-50/80">
                   {row.map((cell, cellIndex) => (
                     <td key={cellIndex} className="px-4 py-3">
                       {cell}

@@ -42,15 +42,15 @@ export function BreakScreenClient({ submission }: { submission: Submission }) {
   };
 
   return (
-    <main className="min-h-screen bg-paper px-4 py-10">
-      <section className="mx-auto max-w-2xl rounded-lg border border-slate-200 bg-white p-8 text-center shadow-soft">
-        <p className="text-sm font-semibold uppercase tracking-wide text-brand">Break Time</p>
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(99,102,241,0.16),transparent_32%),radial-gradient(circle_at_top_right,rgba(14,165,233,0.14),transparent_28%),#f7f8fb] px-4 py-10">
+      <section className="mx-auto max-w-2xl rounded-[28px] border border-white/60 bg-white/75 p-8 text-center shadow-[0_20px_60px_-30px_rgba(15,23,42,0.35)] backdrop-blur-xl">
+        <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">Break Time</p>
         <h1 className="mt-4 text-6xl font-semibold tabular-nums text-ink">{formatBreakTime(remaining)}</h1>
         <p className="mt-6 leading-7 text-slate-600">
           You have completed the multiple-choice section. The free-response section will begin after the break.
           You may skip the break and continue now.
         </p>
-        <div className="mt-5 rounded-md bg-amber-50 p-4 text-left text-sm leading-6 text-amber-900">
+        <div className="mt-5 rounded-3xl border border-amber-100 bg-amber-50/90 p-4 text-left text-sm leading-6 text-amber-900">
           Note: The real AP exam does not allow students to skip the scheduled break. This option is only for practice.
         </div>
         <div className="mt-7 flex flex-col-reverse justify-center gap-3 sm:flex-row">
@@ -58,7 +58,7 @@ export function BreakScreenClient({ submission }: { submission: Submission }) {
             type="button"
             onClick={() => router.push("/dashboard")}
             disabled={isPending}
-            className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+            className="rounded-full border border-slate-200/80 bg-white/70 px-5 py-2.5 text-sm font-medium text-slate-700 backdrop-blur-xl transition hover:bg-white/90 disabled:opacity-60"
           >
             Save & Exit
           </button>
@@ -66,7 +66,7 @@ export function BreakScreenClient({ submission }: { submission: Submission }) {
             type="button"
             onClick={skipBreak}
             disabled={isPending}
-            className="rounded-md bg-brand px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+            className="rounded-full bg-slate-950 px-5 py-2.5 text-sm font-medium text-white shadow-lg shadow-slate-900/15 transition hover:-translate-y-0.5 hover:shadow-xl disabled:opacity-60"
           >
             {isPending ? "Continuing..." : "Skip Break"}
           </button>

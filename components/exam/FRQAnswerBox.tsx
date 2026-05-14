@@ -15,7 +15,7 @@ export function FRQAnswerBox({
         onChange={(event) => onChange(event.target.value)}
         onBlur={onBlur}
         rows={12}
-        className="w-full resize-y rounded-lg border border-slate-300 bg-white p-4 text-sm leading-7 outline-none focus:border-brand focus:ring-2 focus:ring-blue-100"
+        className="w-full resize-y rounded-3xl border border-slate-300 bg-white p-4 text-sm leading-7 outline-none focus:border-brand focus:ring-2 focus:ring-blue-100"
         placeholder="Write your reasoning clearly. Include equations, substitutions, and final explanation where useful."
       />
     </label>

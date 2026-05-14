@@ -9,7 +9,7 @@ function SubmitButton({ label }: { label: string }) {
   return (
     <button
       disabled={pending}
-      className="w-full rounded-md bg-brand px-4 py-3 font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+      className="w-full rounded-full bg-slate-950 px-5 py-3 font-semibold text-white shadow-lg shadow-slate-900/15 transition hover:-translate-y-0.5 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-60"
     >
       {pending ? "Working..." : label}
     </button>
@@ -23,13 +23,13 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
   );
 
   return (
-    <form action={formAction} className="space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-soft">
+    <form action={formAction} className="space-y-4 rounded-[28px] border border-white/60 bg-white/75 p-6 shadow-[0_20px_60px_-30px_rgba(15,23,42,0.35)] backdrop-blur-xl">
       <div>
         <h1 className="text-2xl font-semibold text-ink">{mode === "login" ? "Log in" : "Create account"}</h1>
         <p className="mt-1 text-sm text-slate-500">
           {mode === "login"
             ? "Use your student or admin account to continue."
-            : "Student accounts can start exams and read review guides immediately."}
+            : "Create a student account, then confirm your email before signing in."}
         </p>
       </div>
       {mode === "register" ? (
@@ -37,7 +37,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
           Full name
           <input
             name="full_name"
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-brand focus:ring-2 focus:ring-blue-100"
+            className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-brand focus:ring-2 focus:ring-blue-100"
             placeholder="Ada Lovelace"
           />
         </label>
@@ -48,7 +48,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
           required
           type="email"
           name="email"
-          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-brand focus:ring-2 focus:ring-blue-100"
+          className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-brand focus:ring-2 focus:ring-blue-100"
           placeholder="you@example.com"
         />
       </label>
@@ -59,12 +59,15 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
           minLength={6}
           type="password"
           name="password"
-          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-brand focus:ring-2 focus:ring-blue-100"
+          className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-brand focus:ring-2 focus:ring-blue-100"
           placeholder="••••••••"
         />
       </label>
       {state.error ? (
-        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{state.error}</div>
+        <div className="rounded-3xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{state.error}</div>
+      ) : null}
+      {state.message ? (
+        <div className="rounded-3xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{state.message}</div>
       ) : null}
       <SubmitButton label={mode === "login" ? "Log in" : "Register"} />
       <p className="text-center text-sm text-slate-500">

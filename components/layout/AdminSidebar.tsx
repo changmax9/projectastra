@@ -25,7 +25,7 @@ const links = [
 
 export function AdminSidebar() {
   return (
-    <aside className="border-b border-slate-200 bg-slate-950 text-white lg:min-h-[calc(100vh-57px)] lg:w-64 lg:border-b-0 lg:border-r">
+    <aside className="border-b border-white/10 bg-slate-950/95 text-white shadow-[20px_0_60px_-45px_rgba(15,23,42,0.8)] backdrop-blur-xl lg:min-h-[calc(100vh-57px)] lg:w-64 lg:border-b-0 lg:border-r">
       <div className="flex gap-2 overflow-x-auto px-4 py-3 lg:block lg:space-y-1">
         {links.map((link) => {
           const Icon = link.icon;
@@ -33,7 +33,7 @@ export function AdminSidebar() {
             <Link
               key={link.href}
               href={link.href}
-              className="flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm text-slate-200 hover:bg-white/10"
+              className="flex shrink-0 items-center gap-2 rounded-full px-3 py-2 text-sm text-slate-200 transition hover:bg-white/10"
             >
               <Icon className="h-4 w-4" />
               {link.label}

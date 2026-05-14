@@ -212,7 +212,8 @@ assert.doesNotMatch(actionsSource, /revalidatePath\(`\/exam\/\$\{input\.examId\}
 
 const authSource = source("lib/auth.ts");
 assert.match(authSource, /auth\.signInWithPassword/, "login uses Supabase Auth password verification");
-assert.match(authSource, /auth\.admin\.createUser/, "register creates Supabase Auth users server-side");
+assert.match(authSource, /auth\.signUp/, "public registration uses Supabase signUp so email confirmation is respected");
+assert.doesNotMatch(authSource, /email_confirm:\s*true/, "public registration does not auto-confirm users");
 assert.match(authSource, /role: "student"/, "public registration always creates student profiles");
 assert.match(authSource, /signProfileId/, "session cookies are signed before being set");
 assert.match(authSource, /httpOnly: true/, "session cookies are HttpOnly");
@@ -223,6 +224,14 @@ assert.match(authSource, /path: "\/"/, "session cookies are scoped to the app ro
 const seedSource = source("scripts/seed-supabase-from-mock.cjs");
 assert.match(seedSource, /process\.env\.ADMIN_PASSWORD/, "admin seed password comes from environment variables");
 assert.match(seedSource, /updateUserById\(existing\.id/, "seed updates existing Supabase Auth user passwords");
+
+const actionsSourceForAuth = source("app/actions.ts");
+assert.match(actionsSourceForAuth, /Check your email to confirm your account before signing in\./, "register tells users to verify email before sign-in");
+assert.doesNotMatch(actionsSourceForAuth, /redirect\("\/dashboard"\);\n\}/, "register does not auto-login new public users");
+assert.doesNotMatch(actionsSourceForAuth, /resendSignupConfirmationAction/, "pre-login confirmation resend action is not exposed");
+assert.match(actionsSourceForAuth, /updateEmailAction/, "settings email change action exists");
+assert.match(actionsSourceForAuth, /deleteAccountAction/, "settings delete account action exists");
+assert.match(actionsSourceForAuth, /confirmation !== "DELETE"/, "account deletion requires exact DELETE confirmation");
 
 const authFormSource = source("components/forms/AuthForm.tsx");
 const exposedCredentialPattern = new RegExp(
@@ -235,6 +244,24 @@ const exposedCredentialPattern = new RegExp(
   ].join("|")
 );
 assert.doesNotMatch(authFormSource, exposedCredentialPattern, "login form does not expose demo credentials");
+assert.doesNotMatch(authFormSource, /Need a new confirmation email\?|Resend confirmation email|resend_email/, "login and register pages do not expose pre-login resend UI");
+
+const settingsPageSource = source("app/settings/page.tsx");
+const accountSettingsFormSource = source("components/forms/AccountSettingsForm.tsx");
+assert.doesNotMatch(settingsPageSource, /Phone verification|SMS verification|SMS provider|Send verification code/i, "settings page does not expose phone verification UI");
+assert.doesNotMatch(settingsPageSource, /phone_number|phoneNumber|label="Phone"|<Phone/i, "settings page does not show or edit phone numbers");
+assert.doesNotMatch(accountSettingsFormSource, /phone_number|phoneNumber/i, "account settings form only edits display name");
+assert.match(settingsPageSource, /EmailVerificationForm/, "settings page keeps email verification support");
+
+const deleteAccountFormSource = source("components/forms/DeleteAccountForm.tsx");
+assert.match(deleteAccountFormSource, /Danger Zone/, "settings includes a danger zone for account deletion");
+assert.match(deleteAccountFormSource, /confirmation === "DELETE"/, "delete account submit stays disabled until DELETE is typed");
+assert.match(deleteAccountFormSource, /Admin accounts cannot be deleted from this page\./, "admin self-deletion is blocked in the UI");
+
+assert.match(authSource, /deleteCurrentStudentAccount/, "server-side account deletion helper exists");
+assert.match(authSource, /profile\.role === "admin"/, "server blocks admin self-deletion");
+assert.match(authSource, /signInWithPassword/, "server re-authenticates with current password before deletion");
+assert.match(authSource, /auth\.admin\.deleteUser/, "server-only Supabase admin client deletes the auth user");
 
 const dashboardPage = source("app/dashboard/page.tsx");
 assert.doesNotMatch(dashboardPage, /\{submission\.status\}/, "dashboard history does not render raw status variables");

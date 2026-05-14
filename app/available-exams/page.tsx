@@ -25,8 +25,10 @@ export default async function AvailableExamsPage({
   return (
     <>
       <AppHeader />
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <AvailableExamsBrowser exams={data.examDetails} submissions={data.submissions} searchParams={searchParams} />
+      <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(99,102,241,0.16),transparent_32%),radial-gradient(circle_at_top_right,rgba(14,165,233,0.14),transparent_28%),#f7f8fb] px-4 py-8 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-7xl">
+          <AvailableExamsBrowser exams={data.examDetails} submissions={data.submissions} searchParams={searchParams} />
+        </div>
       </main>
     </>
   );

@@ -112,36 +112,36 @@ export function QuestionForm({ question }: { question?: Question }) {
 
   return (
     <form
-      className="space-y-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
+      className="space-y-4 rounded-[28px] border border-white/60 bg-white/70 p-5 shadow-[0_20px_60px_-30px_rgba(15,23,42,0.35)] backdrop-blur-xl"
       onSubmit={handleSubmit((values) => submitValues(values, "save"))}
     >
       {needsReview ? (
-        <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900">
+        <div className="rounded-3xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900">
           Needs Review
         </div>
       ) : null}
       <div className="grid gap-4 md:grid-cols-3">
         <label className="text-sm font-medium text-slate-700">
           Exam name
-          <input className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2" {...register("exam_name", { required: true })} />
+          <input className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-brand focus:ring-2 focus:ring-blue-100" {...register("exam_name", { required: true })} />
         </label>
         <label className="text-sm font-medium text-slate-700">
           Subject
-          <input className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2" {...register("subject", { required: true })} />
+          <input className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-brand focus:ring-2 focus:ring-blue-100" {...register("subject", { required: true })} />
         </label>
         <label className="text-sm font-medium text-slate-700">
           AP Course
-          <input className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2" {...register("course", { required: true })} />
+          <input className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-brand focus:ring-2 focus:ring-blue-100" {...register("course", { required: true })} />
         </label>
       </div>
       <div className="grid gap-4 md:grid-cols-4">
         <label className="text-sm font-medium text-slate-700">
           Year
-          <input type="number" min={1900} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2" {...register("year")} />
+          <input type="number" min={1900} className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-brand focus:ring-2 focus:ring-blue-100" {...register("year")} />
         </label>
         <label className="text-sm font-medium text-slate-700">
           Section
-          <select className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2" {...register("section")}>
+          <select className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-brand focus:ring-2 focus:ring-blue-100" {...register("section")}>
             <option value="MCQ">MCQ</option>
             <option value="FRQ">FRQ</option>
             <option value="MCQ_NON_CALCULATOR">MCQ Non-Calculator</option>
@@ -153,7 +153,7 @@ export function QuestionForm({ question }: { question?: Question }) {
         </label>
         <label className="text-sm font-medium text-slate-700">
           Exam type
-          <select className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2" {...register("exam_type")}>
+          <select className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-brand focus:ring-2 focus:ring-blue-100" {...register("exam_type")}>
             <option value="Practice Exam">Practice Exam</option>
             <option value="Released Exam">Released Exam</option>
             <option value="Unit Test">Unit Test</option>
@@ -162,23 +162,23 @@ export function QuestionForm({ question }: { question?: Question }) {
         </label>
         <label className="text-sm font-medium text-slate-700">
           Question #
-          <input type="number" min={1} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2" {...register("question_number")} />
+          <input type="number" min={1} className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-brand focus:ring-2 focus:ring-blue-100" {...register("question_number")} />
         </label>
       </div>
       <div className="grid gap-4 md:grid-cols-2">
         <label className="text-sm font-medium text-slate-700">
           Unit
-          <input className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2" {...register("unit", { required: true })} />
+          <input className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-brand focus:ring-2 focus:ring-blue-100" {...register("unit", { required: true })} />
         </label>
         <label className="text-sm font-medium text-slate-700">
           Topic
-          <input className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2" {...register("topic", { required: true })} />
+          <input className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-brand focus:ring-2 focus:ring-blue-100" {...register("topic", { required: true })} />
         </label>
       </div>
       <div className="grid gap-4 md:grid-cols-4">
         <label className="text-sm font-medium text-slate-700">
           Difficulty
-          <select className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2" {...register("difficulty")}>
+          <select className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-brand focus:ring-2 focus:ring-blue-100" {...register("difficulty")}>
             <option value="easy">easy</option>
             <option value="medium">medium</option>
             <option value="hard">hard</option>
@@ -186,50 +186,50 @@ export function QuestionForm({ question }: { question?: Question }) {
         </label>
         <label className="text-sm font-medium text-slate-700">
           Type
-          <select className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2" {...register("type")}>
+          <select className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-brand focus:ring-2 focus:ring-blue-100" {...register("type")}>
             <option value="mcq">mcq</option>
             <option value="frq">frq</option>
           </select>
         </label>
         <label className="text-sm font-medium text-slate-700">
           Points
-          <input type="number" min={1} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2" {...register("points")} />
+          <input type="number" min={1} className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-brand focus:ring-2 focus:ring-blue-100" {...register("points")} />
         </label>
         <label className="text-sm font-medium text-slate-700">
           Seconds
-          <input type="number" min={1} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2" {...register("time_estimate_seconds")} />
+          <input type="number" min={1} className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-brand focus:ring-2 focus:ring-blue-100" {...register("time_estimate_seconds")} />
         </label>
       </div>
       <label className="block text-sm font-medium text-slate-700">
         Question text
-        <textarea rows={5} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2" {...register("question_text", { required: true })} />
+        <textarea rows={5} className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-brand focus:ring-2 focus:ring-blue-100" {...register("question_text", { required: true })} />
       </label>
       <div className="grid gap-4 lg:grid-cols-2">
         <label className="block text-sm font-medium text-slate-700">
           Choices JSON {type === "frq" ? "(must be [])" : ""}
-          <textarea rows={8} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-xs" {...register("choices_json")} />
+          <textarea rows={8} className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-brand focus:ring-2 focus:ring-blue-100 font-mono text-xs" {...register("choices_json")} />
         </label>
         <label className="block text-sm font-medium text-slate-700">
           Question images JSON
-          <textarea rows={8} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-xs" {...register("question_images_json")} />
+          <textarea rows={8} className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-brand focus:ring-2 focus:ring-blue-100 font-mono text-xs" {...register("question_images_json")} />
         </label>
       </div>
       <div className="grid gap-4 md:grid-cols-4">
         <label className="text-sm font-medium text-slate-700">
           Correct answer
-          <input className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2" placeholder={type === "mcq" ? "A" : "leave blank"} {...register("correct_answer")} />
+          <input className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-brand focus:ring-2 focus:ring-blue-100" placeholder={type === "mcq" ? "A" : "leave blank"} {...register("correct_answer")} />
         </label>
         <label className="text-sm font-medium text-slate-700">
           Tags
-          <input className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2" placeholder="work, energy" {...register("tags")} />
+          <input className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-brand focus:ring-2 focus:ring-blue-100" placeholder="work, energy" {...register("tags")} />
         </label>
         <label className="text-sm font-medium text-slate-700">
           Source PDF
-          <input className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2" {...register("source_pdf")} />
+          <input className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-brand focus:ring-2 focus:ring-blue-100" {...register("source_pdf")} />
         </label>
         <label className="text-sm font-medium text-slate-700">
           Status
-          <select className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2" {...register("status")}>
+          <select className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-brand focus:ring-2 focus:ring-blue-100" {...register("status")}>
             <option value="draft">draft</option>
             <option value="reviewed">reviewed</option>
             <option value="published">published</option>
@@ -238,18 +238,18 @@ export function QuestionForm({ question }: { question?: Question }) {
       </div>
       <label className="block text-sm font-medium text-slate-700">
         Explanation
-        <textarea rows={4} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2" {...register("explanation", { required: true })} />
+        <textarea rows={4} className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-brand focus:ring-2 focus:ring-blue-100" {...register("explanation", { required: true })} />
       </label>
-      <section className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+      <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
         <h3 className="font-semibold text-ink">MathMarkdown preview</h3>
-        <div className="mt-4 rounded-md bg-white p-4">
+        <div className="mt-4 rounded-3xl border border-slate-100 bg-white p-4">
           <div className="exam-prose font-serif text-lg leading-8 text-ink">
             <MathMarkdown content={previewText || ""} />
           </div>
           {previewImages.length > 0 ? (
             <div className="mt-4 space-y-3">
               {previewImages.map((image) => (
-                <figure key={image.id} className="rounded-md border border-slate-200 bg-white p-3">
+                <figure key={image.id} className="rounded-3xl border border-slate-200 bg-white p-3">
                   <QuestionImageAsset src={image.url} alt={image.alt || image.caption || "Question image"} className="w-auto" />
                   <figcaption className="mt-2 text-xs text-slate-500">{image.caption || image.alt || image.url}</figcaption>
                 </figure>
@@ -259,7 +259,7 @@ export function QuestionForm({ question }: { question?: Question }) {
           {type === "mcq" && previewChoices.length > 0 ? (
             <div className="mt-4 space-y-3">
               {previewChoices.map((choice) => (
-                <div key={choice.id} className="flex gap-3 rounded-md border border-slate-200 p-3">
+                <div key={choice.id} className="flex gap-3 rounded-3xl border border-slate-200 p-3">
                   <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-slate-500 font-bold">{choice.id}</span>
                   <div className="min-w-0 flex-1">
                     <div className="exam-prose font-serif text-base leading-7">
@@ -278,18 +278,18 @@ export function QuestionForm({ question }: { question?: Question }) {
           ) : null}
         </div>
       </section>
-      {error ? <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
-      {message ? <div className="rounded-md bg-green-50 p-3 text-sm text-green-700">{message}</div> : null}
+      {error ? <div className="rounded-3xl border border-red-100 bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
+      {message ? <div className="rounded-3xl border border-green-100 bg-green-50 p-3 text-sm text-green-700">{message}</div> : null}
       <div className="flex flex-wrap gap-3">
         <button
           type="button"
           disabled={isPending}
           onClick={handleSubmit((values) => submitValues(values, "save-draft"))}
-          className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+          className="rounded-full border border-slate-200/80 bg-white/70 px-5 py-2.5 text-sm font-medium text-slate-700 backdrop-blur-xl transition hover:bg-white/90 disabled:opacity-60"
         >
           {isPending ? "Saving..." : "Save Draft"}
         </button>
-        <button disabled={isPending} className="rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60">
+        <button disabled={isPending} className="rounded-full bg-slate-950 px-5 py-2.5 text-sm font-medium text-white shadow-lg shadow-slate-900/15 transition hover:-translate-y-0.5 hover:shadow-xl disabled:opacity-60">
           {isPending ? "Saving..." : "Save question"}
         </button>
         {question?.id ? (
@@ -297,7 +297,7 @@ export function QuestionForm({ question }: { question?: Question }) {
             type="button"
             disabled={isPending}
             onClick={handleSubmit((values) => submitValues(values, "mark-reviewed"))}
-            className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+            className="rounded-full bg-emerald-600 px-5 py-2.5 text-sm font-medium text-white shadow-lg shadow-emerald-900/10 transition hover:-translate-y-0.5 hover:bg-emerald-700 disabled:opacity-60"
           >
             {isPending ? "Saving..." : "Mark as Reviewed"}
           </button>

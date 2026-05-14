@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -36,7 +37,18 @@ import {
   upsertQuestion,
   upsertReviewGuide
 } from "@/lib/data";
-import { clearAuthCookie, registerStudent, requireAdmin, requireProfile, signInWithEmail } from "@/lib/auth";
+import {
+  clearAuthCookie,
+  deleteCurrentStudentAccount,
+  registerStudent,
+  requireAdmin,
+  requireProfile,
+  resendSignupConfirmation,
+  signInWithEmail,
+  updateCurrentUserEmail
+} from "@/lib/auth";
+import { mockProfiles } from "@/lib/mock-data";
+import { persistMockStore } from "@/lib/mock-store";
 import { createSupabaseAdminClient, hasSupabaseEnv } from "@/lib/supabase";
 import { examFormSchema, questionFormSchema, questionImportArraySchema, reviewGuideFormSchema } from "@/lib/schemas";
 import type { QuestionImportBatch, QuestionImportItem } from "@/lib/types";
@@ -60,6 +72,18 @@ async function withActionTiming<T>(label: string, action: () => Promise<T>): Pro
   }
 }
 
+function getRequestOrigin() {
+  const headerStore = headers();
+  const forwardedProto = headerStore.get("x-forwarded-proto") || "http";
+  const forwardedHost = headerStore.get("x-forwarded-host") || headerStore.get("host");
+  if (forwardedHost) return `${forwardedProto}://${forwardedHost}`;
+  return process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+}
+
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
 export async function signInAction(_: ActionState, formData: FormData): Promise<ActionState> {
   const email = String(formData.get("email") || "");
   const password = String(formData.get("password") || "");
@@ -81,17 +105,120 @@ export async function registerAction(_: ActionState, formData: FormData): Promis
   const fullName = String(formData.get("full_name") || "");
 
   try {
-    await registerStudent(email, password, fullName);
+    const origin = getRequestOrigin();
+    const result = await registerStudent(email, password, fullName, `${origin}/auth/callback?next=/dashboard`);
+    if (result.emailConfirmationDisabled) {
+      return { ok: true, message: "Account created. You can sign in now." };
+    }
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Unable to register." };
   }
 
-  redirect("/dashboard");
+  return { ok: true, message: "Check your email to confirm your account before signing in." };
 }
 
 export async function signOutAction() {
   clearAuthCookie();
   redirect("/");
+}
+
+export async function updateAccountSettingsAction(_: ActionState, formData: FormData): Promise<ActionState> {
+  const profile = await requireProfile();
+  const fullName = String(formData.get("full_name") || "").trim();
+
+  try {
+    const nextFullName = fullName || null;
+
+    if (hasSupabaseEnv()) {
+      const supabase = createSupabaseAdminClient();
+      const { error } = await supabase
+        .from("profiles")
+        .update({
+          full_name: nextFullName,
+          updated_at: nowIso()
+        })
+        .eq("id", profile.id);
+      if (error) throw error;
+    } else {
+      const existing = mockProfiles.find((item) => item.id === profile.id);
+      if (!existing) throw new Error("Profile not found.");
+      existing.full_name = nextFullName;
+      existing.updated_at = nowIso();
+      await persistMockStore();
+    }
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Unable to update settings." };
+  }
+
+  revalidatePath("/settings");
+  revalidatePath("/dashboard");
+  return { ok: true, message: "Account settings updated." };
+}
+
+export async function resendVerificationEmailAction(_: ActionState, _formData: FormData): Promise<ActionState> {
+  const profile = await requireProfile();
+
+  if (!hasSupabaseEnv()) {
+    return { message: "Email verification is not currently enabled for this project." };
+  }
+
+  try {
+    const admin = createSupabaseAdminClient();
+    const { data: userData, error: userError } = await admin.auth.admin.getUserById(profile.id);
+    if (userError || !userData.user) {
+      return { error: userError?.message || "Unable to read email verification status." };
+    }
+    if (userData.user.email_confirmed_at || userData.user.confirmed_at) {
+      return { message: "Your email is already verified." };
+    }
+
+    await resendSignupConfirmation(profile.email, `${getRequestOrigin()}/auth/callback?next=/settings`);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Unable to resend verification email." };
+  }
+
+  return { ok: true, message: "Verification email sent." };
+}
+
+export async function updateEmailAction(_: ActionState, formData: FormData): Promise<ActionState> {
+  const profile = await requireProfile();
+  const nextEmail = String(formData.get("new_email") || "").trim().toLowerCase();
+  if (!isValidEmail(nextEmail)) {
+    return { error: "Enter a valid email address." };
+  }
+  if (nextEmail === profile.email.toLowerCase()) {
+    return { error: "Use a different email from your current one." };
+  }
+
+  try {
+    await updateCurrentUserEmail(nextEmail, `${getRequestOrigin()}/auth/callback?next=/settings`);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Unable to start email change." };
+  }
+
+  revalidatePath("/settings");
+  return { ok: true, message: "Check your current and new email inboxes to confirm the email change." };
+}
+
+export async function deleteAccountAction(_: ActionState, formData: FormData): Promise<ActionState> {
+  const currentPassword = String(formData.get("current_password") || "");
+  const confirmation = String(formData.get("delete_confirmation") || "");
+
+  if (confirmation !== "DELETE") {
+    return { error: "Type DELETE to confirm account deletion." };
+  }
+  if (!currentPassword) {
+    return { error: "Enter your current password to delete your account." };
+  }
+
+  try {
+    await deleteCurrentStudentAccount(currentPassword);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Unable to delete account." };
+  }
+
+  clearAuthCookie();
+  redirect("/login");
 }
 
 export async function startExamAction(formData: FormData) {

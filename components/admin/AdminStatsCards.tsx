@@ -23,7 +23,7 @@ export function AdminStatsCards({
       {cards.map((card) => {
         const Icon = card.icon;
         return (
-          <div key={card.label} className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+          <div key={card.label} className="rounded-[28px] border border-white/60 bg-white/70 p-5 shadow-[0_20px_60px_-30px_rgba(15,23,42,0.35)] backdrop-blur-xl">
             <div className="flex items-center justify-between">
               <p className="text-sm text-slate-500">{card.label}</p>
               <Icon className="h-5 w-5 text-brand" />

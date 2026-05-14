@@ -23,6 +23,7 @@ export const mockProfiles: Profile[] = [
     id: "00000000-0000-4000-8000-000000000001",
     email: mockAdminEmail,
     full_name: "Platform Admin",
+    phone_number: null,
     role: "admin",
     created_at: created,
     updated_at: created
@@ -31,6 +32,7 @@ export const mockProfiles: Profile[] = [
     id: "00000000-0000-4000-8000-000000000002",
     email: mockStudentEmail,
     full_name: "Demo Student",
+    phone_number: null,
     role: "student",
     created_at: created,
     updated_at: created

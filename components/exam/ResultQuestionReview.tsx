@@ -27,32 +27,32 @@ export function ResultQuestionReview({
   );
 
   return (
-    <article className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+    <article className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           {icon}
           <h3 className="font-semibold text-ink">Question {index + 1}</h3>
         </div>
-        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium uppercase text-slate-500">
+        <span className="rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-xs font-medium uppercase text-slate-500">
           {answer?.flagged ? "Marked for review · " : ""}{isPending ? "Pending grading" : `${answer?.final_score || 0}/${question.points} pts`}
         </span>
       </div>
       <QuestionRenderer question={question} />
       <div className="mt-5 grid gap-4 md:grid-cols-2">
-        <div className="rounded-md bg-slate-50 p-4">
+        <div className="rounded-3xl border border-slate-100 bg-slate-50 p-4">
           <p className="text-xs font-semibold uppercase text-slate-500">Your answer</p>
           <p className="mt-2 whitespace-pre-wrap text-sm text-ink">
             {question.type === "mcq" ? answer?.selected_choice || "No answer" : answer?.answer_text || "No answer"}
           </p>
         </div>
-        <div className="rounded-md bg-blue-50 p-4">
+        <div className="rounded-3xl border border-blue-100 bg-blue-50 p-4">
           <p className="text-xs font-semibold uppercase text-blue-700">Correct answer / rubric</p>
           <p className="mt-2 whitespace-pre-wrap text-sm text-ink">
             {question.type === "mcq" ? question.correct_answer : "FRQ requires manual grading"}
           </p>
         </div>
       </div>
-      <div className="mt-4 rounded-md border border-slate-200 p-4">
+      <div className="mt-4 rounded-3xl border border-slate-200 p-4">
         <p className="text-xs font-semibold uppercase text-slate-500">Explanation</p>
         <div className="exam-prose mt-2 text-sm leading-7 text-slate-700">
           <MathMarkdown content={explanation} />
