@@ -68,13 +68,17 @@ export const ChoiceList = memo(function ChoiceList({
               }}
               className={cn(
                 "flex min-h-20 w-full items-start gap-5 rounded-3xl px-5 py-4 text-left focus:outline-none focus:ring-2 focus:ring-brand/40",
-                isEliminated && !isSelected ? "line-through decoration-slate-500 decoration-2" : ""
+                isEliminated ? "line-through decoration-slate-500 decoration-2" : ""
               )}
             >
               <span
                 className={cn(
                   "mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-4 text-lg font-bold",
-                  isSelected ? "border-brand bg-brand text-white" : "border-slate-400 bg-white text-slate-800"
+                  isSelected
+                    ? "border-brand bg-brand text-white"
+                    : isEliminated
+                      ? "border-slate-300 bg-slate-100 text-slate-500"
+                      : "border-slate-400 bg-white text-slate-800"
                 )}
               >
                 {choice.id}
@@ -110,9 +114,9 @@ export const ChoiceList = memo(function ChoiceList({
                       : "border-slate-200 bg-white/80 text-slate-500 hover:border-slate-300 hover:text-slate-700"
                   )}
                   aria-pressed={isEliminated}
-                  aria-label={`Eliminate choice ${choice.id}`}
+                  aria-label={isEliminated ? `Restore choice ${choice.id}` : `Eliminate choice ${choice.id}`}
                 >
-                  {isEliminated ? "Undo eliminate choice" : "Eliminate choice"}
+                  {isEliminated ? "Restore choice" : "Eliminate choice"}
                 </button>
               </div>
             ) : null}

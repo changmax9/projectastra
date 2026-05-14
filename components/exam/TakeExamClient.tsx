@@ -61,7 +61,7 @@ export function TakeExamClient({
         answerText: answer.answer_text || "",
         flagged: answer.flagged,
         timeSpentSeconds: answer.time_spent_seconds,
-        eliminatedChoiceIds: []
+        eliminatedChoiceIds: answer.eliminated_choice_ids || []
       };
     }
     return state;
@@ -175,7 +175,8 @@ export function TakeExamClient({
           selectedChoice: response.selectedChoice,
           answerText: response.answerText,
           flagged: response.flagged,
-          timeSpentSeconds: response.timeSpentSeconds
+          timeSpentSeconds: response.timeSpentSeconds,
+          eliminatedChoiceIds: response.eliminatedChoiceIds
         });
         setSaveStatus(result?.error ? result.error : "All changes saved");
       } catch (error) {
@@ -214,12 +215,9 @@ export function TakeExamClient({
   const handleChoiceChange = useCallback(
     (choiceId: string) => {
       if (!currentQuestionId) return;
-      const nextEliminated = (responses[currentQuestionId]?.eliminatedChoiceIds || []).filter(
-        (id) => id !== choiceId
-      );
-      updateResponse(currentQuestionId, { selectedChoice: choiceId, eliminatedChoiceIds: nextEliminated });
+      updateResponse(currentQuestionId, { selectedChoice: choiceId });
     },
-    [currentQuestionId, responses, updateResponse]
+    [currentQuestionId, updateResponse]
   );
 
   const toggleEliminatedChoice = useCallback(
@@ -236,6 +234,7 @@ export function TakeExamClient({
         const eliminated = new Set(current.eliminatedChoiceIds);
         if (eliminated.has(choiceId)) eliminated.delete(choiceId);
         else eliminated.add(choiceId);
+        setDirtyQuestionId(currentQuestionId);
         return {
           ...previous,
           [currentQuestionId]: {
@@ -254,14 +253,16 @@ export function TakeExamClient({
         selectedChoice: null,
         answerText: "",
         flagged: false,
-        timeSpentSeconds: null
+        timeSpentSeconds: null,
+        eliminatedChoiceIds: []
       };
       return {
         questionId: question.id,
         selectedChoice: response.selectedChoice,
         answerText: response.answerText,
         flagged: response.flagged,
-        timeSpentSeconds: response.timeSpentSeconds
+        timeSpentSeconds: response.timeSpentSeconds,
+        eliminatedChoiceIds: response.eliminatedChoiceIds
       };
     });
   }, [questions, responses]);

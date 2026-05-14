@@ -198,13 +198,22 @@ assert.match(choiceListSource, /type="button"/, "choice buttons cannot submit pa
 assert.match(choiceListSource, /next\.size < maxSelections/, "Select Two questions cannot exceed their max selection count");
 assert.match(choiceListSource, /Select \{requiredSelections === 2 \? "TWO"/, "Select Two UI makes the required count clear");
 assert.match(choiceListSource, /Eliminate choice/, "choice list exposes an option-elimination control");
+assert.match(choiceListSource, /Restore choice/, "choice list exposes a restore control for eliminated choices");
+assert.match(choiceListSource, /eliminatedChoiceIds\?: string\[\]/, "ChoiceList accepts eliminatedChoiceIds");
+assert.match(choiceListSource, /onToggleEliminated\?: \(choiceId: string\) => void/, "ChoiceList accepts onToggleEliminated");
+assert.match(choiceListSource, /event\.stopPropagation\(\)/, "eliminator clicks do not trigger answer selection");
 assert.match(choiceListSource, /line-through/, "eliminated choices receive a cancel-out visual treatment");
 assert.match(takeExamClient, /eliminatedChoiceIds/, "exam client tracks eliminated choices locally");
 const responseSnapshotBlock = takeExamClient.slice(
   takeExamClient.indexOf("const responseSnapshot"),
   takeExamClient.indexOf("const elapsedSeconds")
 );
-assert.doesNotMatch(responseSnapshotBlock, /eliminatedChoiceIds/, "eliminated choices are not submitted for grading");
+assert.match(responseSnapshotBlock, /eliminatedChoiceIds/, "eliminated choices are included in progress snapshots for resume persistence");
+const submitScoringBlock = source("lib/data.ts").slice(
+  source("lib/data.ts").indexOf("export async function submitSubmission"),
+  source("lib/data.ts").indexOf("export async function submitCurrentSection")
+);
+assert.doesNotMatch(submitScoringBlock, /eliminated_choice_ids|eliminatedChoiceIds/, "eliminated choices are ignored by scoring");
 
 const actionsSource = source("app/actions.ts");
 assert.doesNotMatch(actionsSource, /revalidatePath\(`\/exam\/\$\{submission\.exam_id\}\/take`\)/, "background answer saves do not revalidate the current exam route");

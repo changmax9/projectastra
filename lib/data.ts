@@ -558,6 +558,7 @@ function mapStudentAnswerRow(row: StudentAnswerRow): Answer {
     final_score: Number(row.final_score || 0),
     time_spent_seconds: row.time_spent_seconds,
     flagged: Boolean(row.flagged),
+    eliminated_choice_ids: Array.isArray(row.eliminated_choice_ids) ? row.eliminated_choice_ids : [],
     created_at: row.created_at,
     updated_at: row.updated_at
   };
@@ -695,6 +696,7 @@ async function upsertStudentAnswer(answer: Answer) {
         final_score: answer.final_score,
         time_spent_seconds: answer.time_spent_seconds,
         flagged: answer.flagged,
+        eliminated_choice_ids: answer.eliminated_choice_ids || [],
         updated_at: answer.updated_at
       },
       { onConflict: "attempt_id,question_id" }
@@ -721,6 +723,7 @@ async function upsertStudentAnswers(answers: Answer[]) {
         final_score: answer.final_score,
         time_spent_seconds: answer.time_spent_seconds,
         flagged: answer.flagged,
+        eliminated_choice_ids: answer.eliminated_choice_ids || [],
         updated_at: answer.updated_at
       })),
       { onConflict: "attempt_id,question_id" }
@@ -1611,6 +1614,7 @@ interface SaveAnswerInput {
   answerText?: string | null;
   flagged?: boolean;
   timeSpentSeconds?: number | null;
+  eliminatedChoiceIds?: string[];
 }
 
 export async function saveAnswers(inputs: SaveAnswerInput[]) {
@@ -1637,6 +1641,7 @@ export async function saveAnswers(inputs: SaveAnswerInput[]) {
       final_score: 0,
       time_spent_seconds: input.timeSpentSeconds ?? null,
       flagged: input.flagged ?? false,
+      eliminated_choice_ids: input.eliminatedChoiceIds ?? [],
       updated_at: timestamp
     }));
     const { data, error } = await adminClient()
@@ -1672,6 +1677,7 @@ export async function saveAnswers(inputs: SaveAnswerInput[]) {
       selected_choice: input.selectedChoice ?? null,
       answer_text: input.answerText ?? null,
       flagged: input.flagged ?? false,
+      eliminated_choice_ids: input.eliminatedChoiceIds ?? [],
       time_spent_seconds: input.timeSpentSeconds ?? null,
       updated_at: timestamp
     };
@@ -1691,6 +1697,7 @@ export async function saveAnswers(inputs: SaveAnswerInput[]) {
         final_score: 0,
         time_spent_seconds: payload.time_spent_seconds,
         flagged: payload.flagged,
+        eliminated_choice_ids: payload.eliminated_choice_ids,
         created_at: timestamp,
         updated_at: timestamp
       };
@@ -1699,6 +1706,7 @@ export async function saveAnswers(inputs: SaveAnswerInput[]) {
       answer.answer_text = payload.answer_text;
       answer.selected_choice = payload.selected_choice;
       answer.flagged = payload.flagged;
+      answer.eliminated_choice_ids = payload.eliminated_choice_ids;
       answer.time_spent_seconds = payload.time_spent_seconds;
       answer.updated_at = timestamp;
     }

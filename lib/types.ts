@@ -159,6 +159,7 @@ export interface Answer {
   final_score: number;
   time_spent_seconds: number | null;
   flagged: boolean;
+  eliminated_choice_ids?: string[];
   created_at: string;
   updated_at: string;
 }

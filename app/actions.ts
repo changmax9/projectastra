@@ -239,6 +239,7 @@ export async function saveAnswerAction(input: {
   answerText?: string | null;
   flagged?: boolean;
   timeSpentSeconds?: number | null;
+  eliminatedChoiceIds?: string[];
 }) {
   return withActionTiming("saveAnswerAction", async () => {
     const profile = await requireProfile();
@@ -285,6 +286,7 @@ export async function submitExamWithResponsesAction(input: {
     answerText?: string | null;
     flagged?: boolean;
     timeSpentSeconds?: number | null;
+    eliminatedChoiceIds?: string[];
   }>;
 }) {
   return withActionTiming("submitExamAction", async () => {
@@ -319,7 +321,8 @@ export async function submitExamWithResponsesAction(input: {
           selectedChoice: response.selectedChoice ?? null,
           answerText: response.answerText ?? null,
           flagged: response.flagged ?? false,
-          timeSpentSeconds: response.timeSpentSeconds ?? null
+          timeSpentSeconds: response.timeSpentSeconds ?? null,
+          eliminatedChoiceIds: response.eliminatedChoiceIds ?? []
         }))
       );
 
@@ -349,6 +352,7 @@ export async function submitSectionWithResponsesAction(input: {
     answerText?: string | null;
     flagged?: boolean;
     timeSpentSeconds?: number | null;
+    eliminatedChoiceIds?: string[];
   }>;
 }) {
   return withActionTiming("endSectionAction", async () => {
@@ -368,7 +372,8 @@ export async function submitSectionWithResponsesAction(input: {
           selectedChoice: response.selectedChoice ?? null,
           answerText: response.answerText ?? null,
           flagged: response.flagged ?? false,
-          timeSpentSeconds: response.timeSpentSeconds ?? null
+          timeSpentSeconds: response.timeSpentSeconds ?? null,
+          eliminatedChoiceIds: response.eliminatedChoiceIds ?? []
         }))
       );
 
@@ -408,6 +413,7 @@ export async function saveExamProgressAction(input: {
     answerText?: string | null;
     flagged?: boolean;
     timeSpentSeconds?: number | null;
+    eliminatedChoiceIds?: string[];
   }>;
 }) {
   return withActionTiming("saveExamProgressAction", async () => {
@@ -429,7 +435,8 @@ export async function saveExamProgressAction(input: {
           selectedChoice: response.selectedChoice ?? null,
           answerText: response.answerText ?? null,
           flagged: response.flagged ?? false,
-          timeSpentSeconds: response.timeSpentSeconds ?? null
+          timeSpentSeconds: response.timeSpentSeconds ?? null,
+          eliminatedChoiceIds: response.eliminatedChoiceIds ?? []
         }))
       );
 
