@@ -8,6 +8,12 @@ export type ExamAttemptStep = "section" | "break" | "completed";
 export type ExamSectionProgressStatus = "not_started" | "in_progress" | "completed";
 export type ReviewGuideStatus = "draft" | "published";
 export type PdfStatus = "uploaded" | "parsed" | "failed";
+export type PdfImportJobStatus = "processing" | "needs_review" | "completed" | "failed";
+export type PdfPageExtractionMethod = "text" | "ocr" | "none";
+export type PdfOcrStatus = "not_needed" | "pending" | "unavailable" | "completed" | "failed";
+export type PdfDraftReviewStatus = "pending" | "saved" | "rejected";
+export type PdfDraftAssetType = "diagram" | "table" | "choice_image" | "unknown";
+export type PdfDraftAssetStatus = "candidate" | "kept" | "discarded";
 
 export type JsonRecord = Record<string, unknown>;
 
@@ -192,6 +198,99 @@ export interface PdfUpload {
   uploaded_by: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface PdfImportJob {
+  id: string;
+  pdf_upload_id: string;
+  status: PdfImportJobStatus;
+  parser_version: string;
+  ocr_provider: string;
+  page_count: number;
+  extracted_page_count: number;
+  draft_question_count: number;
+  warnings: string[];
+  error_message: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  pdf_upload?: PdfUpload | null;
+}
+
+export interface PdfImportPage {
+  id: string;
+  job_id: string;
+  pdf_upload_id: string;
+  page_number: number;
+  extraction_method: PdfPageExtractionMethod;
+  ocr_status: PdfOcrStatus;
+  text_extracted: string;
+  ocr_text: string;
+  page_image_url: string | null;
+  confidence: number | null;
+  warnings: string[];
+  raw_blocks: JsonRecord[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PdfFrqPartDraft {
+  label: string;
+  prompt: string;
+}
+
+export interface PdfImportDraftQuestion {
+  id: string;
+  job_id: string;
+  pdf_upload_id: string;
+  question_number: number | null;
+  source_page_start: number;
+  source_page_end: number;
+  type: QuestionType;
+  exam_name: string;
+  subject: string;
+  course: string;
+  year: number | null;
+  section: string;
+  exam_type: string;
+  unit: string;
+  topic: string;
+  difficulty: Difficulty;
+  question_text: string;
+  choices: QuestionChoice[];
+  correct_answer: string | null;
+  explanation: string;
+  scoring_notes: string;
+  frq_parts: PdfFrqPartDraft[];
+  question_images: QuestionImage[];
+  confidence: number | null;
+  warnings: string[];
+  review_status: PdfDraftReviewStatus;
+  saved_question_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PdfImportDraftAsset {
+  id: string;
+  job_id: string;
+  pdf_upload_id: string;
+  draft_question_id: string | null;
+  page_number: number;
+  asset_type: PdfDraftAssetType;
+  image_url: string | null;
+  bbox: JsonRecord | null;
+  keep_for_question: boolean;
+  status: PdfDraftAssetStatus;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PdfImportJobDetails extends PdfImportJob {
+  pages: PdfImportPage[];
+  draft_questions: PdfImportDraftQuestion[];
+  draft_assets: PdfImportDraftAsset[];
 }
 
 export interface ReviewGuide {

@@ -10,11 +10,14 @@ import {
   addQuestionToExam,
   completeSubmissionBreak,
   createOrContinueSubmission,
+  createPdfImportJob,
   deleteExam,
   deleteMediaFile,
   deleteQuestion,
   deleteReviewGuide,
   getExamWithQuestionSummaries,
+  getPdfImportSchemaStatus,
+  getPdfUpload,
   getQuestion,
   getSubmission,
   importQuestionBatch,
@@ -32,6 +35,7 @@ import {
   submitSubmission,
   submitCurrentSection,
   updatePdfMetadata,
+  updatePdfImportDraftStatus,
   updateSubmissionProgress,
   upsertExam,
   upsertQuestion,
@@ -53,6 +57,7 @@ import { createSupabaseAdminClient, hasSupabaseEnv } from "@/lib/supabase";
 import { examFormSchema, questionFormSchema, questionImportArraySchema, reviewGuideFormSchema } from "@/lib/schemas";
 import type { QuestionImportBatch, QuestionImportItem } from "@/lib/types";
 import { normalizeQuestionImportItems } from "@/lib/question-import";
+import { PARSER_VERSION } from "@/lib/pdf";
 import { nowIso, slugify } from "@/lib/utils";
 
 export interface ActionState {
@@ -521,6 +526,13 @@ function parseQuestionFormData(formData: FormData) {
       topic: formData.get("topic"),
       difficulty: formData.get("difficulty"),
       type: formData.get("type"),
+      selection_type: String(formData.get("selection_type") || "") || undefined,
+      required_selections: formData.get("required_selections")
+        ? Number(formData.get("required_selections"))
+        : null,
+      max_selections: formData.get("max_selections")
+        ? Number(formData.get("max_selections"))
+        : null,
       question_text: formData.get("question_text"),
       question_images: parseJsonField(formData.get("question_images_json"), []),
       choices: parseJsonField(formData.get("choices_json"), []),
@@ -731,6 +743,64 @@ export async function adminUpdatePdfMetadataAction(formData: FormData) {
     topic: String(formData.get("topic") || "") || null
   });
   revalidatePath("/admin/pdfs");
+}
+
+export async function adminStartPdfImportAction(formData: FormData) {
+  const admin = await requireAdmin();
+  const pdfId = String(formData.get("pdf_id") || "");
+  if (!pdfId) throw new Error("Missing PDF id.");
+  const schemaStatus = await getPdfImportSchemaStatus();
+  if (!schemaStatus.available) redirect("/admin/pdfs?import_error=schema_missing");
+  const pdf = await getPdfUpload(pdfId);
+  if (!pdf) throw new Error("PDF upload not found.");
+  const job = await createPdfImportJob(pdf.id, admin.id, PARSER_VERSION);
+  revalidatePath("/admin/pdfs");
+  revalidatePath(`/admin/pdf-imports/${job.id}`);
+  redirect(`/admin/pdfs?job_id=${job.id}`);
+}
+
+export async function adminSavePdfDraftQuestionAction(_: ActionState, formData: FormData): Promise<ActionState> {
+  const admin = await requireAdmin();
+  const draftId = String(formData.get("draft_id") || "");
+  const jobId = String(formData.get("job_id") || "");
+  try {
+    if (!draftId) return { error: "Missing draft id." };
+    const parsed = parseQuestionFormData(formData);
+    const tags = Array.from(
+      new Set([
+        ...parsed.tags,
+        "pdf-import",
+        "needs-admin-review",
+        jobId ? `pdf-import-job:${jobId}` : ""
+      ].filter(Boolean))
+    );
+    const saved = await upsertQuestion(
+      {
+        ...parsed,
+        status: "draft",
+        tags
+      },
+      admin.id
+    );
+    await updatePdfImportDraftStatus(draftId, "saved", saved.id, admin.id);
+    revalidatePath("/admin/questions");
+    if (jobId) revalidatePath(`/admin/pdf-imports/${jobId}`);
+    return { ok: true, message: "Saved as a draft question for admin review." };
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return { error: error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("; ") };
+    }
+    return { error: error instanceof Error ? error.message : "Unable to save PDF draft question." };
+  }
+}
+
+export async function adminRejectPdfDraftQuestionAction(formData: FormData) {
+  const admin = await requireAdmin();
+  const draftId = String(formData.get("draft_id") || "");
+  const jobId = String(formData.get("job_id") || "");
+  if (!draftId) throw new Error("Missing draft id.");
+  await updatePdfImportDraftStatus(draftId, "rejected", null, admin.id);
+  if (jobId) revalidatePath(`/admin/pdf-imports/${jobId}`);
 }
 
 export async function adminSaveReviewGuideAction(formData: FormData) {

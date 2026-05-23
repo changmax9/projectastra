@@ -6,6 +6,10 @@ import {
   mockExams,
   mockMediaFiles,
   mockPasswords,
+  mockPdfImportDraftAssets,
+  mockPdfImportDraftQuestions,
+  mockPdfImportJobs,
+  mockPdfImportPages,
   mockPdfUploads,
   mockProfiles,
   mockQuestions,
@@ -18,6 +22,10 @@ import type {
   Exam,
   ExamQuestion,
   MediaFile,
+  PdfImportDraftAsset,
+  PdfImportDraftQuestion,
+  PdfImportJob,
+  PdfImportPage,
   PdfUpload,
   Profile,
   Question,
@@ -36,6 +44,10 @@ interface MockDb {
   answers: Answer[];
   mediaFiles: MediaFile[];
   pdfUploads: PdfUpload[];
+  pdfImportJobs: PdfImportJob[];
+  pdfImportPages: PdfImportPage[];
+  pdfImportDraftQuestions: PdfImportDraftQuestion[];
+  pdfImportDraftAssets: PdfImportDraftAsset[];
   reviewGuides: ReviewGuide[];
   reviewGuideQuestions: ReviewGuideQuestion[];
 }
@@ -61,6 +73,10 @@ function currentDb(): MockDb {
     answers: mockAnswers,
     mediaFiles: mockMediaFiles,
     pdfUploads: mockPdfUploads,
+    pdfImportJobs: mockPdfImportJobs,
+    pdfImportPages: mockPdfImportPages,
+    pdfImportDraftQuestions: mockPdfImportDraftQuestions,
+    pdfImportDraftAssets: mockPdfImportDraftAssets,
     reviewGuides: mockReviewGuides,
     reviewGuideQuestions: mockReviewGuideQuestions
   };
@@ -76,6 +92,10 @@ function applyDb(db: Partial<MockDb>) {
   replaceArray(mockAnswers, db.answers || []);
   replaceArray(mockMediaFiles, db.mediaFiles || []);
   replaceArray(mockPdfUploads, db.pdfUploads || []);
+  replaceArray(mockPdfImportJobs, db.pdfImportJobs || []);
+  replaceArray(mockPdfImportPages, db.pdfImportPages || []);
+  replaceArray(mockPdfImportDraftQuestions, db.pdfImportDraftQuestions || []);
+  replaceArray(mockPdfImportDraftAssets, db.pdfImportDraftAssets || []);
   replaceArray(mockReviewGuides, db.reviewGuides || mockReviewGuides);
   replaceArray(mockReviewGuideQuestions, db.reviewGuideQuestions || mockReviewGuideQuestions);
 }

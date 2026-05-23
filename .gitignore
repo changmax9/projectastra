@@ -4,6 +4,7 @@
 .mock-db.json
 .next
 .test-build
+.pdf-ocr-temp
 tsconfig.tsbuildinfo
 node_modules
 tmp

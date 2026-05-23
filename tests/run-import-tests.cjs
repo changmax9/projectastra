@@ -218,6 +218,90 @@ assert.doesNotMatch(submitScoringBlock, /eliminated_choice_ids|eliminatedChoiceI
 const actionsSource = source("app/actions.ts");
 assert.doesNotMatch(actionsSource, /revalidatePath\(`\/exam\/\$\{submission\.exam_id\}\/take`\)/, "background answer saves do not revalidate the current exam route");
 assert.doesNotMatch(actionsSource, /revalidatePath\(`\/exam\/\$\{input\.examId\}\/take`\)/, "Save & Exit does not revalidate the current exam route before leaving");
+assert.match(actionsSource, /adminStartPdfImportAction/, "admin can start a PDF import analysis job");
+assert.match(actionsSource, /adminSavePdfDraftQuestionAction/, "PDF import drafts use an explicit save action");
+assert.match(actionsSource, /status: "draft"/, "PDF import drafts save as draft questions");
+assert.match(actionsSource, /needs-admin-review/, "PDF import saved questions stay in the admin review queue");
+assert.match(actionsSource, /createPdfImportJob/, "PDF import start action queues a processing job");
+assert.doesNotMatch(actionsSource, /const analysis = await analyzePdfUpload\(pdf\)/, "PDF import start action does not synchronously OCR the PDF");
+assert.match(actionsSource, /selection_type/, "PDF import draft save preserves selection type metadata");
+assert.match(actionsSource, /required_selections/, "PDF import draft save preserves required selection metadata");
+assert.match(actionsSource, /max_selections/, "PDF import draft save preserves max selection metadata");
+
+const pdfImportSource = source("lib/pdf.ts");
+assert.match(pdfImportSource, /analyzePdfUpload/, "PDF import has an analyzer entry point");
+assert.match(pdfImportSource, /unavailable-local-ocr/, "PDF import exposes a local OCR abstraction when OCR is unavailable");
+assert.match(pdfImportSource, /tesseract-local/, "PDF import can use a local Tesseract OCR provider");
+assert.match(pdfImportSource, /pdf-ocr-worker\.py/, "PDF import delegates rendering/OCR to the Python worker");
+assert.match(pdfImportSource, /pdf-text-worker\.py/, "PDF import can use geometry-aware PyMuPDF text extraction");
+assert.match(pdfImportSource, /pymupdf-text/, "PDF import records when structured text extraction is available");
+assert.match(pdfImportSource, /raw_blocks: rawBlocks/, "PDF import stores structured page blocks for admin audit");
+assert.match(pdfImportSource, /No explicit answer key was detected/, "PDF import warns instead of inventing answer keys");
+assert.match(pdfImportSource, /embedded text appears font-encoded or garbled/, "PDF import rejects garbled embedded text before drafting");
+assert.match(pdfImportSource, /function acceptedPageText/, "PDF import centralizes accepted page text selection");
+assert.match(pdfImportSource, /page\.extraction_method === "text"\) return page\.text_extracted/, "PDF import accepts embedded text only from accepted text pages");
+assert.match(pdfImportSource, /page\.extraction_method === "ocr"\) return page\.ocr_text/, "PDF import accepts OCR text only from accepted OCR pages");
+assert.match(pdfImportSource, /return "";\s*\}\s*function splitTrailingLabeledSections/, "PDF import does not segment rejected page text");
+assert.match(pdfImportSource, /function isPdfBytes/, "PDF import validates PDF magic bytes before OCR work");
+assert.match(pdfImportSource, /function stripPdfStreams/, "PDF import page counting ignores PDF stream contents");
+assert.match(pdfImportSource, /function isImageOrBinaryStream/, "PDF import skips image/binary streams during embedded-text parsing");
+assert.match(pdfImportSource, /function hasPdfTextOperators/, "PDF import only parses streams that look like PDF text content");
+assert.match(pdfImportSource, /Invalid PDF_OCR_MAX_PAGES value/, "PDF import warns on invalid OCR page limit values");
+assert.match(pdfImportSource, /PDF_OCR_TIMEOUT_MS/, "PDF import has a configurable OCR worker timeout");
+assert.match(pdfImportSource, /Local OCR worker timed out/, "PDF import reports OCR worker timeouts clearly");
+assert.match(pdfImportSource, /Configured TESSERACT_CMD was not found/, "PDF import fails closed for invalid explicit Tesseract config");
+assert.match(pdfImportSource, /skippedPageNumbers/, "PDF import distinguishes page-limit skipped OCR pages");
+assert.match(pdfImportSource, /OCR text ignored/, "PDF import rejects unusable OCR text instead of drafting it");
+assert.match(pdfImportSource, /function isAnswerKeyLikeText/, "PDF import excludes answer-key-like pages from segmentation");
+assert.match(pdfImportSource, /function choiceDiagnostics/, "PDF import warns on suspicious choice parsing");
+assert.match(pdfImportSource, /merged or corrupted choices/, "PDF import explicitly flags severe merged-choice drafts");
+assert.match(pdfImportSource, /Candidate source page for a visual reference/, "PDF import creates visual source-page asset candidates");
+assert.match(pdfImportSource, /function isScoringGuidePdf/, "PDF import detects scoring-guide-like PDFs");
+assert.match(pdfImportSource, /Draft generation was suppressed/, "PDF import suppresses scoring-guide drafts instead of importing rubrics as questions");
+assert.match(pdfImportSource, /function isFrqPacket/, "PDF import detects FRQ packets before MCQ classification");
+assert.match(pdfImportSource, /if \(starts\.length === 0\) \{\s*return \[\];\s*\}/, "PDF import does not create a giant draft when question boundaries are missing");
+assert.doesNotMatch(pdfImportSource, /status:\s*"published"/, "PDF import analyzer never marks questions published");
+
+const pdfReviewSource = source("components/admin/PdfDraftQuestionReview.tsx");
+assert.match(pdfReviewSource, /sourcePages/, "PDF import review shows source-page audit context");
+assert.match(pdfReviewSource, /page\.page_image_url/, "PDF import review can show OCR/rendered source page images");
+assert.match(pdfReviewSource, /Scoring notes from source/, "PDF import review carries scoring notes into the save form");
+assert.match(pdfReviewSource, /selection_type/, "PDF import review submits selection type metadata");
+assert.match(pdfReviewSource, /multi-select/, "PDF import review tags select-two/multi-select drafts");
+assert.doesNotMatch(pdfReviewSource, /Add an explanation during admin review/, "PDF import review no longer defaults placeholder explanation text");
+
+const dataSource = source("lib/data.ts");
+assert.match(dataSource, /PDF upload not found for import analysis/, "Mock PDF import rejects missing uploads like Supabase foreign keys");
+assert.match(dataSource, /PDF import draft question not found/, "PDF draft status updates fail loudly when the draft is missing");
+assert.match(dataSource, /draft asset references a missing draft question index/, "PDF import rejects out-of-range draft asset links");
+assert.match(dataSource, /extraction_method === "text"[\s\S]*extraction_method === "ocr"/, "PDF import extracted-page metrics count only usable text/OCR pages");
+assert.match(dataSource, /createPdfImportJob/, "PDF import data layer can create processing jobs");
+assert.match(dataSource, /completePdfImportJob/, "PDF import data layer can complete queued jobs with analysis results");
+
+const pdfAdminPageSource = source("app/admin/pdfs/page.tsx");
+assert.match(pdfAdminPageSource, /PdfImportWorkspace/, "PDF admin page renders the same-page import workspace");
+assert.match(pdfAdminPageSource, /job_id/, "PDF admin page can select an import job inline");
+
+const pdfWorkspaceSource = source("components/admin/PdfImportWorkspace.tsx");
+assert.match(pdfWorkspaceSource, /api\/admin\/pdf-imports\/\$\{jobId\}\/process/, "PDF import workspace polls the processing route");
+assert.match(pdfWorkspaceSource, /Generated draft questions/, "PDF import workspace renders generated draft questions inline");
+assert.match(pdfWorkspaceSource, /PdfDraftQuestionReview/, "PDF import workspace reuses the admin draft review cards");
+
+const pdfProcessRouteSource = source("app/api/admin/pdf-imports/[jobId]/process/route.ts");
+assert.match(pdfProcessRouteSource, /requireAdmin/, "PDF import process route is admin protected");
+assert.match(pdfProcessRouteSource, /analyzePdfUpload/, "PDF import process route performs OCR analysis outside the form submit");
+assert.match(pdfProcessRouteSource, /completePdfImportJob/, "PDF import process route persists completed analysis");
+
+const pdfOcrWorker = source("scripts/pdf-ocr-worker.py");
+assert.match(pdfOcrWorker, /pytesseract/, "PDF OCR worker uses Tesseract");
+assert.match(pdfOcrWorker, /get_pixmap/, "PDF OCR worker renders PDF pages before OCR");
+assert.match(pdfOcrWorker, /rendered_lines/, "PDF OCR worker preserves line breaks for segmentation");
+
+const pdfTextWorker = source("scripts/pdf-text-worker.py");
+assert.match(pdfTextWorker, /get_text\("blocks"/, "PDF text worker extracts positioned text blocks");
+assert.match(pdfTextWorker, /likely_two_columns/, "PDF text worker detects two-column layouts");
+assert.match(pdfTextWorker, /reading_order/, "PDF text worker records block reading order");
+assert.match(pdfTextWorker, /UNAUTHORIZED COPYING/, "PDF text worker filters repeated AP footer noise");
 
 const authSource = source("lib/auth.ts");
 assert.match(authSource, /auth\.signInWithPassword/, "login uses Supabase Auth password verification");

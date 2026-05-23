@@ -5,6 +5,10 @@ import {
   mockExamQuestions,
   mockExams,
   mockMediaFiles,
+  mockPdfImportDraftAssets,
+  mockPdfImportDraftQuestions,
+  mockPdfImportJobs,
+  mockPdfImportPages,
   mockPdfUploads,
   mockProfiles,
   mockQuestions,
@@ -24,6 +28,12 @@ import type {
   ExamStatus,
   ExamWithQuestions,
   MediaFile,
+  PdfDraftReviewStatus,
+  PdfImportDraftAsset,
+  PdfImportDraftQuestion,
+  PdfImportJob,
+  PdfImportJobDetails,
+  PdfImportPage,
   PdfUpload,
   Profile,
   Question,
@@ -2272,6 +2282,17 @@ export async function listPdfUploads() {
   return [...mockPdfUploads];
 }
 
+export async function getPdfUpload(pdfId: string) {
+  if (hasSupabaseEnv()) {
+    const { data, error } = await adminClient().from("pdf_uploads").select("*").eq("id", pdfId).maybeSingle();
+    if (error) throw new Error(error.message);
+    return (data as PdfUpload | null) || null;
+  }
+
+  await ensureMockStore();
+  return mockPdfUploads.find((item) => item.id === pdfId) || null;
+}
+
 export async function updatePdfMetadata(pdfId: string, metadata: Pick<PdfUpload, "subject" | "unit" | "topic">) {
   if (hasSupabaseEnv()) {
     const { error } = await adminClient()
@@ -2291,6 +2312,388 @@ export async function updatePdfMetadata(pdfId: string, metadata: Pick<PdfUpload,
     pdf.updated_at = nowIso();
     await saveMockStore();
   }
+}
+
+export interface PdfImportAnalysisInput {
+  pdfUploadId: string;
+  status: PdfImportJob["status"];
+  parserVersion: string;
+  ocrProvider: string;
+  pageCount: number;
+  warnings: string[];
+  errorMessage?: string | null;
+  pages: Array<
+    Omit<PdfImportPage, "id" | "job_id" | "pdf_upload_id" | "created_at" | "updated_at">
+  >;
+  draftQuestions: Array<
+    Omit<
+      PdfImportDraftQuestion,
+      "id" | "job_id" | "pdf_upload_id" | "review_status" | "saved_question_id" | "created_at" | "updated_at"
+    >
+  >;
+  draftAssets?: Array<
+    Omit<PdfImportDraftAsset, "id" | "job_id" | "pdf_upload_id" | "draft_question_id" | "created_at" | "updated_at"> & {
+      draft_question_index?: number | null;
+    }
+  >;
+}
+
+const PDF_IMPORT_SCHEMA_SETUP_MESSAGE =
+  "PDF import database tables are not installed. Apply supabase/migrations/008_pdf_import_pipeline.sql before analyzing PDFs in Supabase mode.";
+
+function isMissingPdfImportSchemaError(error: { code?: string; message?: string; details?: string } | null | undefined) {
+  const text = [error?.code, error?.message, error?.details].filter(Boolean).join(" ").toLowerCase();
+  return (
+    text.includes("pdf_import_") &&
+    (text.includes("schema cache") || text.includes("does not exist") || text.includes("could not find the table"))
+  );
+}
+
+export async function getPdfImportSchemaStatus() {
+  if (!hasSupabaseEnv()) {
+    return { available: true, message: null as string | null };
+  }
+
+  const { error } = await adminClient().from("pdf_import_jobs").select("id", { head: true, count: "exact" });
+  if (!error) return { available: true, message: null as string | null };
+  if (isMissingPdfImportSchemaError(error)) {
+    return { available: false, message: PDF_IMPORT_SCHEMA_SETUP_MESSAGE };
+  }
+  throw new Error(error.message);
+}
+
+function pdfImportExtractedPageCount(pages: PdfImportAnalysisInput["pages"]) {
+  return pages.filter((page) =>
+    page.extraction_method === "text"
+      ? page.text_extracted.trim()
+      : page.extraction_method === "ocr"
+        ? page.ocr_text.trim()
+        : false
+  ).length;
+}
+
+function buildPdfImportRows(input: PdfImportAnalysisInput, jobId: string, timestamp: string) {
+  const pages: PdfImportPage[] = input.pages.map((page) => ({
+    ...page,
+    id: uid("pdf_page"),
+    job_id: jobId,
+    pdf_upload_id: input.pdfUploadId,
+    created_at: timestamp,
+    updated_at: timestamp
+  }));
+
+  const draftQuestions: PdfImportDraftQuestion[] = input.draftQuestions.map((draft) => ({
+    ...draft,
+    id: uid("pdf_draft"),
+    job_id: jobId,
+    pdf_upload_id: input.pdfUploadId,
+    review_status: "pending",
+    saved_question_id: null,
+    created_at: timestamp,
+    updated_at: timestamp
+  }));
+
+  const draftAssets: PdfImportDraftAsset[] = (input.draftAssets || []).map((asset) => {
+    const rawDraftIndex = asset.draft_question_index;
+    const draftIndex = rawDraftIndex === null || rawDraftIndex === undefined ? null : Number(rawDraftIndex);
+    const { draft_question_index: _draftQuestionIndex, ...assetPayload } = asset;
+    if (draftIndex !== null && (!Number.isInteger(draftIndex) || !draftQuestions[draftIndex])) {
+      throw new Error(`PDF import draft asset references a missing draft question index: ${rawDraftIndex}`);
+    }
+    return {
+      ...assetPayload,
+      id: uid("pdf_asset"),
+      job_id: jobId,
+      pdf_upload_id: input.pdfUploadId,
+      draft_question_id: draftIndex !== null && Number.isInteger(draftIndex) ? draftQuestions[draftIndex]?.id || null : null,
+      created_at: timestamp,
+      updated_at: timestamp
+    };
+  });
+
+  return { pages, draftQuestions, draftAssets };
+}
+
+export async function createPdfImportJob(pdfUploadId: string, adminId: string, parserVersion: string) {
+  const timestamp = nowIso();
+  const job: PdfImportJob = {
+    id: uid("pdf_job"),
+    pdf_upload_id: pdfUploadId,
+    status: "processing",
+    parser_version: parserVersion,
+    ocr_provider: "pending",
+    page_count: 0,
+    extracted_page_count: 0,
+    draft_question_count: 0,
+    warnings: ["PDF import job queued. OCR/text processing has not completed yet."],
+    error_message: null,
+    created_by: adminId,
+    created_at: timestamp,
+    updated_at: timestamp
+  };
+
+  if (hasSupabaseEnv()) {
+    const { data, error } = await adminClient().from("pdf_import_jobs").insert(job).select("*").single();
+    if (error) throw new Error(isMissingPdfImportSchemaError(error) ? PDF_IMPORT_SCHEMA_SETUP_MESSAGE : error.message);
+    await adminClient().from("pdf_uploads").update({ status: "uploaded", updated_at: timestamp }).eq("id", pdfUploadId);
+    await logAdminEdit(adminId, "pdf_import_job", job.id, "create-processing", {
+      pdf_upload_id: pdfUploadId,
+      status: "processing"
+    });
+    return data as PdfImportJob;
+  }
+
+  await ensureMockStore();
+  const pdf = mockPdfUploads.find((item) => item.id === pdfUploadId);
+  if (!pdf) throw new Error("PDF upload not found for import analysis.");
+  mockPdfImportJobs.unshift(job);
+  pdf.status = "uploaded";
+  pdf.updated_at = timestamp;
+  await saveMockStore();
+  return job;
+}
+
+export async function savePdfImportAnalysis(input: PdfImportAnalysisInput, adminId: string) {
+  const timestamp = nowIso();
+  const job: PdfImportJob = {
+    id: uid("pdf_job"),
+    pdf_upload_id: input.pdfUploadId,
+    status: input.status,
+    parser_version: input.parserVersion,
+    ocr_provider: input.ocrProvider,
+    page_count: input.pageCount,
+    extracted_page_count: pdfImportExtractedPageCount(input.pages),
+    draft_question_count: input.draftQuestions.length,
+    warnings: input.warnings,
+    error_message: input.errorMessage || null,
+    created_by: adminId,
+    created_at: timestamp,
+    updated_at: timestamp
+  };
+
+  const { pages, draftQuestions, draftAssets } = buildPdfImportRows(input, job.id, timestamp);
+
+  if (hasSupabaseEnv()) {
+    const supabase = adminClient();
+    const { data, error } = await supabase.from("pdf_import_jobs").insert(job).select("*").single();
+    if (error) throw new Error(isMissingPdfImportSchemaError(error) ? PDF_IMPORT_SCHEMA_SETUP_MESSAGE : error.message);
+    if (pages.length > 0) {
+      const { error: pageError } = await supabase.from("pdf_import_pages").insert(pages);
+      if (pageError) throw new Error(isMissingPdfImportSchemaError(pageError) ? PDF_IMPORT_SCHEMA_SETUP_MESSAGE : pageError.message);
+    }
+    if (draftQuestions.length > 0) {
+      const { error: draftError } = await supabase.from("pdf_import_draft_questions").insert(draftQuestions);
+      if (draftError) throw new Error(isMissingPdfImportSchemaError(draftError) ? PDF_IMPORT_SCHEMA_SETUP_MESSAGE : draftError.message);
+    }
+    if (draftAssets.length > 0) {
+      const { error: assetError } = await supabase.from("pdf_import_draft_assets").insert(draftAssets);
+      if (assetError) throw new Error(isMissingPdfImportSchemaError(assetError) ? PDF_IMPORT_SCHEMA_SETUP_MESSAGE : assetError.message);
+    }
+    await supabase
+      .from("pdf_uploads")
+      .update({ status: input.status === "failed" ? "failed" : "parsed", updated_at: timestamp })
+      .eq("id", input.pdfUploadId);
+    await logAdminEdit(adminId, "pdf_import_job", job.id, "create", {
+      pdf_upload_id: input.pdfUploadId,
+      status: input.status,
+      draft_question_count: draftQuestions.length
+    });
+    return data as PdfImportJob;
+  }
+
+  await ensureMockStore();
+  const pdf = mockPdfUploads.find((item) => item.id === input.pdfUploadId);
+  if (!pdf) throw new Error("PDF upload not found for import analysis.");
+  mockPdfImportJobs.unshift(job);
+  mockPdfImportPages.push(...pages);
+  mockPdfImportDraftQuestions.push(...draftQuestions);
+  mockPdfImportDraftAssets.push(...draftAssets);
+  pdf.status = input.status === "failed" ? "failed" : "parsed";
+  pdf.updated_at = timestamp;
+  await saveMockStore();
+  return job;
+}
+
+export async function completePdfImportJob(jobId: string, input: PdfImportAnalysisInput, adminId: string) {
+  const timestamp = nowIso();
+  const updates = {
+    status: input.status,
+    parser_version: input.parserVersion,
+    ocr_provider: input.ocrProvider,
+    page_count: input.pageCount,
+    extracted_page_count: pdfImportExtractedPageCount(input.pages),
+    draft_question_count: input.draftQuestions.length,
+    warnings: input.warnings,
+    error_message: input.errorMessage || null,
+    updated_at: timestamp
+  };
+  const { pages, draftQuestions, draftAssets } = buildPdfImportRows(input, jobId, timestamp);
+
+  if (hasSupabaseEnv()) {
+    const supabase = adminClient();
+    const { data: existingJob, error: existingError } = await supabase
+      .from("pdf_import_jobs")
+      .select("*")
+      .eq("id", jobId)
+      .maybeSingle();
+    if (existingError) throw new Error(isMissingPdfImportSchemaError(existingError) ? PDF_IMPORT_SCHEMA_SETUP_MESSAGE : existingError.message);
+    if (!existingJob) throw new Error("PDF import job not found.");
+    if ((existingJob as PdfImportJob).pdf_upload_id !== input.pdfUploadId) throw new Error("PDF import job does not match the PDF upload.");
+
+    await supabase.from("pdf_import_draft_assets").delete().eq("job_id", jobId);
+    await supabase.from("pdf_import_draft_questions").delete().eq("job_id", jobId);
+    await supabase.from("pdf_import_pages").delete().eq("job_id", jobId);
+    const { data, error } = await supabase.from("pdf_import_jobs").update(updates).eq("id", jobId).select("*").single();
+    if (error) throw new Error(isMissingPdfImportSchemaError(error) ? PDF_IMPORT_SCHEMA_SETUP_MESSAGE : error.message);
+    if (pages.length > 0) {
+      const { error: pageError } = await supabase.from("pdf_import_pages").insert(pages);
+      if (pageError) throw new Error(isMissingPdfImportSchemaError(pageError) ? PDF_IMPORT_SCHEMA_SETUP_MESSAGE : pageError.message);
+    }
+    if (draftQuestions.length > 0) {
+      const { error: draftError } = await supabase.from("pdf_import_draft_questions").insert(draftQuestions);
+      if (draftError) throw new Error(isMissingPdfImportSchemaError(draftError) ? PDF_IMPORT_SCHEMA_SETUP_MESSAGE : draftError.message);
+    }
+    if (draftAssets.length > 0) {
+      const { error: assetError } = await supabase.from("pdf_import_draft_assets").insert(draftAssets);
+      if (assetError) throw new Error(isMissingPdfImportSchemaError(assetError) ? PDF_IMPORT_SCHEMA_SETUP_MESSAGE : assetError.message);
+    }
+    await supabase
+      .from("pdf_uploads")
+      .update({ status: input.status === "failed" ? "failed" : "parsed", updated_at: timestamp })
+      .eq("id", input.pdfUploadId);
+    await logAdminEdit(adminId, "pdf_import_job", jobId, "process", {
+      pdf_upload_id: input.pdfUploadId,
+      status: input.status,
+      draft_question_count: draftQuestions.length
+    });
+    return data as PdfImportJob;
+  }
+
+  await ensureMockStore();
+  const job = mockPdfImportJobs.find((item) => item.id === jobId);
+  if (!job) throw new Error("PDF import job not found.");
+  if (job.pdf_upload_id !== input.pdfUploadId) throw new Error("PDF import job does not match the PDF upload.");
+  const pdf = mockPdfUploads.find((item) => item.id === input.pdfUploadId);
+  if (!pdf) throw new Error("PDF upload not found for import analysis.");
+  Object.assign(job, updates);
+  for (let index = mockPdfImportDraftAssets.length - 1; index >= 0; index -= 1) {
+    if (mockPdfImportDraftAssets[index].job_id === jobId) mockPdfImportDraftAssets.splice(index, 1);
+  }
+  for (let index = mockPdfImportDraftQuestions.length - 1; index >= 0; index -= 1) {
+    if (mockPdfImportDraftQuestions[index].job_id === jobId) mockPdfImportDraftQuestions.splice(index, 1);
+  }
+  for (let index = mockPdfImportPages.length - 1; index >= 0; index -= 1) {
+    if (mockPdfImportPages[index].job_id === jobId) mockPdfImportPages.splice(index, 1);
+  }
+  mockPdfImportPages.push(...pages);
+  mockPdfImportDraftQuestions.push(...draftQuestions);
+  mockPdfImportDraftAssets.push(...draftAssets);
+  pdf.status = input.status === "failed" ? "failed" : "parsed";
+  pdf.updated_at = timestamp;
+  await saveMockStore();
+  return job;
+}
+
+export async function listPdfImportJobs(pdfUploadId?: string) {
+  if (hasSupabaseEnv()) {
+    let query = adminClient()
+      .from("pdf_import_jobs")
+      .select("*, pdf_upload:pdf_uploads(*)")
+      .order("created_at", { ascending: false });
+    if (pdfUploadId) query = query.eq("pdf_upload_id", pdfUploadId);
+    const { data, error } = await query;
+    if (isMissingPdfImportSchemaError(error)) return [];
+    if (error) throw new Error(error.message);
+    return (data || []) as PdfImportJob[];
+  }
+
+  await ensureMockStore();
+  const uploadsById = new Map(mockPdfUploads.map((pdf) => [pdf.id, pdf]));
+  return mockPdfImportJobs
+    .filter((job) => !pdfUploadId || job.pdf_upload_id === pdfUploadId)
+    .map((job) => ({ ...job, pdf_upload: uploadsById.get(job.pdf_upload_id) || null }))
+    .sort((a, b) => b.created_at.localeCompare(a.created_at));
+}
+
+export async function getPdfImportJobDetails(jobId: string): Promise<PdfImportJobDetails | null> {
+  if (hasSupabaseEnv()) {
+    const supabase = adminClient();
+    const { data: job, error } = await supabase
+      .from("pdf_import_jobs")
+      .select("*, pdf_upload:pdf_uploads(*)")
+      .eq("id", jobId)
+      .maybeSingle();
+    if (isMissingPdfImportSchemaError(error)) return null;
+    if (error) throw new Error(error.message);
+    if (!job) return null;
+    const [{ data: pages, error: pageError }, { data: drafts, error: draftError }, { data: assets, error: assetError }] =
+      await Promise.all([
+        supabase.from("pdf_import_pages").select("*").eq("job_id", jobId).order("page_number", { ascending: true }),
+        supabase
+          .from("pdf_import_draft_questions")
+          .select("*")
+          .eq("job_id", jobId)
+          .order("question_number", { ascending: true, nullsFirst: false }),
+        supabase.from("pdf_import_draft_assets").select("*").eq("job_id", jobId).order("page_number", { ascending: true })
+      ]);
+    if (pageError) throw new Error(isMissingPdfImportSchemaError(pageError) ? PDF_IMPORT_SCHEMA_SETUP_MESSAGE : pageError.message);
+    if (draftError) throw new Error(isMissingPdfImportSchemaError(draftError) ? PDF_IMPORT_SCHEMA_SETUP_MESSAGE : draftError.message);
+    if (assetError) throw new Error(isMissingPdfImportSchemaError(assetError) ? PDF_IMPORT_SCHEMA_SETUP_MESSAGE : assetError.message);
+    return {
+      ...(job as PdfImportJob),
+      pages: (pages || []) as PdfImportPage[],
+      draft_questions: (drafts || []) as PdfImportDraftQuestion[],
+      draft_assets: (assets || []) as PdfImportDraftAsset[]
+    };
+  }
+
+  await ensureMockStore();
+  const job = mockPdfImportJobs.find((item) => item.id === jobId);
+  if (!job) return null;
+  return {
+    ...job,
+    pdf_upload: mockPdfUploads.find((pdf) => pdf.id === job.pdf_upload_id) || null,
+    pages: mockPdfImportPages
+      .filter((page) => page.job_id === jobId)
+      .sort((a, b) => a.page_number - b.page_number),
+    draft_questions: mockPdfImportDraftQuestions
+      .filter((draft) => draft.job_id === jobId)
+      .sort((a, b) => (a.question_number || 0) - (b.question_number || 0)),
+    draft_assets: mockPdfImportDraftAssets
+      .filter((asset) => asset.job_id === jobId)
+      .sort((a, b) => a.page_number - b.page_number)
+  };
+}
+
+export async function updatePdfImportDraftStatus(
+  draftId: string,
+  status: PdfDraftReviewStatus,
+  savedQuestionId: string | null,
+  adminId: string
+) {
+  const timestamp = nowIso();
+  if (hasSupabaseEnv()) {
+    const { data, error } = await adminClient()
+      .from("pdf_import_draft_questions")
+      .update({ review_status: status, saved_question_id: savedQuestionId, updated_at: timestamp })
+      .eq("id", draftId)
+      .select("id")
+      .maybeSingle();
+    if (error) throw new Error(isMissingPdfImportSchemaError(error) ? PDF_IMPORT_SCHEMA_SETUP_MESSAGE : error.message);
+    if (!data) throw new Error("PDF import draft question not found.");
+    await logAdminEdit(adminId, "pdf_import_draft_question", draftId, status, {
+      saved_question_id: savedQuestionId
+    });
+    return;
+  }
+
+  await ensureMockStore();
+  const draft = mockPdfImportDraftQuestions.find((item) => item.id === draftId);
+  if (!draft) throw new Error("PDF import draft question not found.");
+  draft.review_status = status;
+  draft.saved_question_id = savedQuestionId;
+  draft.updated_at = timestamp;
+  await saveMockStore();
 }
 
 export async function listPublishedReviewGuides(filters: {

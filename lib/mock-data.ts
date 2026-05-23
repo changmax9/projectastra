@@ -3,6 +3,10 @@ import type {
   Exam,
   ExamQuestion,
   MediaFile,
+  PdfImportDraftAsset,
+  PdfImportDraftQuestion,
+  PdfImportJob,
+  PdfImportPage,
   PdfUpload,
   Profile,
   Question,
@@ -385,3 +389,7 @@ export const mockSubmissions: Submission[] = [];
 export const mockAnswers: Answer[] = [];
 export const mockMediaFiles: MediaFile[] = [];
 export const mockPdfUploads: PdfUpload[] = [];
+export const mockPdfImportJobs: PdfImportJob[] = [];
+export const mockPdfImportPages: PdfImportPage[] = [];
+export const mockPdfImportDraftQuestions: PdfImportDraftQuestion[] = [];
+export const mockPdfImportDraftAssets: PdfImportDraftAsset[] = [];
