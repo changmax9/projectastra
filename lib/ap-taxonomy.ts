@@ -16,6 +16,7 @@ export function inferSubjectFromCourse(course: string | null | undefined) {
 export function normalizeSection(value: string | null | undefined, fallback = "MCQ") {
   const raw = String(value || "").trim();
   if (!raw) return fallback;
+  if (/^[A-Z0-9_]+$/.test(raw)) return raw;
   if (/^mcq$/i.test(raw) || /multiple/i.test(raw)) return "MCQ";
   if (/^frq$/i.test(raw) || /free/i.test(raw)) return "FRQ";
   if (/full/i.test(raw)) return "Full Exam";

@@ -1,12 +1,24 @@
 import { z } from "zod";
 import { questionImportArraySchema } from "@/lib/schemas";
 import { inferSubjectFromCourse, normalizeExamType, normalizeSection } from "@/lib/ap-taxonomy";
-import type { Difficulty, ExamImportMetadata, QuestionImportBatch, QuestionImportItem } from "@/lib/types";
+import type { Difficulty, ExamImportMetadata, QuestionImportBatch, QuestionImportItem, QuestionType } from "@/lib/types";
 import { getForbiddenImageReference, isPdfPageImageUrl, normalizeQuestionImportItems } from "@/lib/question-import";
 
-const sectionSchema = z.enum(["MCQ", "FRQ", "Full Exam"]);
+const sectionSchema = z.string().min(1);
 const statusSchema = z.enum(["draft", "reviewed", "published"]).default("draft");
 const examStatusSchema = z.enum(["draft", "reviewed", "published", "archived"]).default("draft");
+const collegeBoardSourceSchema = z
+  .object({
+    provider: z.string().optional(),
+    publisher: z.string().optional(),
+    sourceType: z.string().optional(),
+    url: z.string().optional(),
+    pdf: z.string().optional(),
+    pdfPage: z.coerce.number().int().positive().nullable().optional(),
+    page: z.coerce.number().int().positive().nullable().optional(),
+    notes: z.string().optional()
+  })
+  .passthrough();
 
 const apDifficultySchema = z
   .enum(["Easy", "Medium", "Hard", "easy", "medium", "hard"])
@@ -15,49 +27,90 @@ const apDifficultySchema = z
 const apQuestionImageSchema = z.object({
   id: z.string().min(1),
   path: z.string().min(1),
-  caption: z.string().nullable().optional()
+  caption: z.string().nullable().optional(),
+  alt: z.string().nullable().optional(),
+  required: z.boolean().optional()
 });
 
 const apQuestionChoiceSchema = z.object({
   label: z.string().min(1),
-  text: z.string().min(1),
-  image: z.string().nullable().optional()
+  text: z.string().default(""),
+  image: z.string().nullable().optional(),
+  imagePath: z.string().nullable().optional()
 });
 
 const apFrqPartSchema = z.object({
   label: z.string().min(1),
-  prompt: z.string().min(1)
+  prompt: z.string().optional(),
+  text: z.string().optional()
 });
 
 type ApQuestionImage = z.infer<typeof apQuestionImageSchema>;
 type ApQuestionChoice = z.infer<typeof apQuestionChoiceSchema>;
 type ApFrqPart = z.infer<typeof apFrqPartSchema>;
 
+function inferApDraftQuestionKind(section: string, questionType?: "mcq_single" | "mcq_multi" | "frq"): QuestionType {
+  if (questionType === "frq") return "frq";
+  if (questionType === "mcq_single" || questionType === "mcq_multi") return "mcq";
+  return /frq|free response/i.test(section) ? "frq" : "mcq";
+}
+
+function normalizeCorrectAnswer(value: string | string[] | null | undefined) {
+  if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean).join(",");
+  return String(value ?? "").trim() || null;
+}
+
+function partPrompt(part: ApFrqPart) {
+  return (part.prompt ?? part.text ?? "").trim();
+}
+
+function isCollegeBoardSource(source: unknown, tags: string[]) {
+  const tagText = tags.join(" ");
+  if (/college\s*board|official|released/i.test(tagText)) return true;
+  if (typeof source === "string") return /college\s*board|official|released/i.test(source);
+  if (source && typeof source === "object") {
+    const values = Object.values(source as Record<string, unknown>).map((value) => String(value ?? "")).join(" ");
+    return /college\s*board|official|released/i.test(values);
+  }
+  return false;
+}
+
 export const apQuestionDraftSchema = z
   .object({
     id: z.string().min(1),
-    examName: z.string().min(1),
+    examId: z.string().min(1).optional(),
+    examName: z.string().min(1).optional(),
     subject: z.string().optional(),
-    course: z.string().optional(),
-    year: z.coerce.number().int().min(1900),
+    course: z.string().min(1).optional(),
+    year: z.coerce.number().int().min(1900).nullable(),
     section: sectionSchema,
     examType: z.string().optional(),
     questionNumber: z.coerce.number().int().positive(),
-    questionText: z.string().min(1),
+    questionType: z.enum(["mcq_single", "mcq_multi", "frq"]).optional(),
+    calculatorAllowed: z.boolean().optional(),
+    questionText: z.string().default(""),
     choices: z.array(apQuestionChoiceSchema).default([]),
+    correctAnswer: z.union([z.string(), z.array(z.string())]).nullable().optional(),
     answer: z.string().nullable().default(null),
     explanation: z.string().default(""),
-    topic: z.string().min(1),
-    difficulty: apDifficultySchema,
+    topic: z.string().default("Uncategorized"),
+    skill: z.string().optional(),
+    difficulty: apDifficultySchema.default("medium"),
     images: z.array(apQuestionImageSchema).default([]),
     parts: z.array(apFrqPartSchema).default([]),
+    promptParts: z.array(apFrqPartSchema).default([]),
     tags: z.array(z.string()).default([]),
     sourcePdfPage: z.coerce.number().int().positive().nullable().default(null),
+    source: z.union([z.string(), collegeBoardSourceSchema]).nullable().optional(),
     status: statusSchema
   })
   .superRefine((item, ctx) => {
+    const questionKind = inferApDraftQuestionKind(item.section, item.questionType);
     const choiceLabels = item.choices.map((choice: ApQuestionChoice) => choice.label.trim()).filter(Boolean);
     const duplicateChoice = choiceLabels.find((label: string, index: number) => choiceLabels.indexOf(label) !== index);
+    const answer = normalizeCorrectAnswer(item.correctAnswer ?? item.answer);
+    const promptParts = [...item.parts, ...item.promptParts];
+    const isPublishedCollegeBoard = item.status === "published" && isCollegeBoardSource(item.source, item.tags);
     if (duplicateChoice) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -66,7 +119,15 @@ export const apQuestionDraftSchema = z
       });
     }
 
-    if (item.section === "MCQ") {
+    if (!item.questionText.trim() && !(questionKind === "frq" && promptParts.length > 0)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["questionText"],
+        message: "questionText is required"
+      });
+    }
+
+    if (questionKind === "mcq") {
       if (item.choices.length < 2) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -74,28 +135,36 @@ export const apQuestionDraftSchema = z
           message: "MCQ questions require choices."
         });
       }
-      if (!item.answer) {
+      if (!answer && item.status === "published") {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["answer"],
-          message: "MCQ questions require an answer."
+          message: "Published MCQ questions require an answer."
         });
       }
-      const answerLabels = (item.answer || "").split(",").map((label: string) => label.trim()).filter(Boolean);
+      const answerLabels = (answer || "").split(",").map((label: string) => label.trim()).filter(Boolean);
       if (answerLabels.length > 0 && !answerLabels.every((label: string) => choiceLabels.includes(label))) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["answer"],
-          message: `answer "${item.answer}" does not match choices ${choiceLabels.join("/") || "none"}`
+          message: `answer "${answer}" does not match choices ${choiceLabels.join("/") || "none"}`
         });
       }
     }
 
-    if (item.section === "FRQ" && item.choices.length > 0) {
+    if (questionKind === "frq" && item.choices.length > 0) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["choices"],
         message: "FRQ questions should use parts, not choices."
+      });
+    }
+
+    if (questionKind === "frq" && !item.questionText.trim() && promptParts.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["promptParts"],
+        message: "FRQ questions require promptParts or questionText"
       });
     }
 
@@ -110,14 +179,39 @@ export const apQuestionDraftSchema = z
     });
 
     item.choices.forEach((choice: ApQuestionChoice, index: number) => {
-      if (choice.image && isPdfPageImageUrl(choice.image)) {
+      const choiceImage = choice.image ?? choice.imagePath;
+      if (choiceImage && isPdfPageImageUrl(choiceImage)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["choices", index, "image"],
-          message: `image path contains forbidden full-page screenshot reference: ${getForbiddenImageReference(choice.image) || choice.image}`
+          message: `image path contains forbidden full-page screenshot reference: ${getForbiddenImageReference(choiceImage) || choiceImage}`
         });
       }
     });
+
+    if (isPublishedCollegeBoard) {
+      if (item.images.some((image) => image.required && !image.path.trim())) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["images"],
+          message: "published College Board questions require all required image paths to exist"
+        });
+      }
+      if (questionKind === "mcq" && (item.choices.length < 2 || !answer)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["status"],
+          message: "College Board MCQ questions cannot be published without choices and correctAnswer"
+        });
+      }
+      if (questionKind === "frq" && !item.questionText.trim() && promptParts.length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["status"],
+          message: "College Board FRQ questions cannot be published without promptParts or questionText"
+        });
+      }
+    }
   });
 
 const apQuestionDraftArraySchema = z.array(apQuestionDraftSchema).min(1);
@@ -174,55 +268,84 @@ function formatIssues(error: z.ZodError, rawItems?: unknown) {
   });
 }
 
-function withFrqParts(questionText: string, parts: ApQuestionDraft["parts"]) {
+function withFrqParts(questionText: string, parts: ApFrqPart[]) {
   if (parts.length === 0) return questionText;
-  const partText = parts.map((part: ApFrqPart) => `(${part.label}) ${part.prompt}`).join("\n\n");
-  return `${questionText}\n\n${partText}`;
+  const partText = parts.map((part: ApFrqPart) => `(${part.label}) ${partPrompt(part)}`).join("\n\n");
+  return questionText.trim() ? `${questionText}\n\n${partText}` : partText;
 }
 
 export function apQuestionDraftToImportItem(item: ApQuestionDraft): QuestionImportItem {
-  const isMcq = item.section === "MCQ";
-  const course = item.course || item.examName;
+  const questionKind = inferApDraftQuestionKind(item.section, item.questionType);
+  const isMcq = questionKind === "mcq";
+  const course = item.course || item.examName || "AP Course";
   const subject = item.subject || inferSubjectFromCourse(course);
   const section = normalizeSection(item.section);
   const examType = normalizeExamType(item.examType);
+  const answer = normalizeCorrectAnswer(item.correctAnswer ?? item.answer);
+  const parts = [...item.parts, ...item.promptParts];
+  const sourcePdfPage =
+    item.sourcePdfPage ||
+    (item.source && typeof item.source === "object"
+      ? Number((item.source as { pdfPage?: unknown; page?: unknown }).pdfPage || (item.source as { page?: unknown }).page || 0) || null
+      : null);
+  const sourceLabel =
+    typeof item.source === "string"
+      ? item.source
+      : item.source && typeof item.source === "object"
+        ? [
+            (item.source as { provider?: string }).provider || (item.source as { publisher?: string }).publisher,
+            (item.source as { pdf?: string }).pdf,
+            sourcePdfPage ? `page ${sourcePdfPage}` : null
+          ]
+            .filter(Boolean)
+            .join(" ")
+        : null;
+  const importTags = [
+    ...item.tags,
+    item.skill ? `skill:${item.skill}` : null,
+    item.calculatorAllowed === true ? "calculator-allowed" : item.calculatorAllowed === false ? "no-calculator" : null,
+    item.questionType || null,
+    item.examId ? `exam:${item.examId}` : null,
+    item.id,
+    item.year ? `${item.year}` : null,
+    section.toLowerCase(),
+    `q${item.questionNumber}`
+  ].filter((tag): tag is string => Boolean(tag));
 
   return {
     id: item.id,
-    exam_name: item.examName,
+    exam_name: item.examName || course,
     subject,
     course,
     year: item.year,
     section,
     exam_type: examType,
     question_number: item.questionNumber,
-    unit: `${item.year} ${section}`,
+    unit: item.skill || `${item.year || "Custom"} ${section}`,
     topic: item.topic,
     difficulty: item.difficulty,
     type: isMcq ? "mcq" : "frq",
-    question_text: withFrqParts(item.questionText, item.parts),
+    selection_type: item.questionType === "mcq_multi" ? "multiple" : "single",
+    required_selections: item.questionType === "mcq_multi" ? Math.max(2, answer?.split(",").filter(Boolean).length || 2) : null,
+    max_selections: item.questionType === "mcq_multi" ? Math.max(2, answer?.split(",").filter(Boolean).length || 2) : null,
+    question_text: withFrqParts(item.questionText, parts),
     question_images: item.images.map((image: ApQuestionImage) => ({
       id: image.id,
       url: image.path,
-      caption: image.caption ?? null
+      caption: image.caption ?? null,
+      alt: image.alt ?? null
     })),
     choices: isMcq
       ? item.choices.map((choice: ApQuestionChoice) => ({
           id: choice.label,
           text: choice.text,
-          image_url: choice.image ?? null
+          image_url: choice.image ?? choice.imagePath ?? null
         }))
       : [],
-    correct_answer: isMcq ? item.answer : null,
+    correct_answer: isMcq ? answer : null,
     explanation: item.explanation || "Add an explanation during admin review.",
-    source_pdf: item.sourcePdfPage ? `${item.examName} ${item.year} page ${item.sourcePdfPage}` : null,
-    tags: [
-      ...item.tags,
-      item.id,
-      `${item.year}`,
-      section.toLowerCase(),
-      `q${item.questionNumber}`
-    ],
+    source_pdf: sourceLabel || (sourcePdfPage ? `${item.examName || course} ${item.year || ""} page ${sourcePdfPage}` : null),
+    tags: importTags,
     status: item.status,
     points: isMcq ? 1 : 4,
     time_estimate_seconds: isMcq ? 90 : 720
@@ -287,7 +410,7 @@ function enrichQuestionsWithExamDefaults(input: unknown) {
       subject: rawExam.subject,
       course: rawExam.course || rawExam.examName,
       year: rawExam.year,
-      section: rawExam.section,
+      section: question && typeof question === "object" && "section" in question ? undefined : rawExam.section,
       examType: rawExam.examType,
       status: rawExam.status === "archived" ? "draft" : rawExam.status,
       ...question
