@@ -10,6 +10,8 @@
   },
   "include": [
     "../lib/ap-question-format.ts",
+    "../lib/ap-taxonomy.ts",
+    "../lib/pdf.ts",
     "../lib/math-markdown.ts",
     "../lib/question-import.ts",
     "../lib/schemas.ts",

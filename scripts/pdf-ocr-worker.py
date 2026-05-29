@@ -10,28 +10,120 @@ def fail(message):
     return 1
 
 
+def parse_crop_requests(raw_value):
+    if not raw_value:
+        return []
+    try:
+        parsed = json.loads(raw_value)
+    except Exception as exc:
+        raise ValueError(f"Invalid crops JSON: {exc}")
+    if not isinstance(parsed, list):
+        raise ValueError("Invalid crops JSON: expected a list.")
+    return parsed
+
+
+def finite_number(value):
+    try:
+        number = float(value)
+    except Exception:
+        return None
+    if number != number or number in (float("inf"), float("-inf")):
+        return None
+    return number
+
+
+def parse_bbox(value):
+    if not isinstance(value, list) or len(value) != 4:
+        return None
+    numbers = [finite_number(item) for item in value]
+    if any(item is None for item in numbers):
+        return None
+    x0, y0, x1, y1 = numbers
+    if x1 <= x0 or y1 <= y0:
+        return None
+    return x0, y0, x1, y1
+
+
+def render_crop(doc, crop, out_dir, public_prefix, matrix, index):
+    candidate_id = str(crop.get("candidate_id") or f"crop-{index + 1}")
+    result = {
+        "candidate_id": candidate_id,
+        "page_number": crop.get("page_number"),
+        "image_url": None,
+        "bbox": crop.get("bbox"),
+        "warnings": [],
+    }
+    try:
+        page_number = int(crop.get("page_number"))
+    except Exception:
+        result["warnings"].append("Crop request did not include a valid page number.")
+        return result
+    result["page_number"] = page_number
+    if page_number < 1 or page_number > len(doc):
+        result["warnings"].append(f"Crop page {page_number} is outside PDF page range.")
+        return result
+    bbox = parse_bbox(crop.get("bbox"))
+    if not bbox:
+        result["warnings"].append("Crop request did not include a valid bbox.")
+        return result
+
+    page = doc.load_page(page_number - 1)
+    page_rect = page.rect
+    x0, y0, x1, y1 = bbox
+    padding = finite_number(crop.get("padding"))
+    padding = 8 if padding is None else max(0, min(padding, 36))
+    rect = page_rect & __import__("fitz").Rect(x0 - padding, y0 - padding, x1 + padding, y1 + padding)
+    if rect.is_empty or rect.width < 8 or rect.height < 8:
+        result["warnings"].append("Crop bbox is empty or too small after clipping to the page.")
+        return result
+    page_area = max(1, page_rect.width * page_rect.height)
+    crop_area = rect.width * rect.height
+    if crop_area > page_area * 0.78:
+        result["warnings"].append("Crop bbox is too close to a full page and was not rendered.")
+        return result
+
+    safe_id = "".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in candidate_id).strip("-") or f"crop-{index + 1}"
+    image_name = f"crop-{index + 1:03d}-{safe_id[:48]}.png"
+    image_path = out_dir / image_name
+    pix = page.get_pixmap(matrix=matrix, clip=rect, alpha=False)
+    pix.save(image_path)
+    result["image_url"] = f"{public_prefix}/{image_name}"
+    result["bbox"] = [round(rect.x0, 2), round(rect.y0, 2), round(rect.x1, 2), round(rect.y1, 2)]
+    return result
+
+
 def main():
     parser = argparse.ArgumentParser(description="Render PDF pages and OCR them with Tesseract.")
     parser.add_argument("--pdf", required=True)
-    parser.add_argument("--pages", required=True, help="Comma-separated 1-based page numbers.")
+    parser.add_argument("--pages", default="", help="Comma-separated 1-based page numbers.")
     parser.add_argument("--out-dir", required=True)
     parser.add_argument("--public-prefix", required=True)
     parser.add_argument("--tesseract-cmd", default="")
     parser.add_argument("--dpi", type=int, default=220)
+    parser.add_argument("--render-only", action="store_true")
+    parser.add_argument("--crops-json", default="", help="JSON crop requests using PDF page coordinates.")
     args = parser.parse_args()
 
     try:
         import fitz
-        import pytesseract
-        from PIL import Image
     except Exception as exc:
-        return fail(f"Missing Python OCR dependency: {exc}")
+        return fail(f"Missing Python PDF rendering dependency: {exc}")
+
+    if not args.render_only:
+        try:
+            import pytesseract
+            from PIL import Image
+        except Exception as exc:
+            return fail(f"Missing Python OCR dependency: {exc}")
+    else:
+        pytesseract = None
+        Image = None
 
     pdf_path = Path(args.pdf)
     if not pdf_path.exists():
         return fail(f"PDF not found: {pdf_path}")
 
-    if args.tesseract_cmd:
+    if args.tesseract_cmd and pytesseract is not None:
         pytesseract.pytesseract.tesseract_cmd = args.tesseract_cmd
 
     page_numbers = []
@@ -43,6 +135,16 @@ def main():
             page_numbers.append(int(raw))
         except ValueError:
             return fail(f"Invalid page number: {raw}")
+
+    try:
+        crop_requests = parse_crop_requests(args.crops_json)
+    except ValueError as exc:
+        return fail(str(exc))
+
+    if not page_numbers and not crop_requests:
+        return fail("No PDF pages or crop requests were provided.")
+    if not args.render_only and not page_numbers:
+        return fail("OCR mode requires at least one page number.")
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -77,6 +179,10 @@ def main():
             pix = page.get_pixmap(matrix=matrix, alpha=False)
             pix.save(image_path)
             page_result["image_url"] = f"{public_prefix}/page-{page_number:03d}.png"
+            if args.render_only:
+                page_result["status"] = "not_needed"
+                results.append(page_result)
+                continue
 
             image = Image.open(image_path)
             gray = image.convert("L")
@@ -119,7 +225,11 @@ def main():
             page_result["warnings"].append(f"OCR failed: {exc}")
         results.append(page_result)
 
-    print(json.dumps({"ok": True, "pages": results}, ensure_ascii=True))
+    crop_results = []
+    for index, crop in enumerate(crop_requests):
+        crop_results.append(render_crop(doc, crop, out_dir, public_prefix, matrix, index))
+
+    print(json.dumps({"ok": True, "pages": results, "crops": crop_results}, ensure_ascii=True))
     return 0
 
 

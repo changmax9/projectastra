@@ -1070,3 +1070,156 @@ npx tsc --noEmit
   - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe tmp-pdf-import-fault-finding-20260521/probe-real-pdf-summaries.cjs` passed and refreshed `tmp-pdf-import-fault-finding-20260521/real-pdf-summary-report.json`.
 - Browser smoke: started Next dev on `http://127.0.0.1:3021`; first browser navigation to `/admin/pdfs` timed out while the route compiled, then the server compiled `/admin/pdfs`, redirected unauthenticated access to `/login`, and rendered the login form on a warm retry. The dev server process listening on port 3021 was stopped.
 - Remaining highest-impact work: true page-chunk resumability, authenticated seeded admin E2E for the same-page workspace, text-PDF rendered source previews/crops, content-based scoring-guide detection, answer-key association with citations, and stronger filtering of headers/contents/scoring pages to reduce over-generation.
+
+### 2026-05-24 PDF import visual-evidence UX pass
+
+- Continued improving the admin PDF OCR/import experience after the same-page workspace commit. Re-ran `git status --short --branch` first, re-read this development log and `TODO.md`, preserved local ignored probe artifacts, did not change Supabase data, and did not publish imported questions.
+- Added a render-only source-page preview path to the local PDF worker. Text-based PDFs that already have usable embedded/PyMuPDF text can now still render source page images for drafts that mention figures, diagrams, graphs, tables, charts, or "shown below"; this avoids the previous gap where visual references in text PDFs had no page image because OCR was not needed.
+- Added `PDF_RENDER_MAX_PAGES` as a separate preview-rendering cap. Invalid values warn and fall back to the default. Render previews reuse the existing local Python/PyMuPDF path and do not require Tesseract.
+- Updated draft review cards to accept per-draft candidate assets and show a separate "Candidate visual evidence" panel. These page previews are explicitly marked "Not saved automatically"; the saved question image JSON remains admin-controlled so full-page images are not silently preserved as question images.
+- Fault check: after rebuilding the local probe harness, `table-diagram` now reports `pageImageUrl=/uploads/pdf-import-pages/probe-table-diagram-visual-.../page-001.png` while the generated draft still has `questionImages=[]`. This improves auditability without pretending crop/diagram extraction is solved.
+- Regression and fault-check commands run:
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe tests/run-import-tests.cjs` passed.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules/typescript/bin/tsc --noEmit` passed.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules/next/dist/bin/next lint` passed with no ESLint warnings or errors.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe scripts/predeploy-check.cjs` passed with only expected local `.env.local`, `.mock-db.json`, and running-process inspection warnings.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules/typescript/bin/tsc -p tmp-pdf-import-fault-finding-20260521/tsconfig.probe.json` passed.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe tmp-pdf-import-fault-finding-20260521/build/tmp-pdf-import-fault-finding-20260521/probe-pdf-import.js` passed and refreshed `tmp-pdf-import-fault-finding-20260521/probe-report.json`.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe tmp-pdf-import-fault-finding-20260521/probe-real-pdf-summaries.cjs` passed and refreshed `tmp-pdf-import-fault-finding-20260521/real-pdf-summary-report.json`.
+- Real-PDF fault check remained honest: no timeouts were observed, scoring-guide-like PDFs still failed closed with zero drafts, `ap25-frq-chemistry.pdf` stayed FRQ-only, but `AP Chem 2023.pdf` still over-generated 134 drafts and `qp-2024-chemistry.pdf` still over-generated 73 drafts. Draft count is still not an accuracy signal.
+- Browser smoke: started Next dev on `http://127.0.0.1:3022`; first navigation to `/admin/pdfs` timed out during compile, warm retry redirected unauthenticated access to `/login` with title `AP Mock Exam Platform`. The dev server process listening on port 3022 was stopped afterward.
+- Remaining highest-impact work: true chunk-by-page resumability/progress, precise visual/table crop proposals, authenticated seeded admin E2E, answer-key association with citations, content-based scoring-guide detection, and stronger filtering to reduce real-PDF over-generation.
+
+### 2026-05-24 PDF import TODO cleanup and confidence normalization
+
+- Continued from the active PDF import TODOs. Re-ran `git status --short --branch` first, re-read this development log and `TODO.md`, preserved the existing dirty visual-evidence work, did not change Supabase data, and did not publish imported questions.
+- Cleared implemented items out of `TODO.md`; the file now keeps active PDF import goals only, with completed command/history details retained in this development log.
+- Normalized OCR/page confidence values before storage/display. Tesseract worker output can still arrive as percent-style values, but `lib/pdf.ts` now converts finite confidence values into `0..1` and clamps them. The review UI now displays confidence directly from normalized values instead of compensating for mixed units.
+- Fault check: rebuilt and re-ran the synthetic probe harness. OCR cases now have `maxConfidence=0.9404`; the garbled embedded-text/OCR case reports confidence `0.4429` instead of `44.29`, and it still fails closed with zero drafts.
+- Regression and fault-check commands run:
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe tests/run-import-tests.cjs` passed.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules/typescript/bin/tsc --noEmit` passed.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules/typescript/bin/tsc -p tmp-pdf-import-fault-finding-20260521/tsconfig.probe.json` passed.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe tmp-pdf-import-fault-finding-20260521/build/tmp-pdf-import-fault-finding-20260521/probe-pdf-import.js` passed and refreshed `tmp-pdf-import-fault-finding-20260521/probe-report.json`.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules/next/dist/bin/next lint` passed with no ESLint warnings or errors.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe scripts/predeploy-check.cjs` passed with only expected local `.env.local`, `.mock-db.json`, and running-process inspection warnings.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe tmp-pdf-import-fault-finding-20260521/probe-real-pdf-summaries.cjs` passed and refreshed `tmp-pdf-import-fault-finding-20260521/real-pdf-summary-report.json`.
+- Real-PDF fault check remains honest: no timeouts were observed, scoring-guide-like PDFs still failed closed with zero drafts, but `AP Chem 2023.pdf` still over-generated 134 drafts and `qp-2024-chemistry.pdf` still over-generated 73 drafts. The next high-impact parser work is still segmentation/filtering, not claiming higher OCR accuracy.
+
+### 2026-05-24 PDF import section-aware segmentation pass
+
+- Continued the active segmentation/filtering TODO. Re-ran `git status --short --branch` first, re-read this development log and `TODO.md`, preserved existing dirty PDF-import work, did not change Supabase data, and did not publish imported questions.
+- Added section-aware segmentation context in `lib/pdf.ts`: table-of-contents pages are excluded from segmentation; answer/scoring sections are excluded from segmentation; MCQ and FRQ sections are tracked across pages; page-marker attribution now uses the nearest preceding page marker instead of falling back to page 1 for same-page follow-up questions.
+- Tightened candidate filtering: MCQ-section blocks must parse at least two choices; FRQ-section blocks must look like a real FRQ prompt instead of a lone subpart marker; out-of-sequence FRQ-like starts are filtered to reduce false starts caused by formulas such as a chemical formula ending in `6.`.
+- Fault-finding result: `AP Chem 2023.pdf` improved from 134 drafts to 67 drafts, with 60 MCQ and 7 FRQ. This removes the answer/scoring-guide duplicate half of the packet and fixes page attribution.
+- Fault-finding result: `qp-2024-chemistry.pdf` improved from 73 drafts to 64 drafts, with 57 MCQ and 7 FRQ. This removes false FRQ starts but now under-extracts several MCQs, so it is safer but not complete. Draft count remains a review signal, not an accuracy claim.
+- Synthetic probe regression check still passes the intended paths: clean text, answer-key-at-end, choice-label variants, select-two, table/diagram, split-across-pages, scanned OCR, mixed text/scanned, invalid OCR config, malformed PDF, and page-limit scenarios all exercised expected safer outcomes.
+- Commands run:
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules/typescript/bin/tsc --noEmit` passed.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe tests/run-import-tests.cjs` passed.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules/typescript/bin/tsc -p tmp-pdf-import-fault-finding-20260521/tsconfig.probe.json` passed.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe tmp-pdf-import-fault-finding-20260521/build/tmp-pdf-import-fault-finding-20260521/probe-pdf-import.js` passed and refreshed `tmp-pdf-import-fault-finding-20260521/probe-report.json`.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe tmp-pdf-import-fault-finding-20260521/probe-real-pdf-summaries.cjs` passed and refreshed `tmp-pdf-import-fault-finding-20260521/real-pdf-summary-report.json`.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules/next/dist/bin/next lint` passed with no ESLint warnings or errors.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe scripts/predeploy-check.cjs` passed with only expected local `.env.local`, `.mock-db.json`, and running-process inspection warnings.
+- Remaining segmentation work: recover missing/noisy MCQs in `qp-2024-chemistry.pdf`, add fixture-based regression checks that assert real parser outputs instead of only source strings, and eventually move from whole-text regex starts toward block/span-aware candidate generation.
+
+### 2026-05-24 PDF import explicit answer-key association pass
+
+- Continued to the next active TODO after segmentation/filtering. Re-ran `git status --short --branch` first, re-read this development log and `TODO.md`, preserved existing dirty PDF-import work, did not change Supabase data, and did not publish imported questions.
+- Added conservative explicit answer-key association in `lib/pdf.ts`. The analyzer now parses pages that already look like answer keys, extracts numbered answer labels, and attaches them only to MCQ drafts with matching question numbers and matching parsed choice labels.
+- Safety behavior: conflicting answer-key entries are refused; answer entries that do not match parsed choices are refused; answers are not inferred from explanations, scoring notes, or rubrics. Draft warnings cite the source answer-key page, and job warnings report how many MCQ drafts were matched.
+- Synthetic fault check: `answer-key-at-end` now attaches cited answers to its two MCQ drafts from source page 2 and removes the previous "No explicit answer key" warning from those drafts.
+- Real-PDF fault check: `practice exam 2016(1).pdf` matched 55 explicit MCQ answers. `AP Chem 2023.pdf` and `qp-2024-chemistry.pdf` attached zero answers, which is the desired conservative behavior because their later pages are scoring/question material rather than a clean answer-key page.
+- Commands run:
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules/typescript/bin/tsc --noEmit` passed.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe tests/run-import-tests.cjs` passed.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules/typescript/bin/tsc -p tmp-pdf-import-fault-finding-20260521/tsconfig.probe.json` passed.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe tmp-pdf-import-fault-finding-20260521/build/tmp-pdf-import-fault-finding-20260521/probe-pdf-import.js` passed and refreshed `tmp-pdf-import-fault-finding-20260521/probe-report.json`.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe tmp-pdf-import-fault-finding-20260521/probe-real-pdf-summaries.cjs` passed and refreshed `tmp-pdf-import-fault-finding-20260521/real-pdf-summary-report.json`.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules/next/dist/bin/next lint` passed with no ESLint warnings or errors.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe scripts/predeploy-check.cjs` passed with only expected local `.env.local`, `.mock-db.json`, and running-process inspection warnings.
+- Remaining answer-source work: explanation/rationale association still needs source citations and conflict handling. Answer-key association should remain conservative and review-first.
+
+### 2026-05-24 Supabase/admin account health pass
+
+- Re-ran `git status --short --branch` first, re-read this development log and `TODO.md`, preserved existing dirty PDF-import work, did not stage/commit/push, and did not write to Supabase.
+- Confirmed the local environment is connected to Supabase using the existing `.env.local` keys. No database mutations, seed scripts, migrations, or auth writes were run.
+- Added an admin-account health helper in `lib/data.ts` and surfaced it on the admin dashboard. The dashboard now reports whether it is using Supabase or mock fallback, admin/student profile counts, Auth user count, seed-admin env configuration, admin emails, and account/profile mismatch warnings.
+- Read-only Supabase probe result: `profiles=5`, `adminProfileCount=1`, `studentProfileCount=4`, `authUserCount=5`, `adminProfilesMissingAuthCount=0`, and `authUsersMissingProfileCount=0`.
+- Environment/setup gap: `ADMIN_EMAIL` and `STUDENT_EMAIL` are not configured locally, so seed-account checks cannot confirm the intended named admin/student accounts.
+- Existing data issue found by the read-only Supabase data check: `scripts/check-supabase-data.cjs` connected and counted live tables, then exited 1 because expected seeded exam `20000000-0000-4000-8000-000000000001` is missing. This is a seed/data consistency issue, not a Supabase connectivity failure.
+- Commands run:
+  - `git status --short --branch` showed existing dirty PDF/admin work plus the new admin-account files.
+  - `Get-Content -Path docs/DEVELOPMENT_LOG.md -Tail 80` and `Get-Content -Path TODO.md -Tail 120` were read before continuing.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe scripts/check-supabase-data.cjs` connected read-only, printed table counts, and failed only on the missing expected seeded exam noted above.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules/typescript/bin/tsc --noEmit` passed.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe tests/run-import-tests.cjs` passed.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules/next/dist/bin/next lint` passed with no ESLint warnings or errors.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe scripts/predeploy-check.cjs` passed with only expected local `.env.local`, `.mock-db.json`, and running-process inspection warnings.
+
+### 2026-05-24 PDF import content-based scoring/rubric classifier pass
+
+- Continued the unfinished PDF import TODOs. Re-ran `git status --short --branch` first, re-read this development log and `TODO.md`, preserved existing dirty PDF/admin work, did not stage/commit/push, did not change Supabase data, and did not publish imported questions.
+- Added content-based scoring/rubric/sample-response classification in `lib/pdf.ts`. The analyzer now scores page text for rubric, scoring guideline, sample response, commentary, point-awarding, and acceptable-response signals instead of relying only on filenames.
+- Added page-level fail-closed behavior for scoring-only pages. Pages that look like scoring/rubric/sample-response material and do not contain a real question prompt are excluded from segmentation with admin-visible page warnings.
+- Added document-level suppression when the available text is mostly scoring/rubric/sample-response/commentary material. This prevents neutral-filename scoring packets from producing review drafts just because the filename does not include `sg` or `scoring`.
+- Added a neutral-filename local probe (`synthetic-neutral-packet.pdf`) to the ignored fault harness. It now fails closed with zero drafts and explicit content-based suppression warnings.
+- Fault check results stayed stable for ordinary question packets: `AP Chem 2023.pdf` remained 67 drafts (60 MCQ, 7 FRQ), `qp-2024-chemistry.pdf` remained 64 drafts (57 MCQ, 7 FRQ), and `ap25-frq-chemistry.pdf` remained 3 FRQ drafts. This improves warnings/exclusions without claiming OCR accuracy improved.
+- New warnings are intentionally conservative. `AP Chem 2023.pdf` now reports excluded scoring/rubric-only pages and scoring/rubric signals while still producing drafts for the question sections; admins still need to verify every generated draft.
+- Commands run:
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules/typescript/bin/tsc --noEmit` passed.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe tests/run-import-tests.cjs` passed.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules/typescript/bin/tsc -p tmp-pdf-import-fault-finding-20260521/tsconfig.probe.json` passed.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe tmp-pdf-import-fault-finding-20260521/build/tmp-pdf-import-fault-finding-20260521/probe-pdf-import.js` passed and refreshed `tmp-pdf-import-fault-finding-20260521/probe-report.json`.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe tmp-pdf-import-fault-finding-20260521/probe-real-pdf-summaries.cjs` passed and refreshed `tmp-pdf-import-fault-finding-20260521/real-pdf-summary-report.json`.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules/next/dist/bin/next lint` passed with no ESLint warnings or errors.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe scripts/predeploy-check.cjs` passed with only expected local `.env.local`, `.mock-db.json`, and running-process inspection warnings.
+- Remaining highest-impact work: true page-chunk resumability, precise visual/table crop proposals, authenticated admin E2E coverage, explanation/rationale citation handling, real fixture assertions for parser outputs, and recovering missing/noisy MCQs in `qp-2024-chemistry.pdf` without reintroducing false starts.
+
+### 2026-05-24 PDF import fixture, explanation, and visual-review pass
+
+- Continued the remaining PDF import TODOs. Re-ran `git status --short --branch` first, re-read this development log and `TODO.md`, preserved existing dirty PDF/admin work, did not stage/commit/push, did not publish imported questions, and did not change Supabase data.
+- Added explicit explanation/rationale association in `lib/pdf.ts`. Explanation text is attached only when an explicit `Explanations`/`Rationales` section has numbered entries that match generated drafts. Conflicting explanation entries are refused, and draft warnings cite the source page.
+- Added fixture-backed analyzer regression tests to `tests/run-import-tests.cjs`. The core test now generates local PDF fixtures and runs the real analyzer against:
+  - answer-key plus explicit explanations,
+  - a neutral-filename rubric/scoring packet that must fail closed,
+  - a mixed prompt/scoring packet that should keep the valid prompt while excluding the scoring page.
+- Tightened visual evidence safety. `lib/question-import.ts` now rejects `/uploads/pdf-import-pages/.../page-###.png` style full-page PDF previews from saved question images. The PDF draft review card now exposes explicit cropped-asset URL, caption, and crop/source bbox controls; candidate source pages still are not saved automatically.
+- Supabase seed consistency remains blocked by the no-live-data-change rule. Read-only exam inspection showed live Supabase has `20230000-0000-4000-8000-000000000150` (`AP Physics 1 2023 Practice Exam`) but not the expected mock seeded exam id/title `20000000-0000-4000-8000-000000000001` (`AP Physics 1 Mock Exam 1`). Resolving this needs an explicit decision to seed, map, or retire that expected exam.
+- Fault checks:
+  - Synthetic `answer-key-at-end` now attaches both explicit answers and explicit explanations from page 2 with source warnings.
+  - Neutral scoring/rubric fixture still fails closed with zero drafts.
+  - Real-PDF summary stayed stable: `AP Chem 2023.pdf` remained 67 drafts (60 MCQ, 7 FRQ), `qp-2024-chemistry.pdf` remained 64 drafts (57 MCQ, 7 FRQ), `ap25-frq-chemistry.pdf` remained 3 FRQ drafts, and scoring-guide packets remained failed/zero-draft.
+- Commands run:
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe tests/run-import-tests.cjs` passed.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules/typescript/bin/tsc --noEmit` passed.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules/typescript/bin/tsc -p tmp-pdf-import-fault-finding-20260521/tsconfig.probe.json` passed.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe tmp-pdf-import-fault-finding-20260521/build/tmp-pdf-import-fault-finding-20260521/probe-pdf-import.js` passed and refreshed `tmp-pdf-import-fault-finding-20260521/probe-report.json`.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe tmp-pdf-import-fault-finding-20260521/probe-real-pdf-summaries.cjs` passed and refreshed `tmp-pdf-import-fault-finding-20260521/real-pdf-summary-report.json`.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules/next/dist/bin/next lint` passed with no ESLint warnings or errors.
+- Remaining highest-impact work: true page-chunk resumability, automatic crop image generation from proposed visual bboxes, authenticated `/admin/pdfs` E2E coverage, and recovering missing/noisy MCQs in `qp-2024-chemistry.pdf` without reintroducing false starts.
+
+### 2026-05-25 PDF import raw-block stabilization and crop-candidate pass
+
+- Continued from the active PDF import handoff. Ran `git status --short --branch` first, then re-read this development log, `TODO.md`, and `docs/PDF_IMPORT_LOCAL_CHANGES_SUMMARY.md`; preserved existing dirty/untracked work, did not stage/commit/push, did not publish imported questions, and did not change Supabase data.
+- Stabilized the in-progress PyMuPDF `raw_blocks` change in `scripts/pdf-text-worker.py`. Text blocks now determine two-column detection and text reading order, while image blocks are still preserved with `kind: "image"`, bbox, page dimensions, source, block number, and block order for audit/crop proposals. This avoids image blocks perturbing accepted text order.
+- Added bounded crop rendering support to `scripts/pdf-ocr-worker.py` via `--crops-json`. Crop requests use PDF page coordinates, render to `/uploads/pdf-import-crops/...`, and refuse crops that are too close to full-page screenshots.
+- Added automatic crop-candidate generation in `lib/pdf.ts` for drafts that reference a figure, table, graph, diagram, image, plot, chart, or "shown below" when PyMuPDF image-block bboxes are available. These generated crops are review-only draft assets; they are not saved to `question_images` unless the admin explicitly enables them in the review card. Full-page page previews remain context only.
+- Strengthened visual warnings. Visual-reference drafts now explicitly warn when no usable crop candidate is found, or when crop rendering fails. Synthetic `table-diagram` remains a review draft with a source-page preview and an incomplete-visual warning because the fixture has text/vector-like content but no usable image block.
+- Review UI now pre-fills the cropped asset URL only for generated bounded crop assets with bbox metadata; the admin still must check "Use cropped asset in saved draft" before the crop is included in the saved draft question.
+- Fault check results stayed stable for real PDFs: `AP Chem 2023.pdf` remained 67 drafts (60 MCQ, 7 FRQ), `qp-2024-chemistry.pdf` remained 64 drafts (57 MCQ, 7 FRQ), `ap25-frq-chemistry.pdf` remained 3 FRQ drafts, and scoring-guide packets remained failed/zero-draft. No real-PDF probe timeouts were observed.
+- Focused worker checks:
+  - `python scripts/pdf-text-worker.py --pdf D:\xwechat_files\wxid_bdd83i6ke01g12_764f\msg\file\2026-05\AP Chem 2023.pdf` with `PYTHONPATH=D:\Codex\tools\pdf-ocr-python` returned structured page text; the first five pages preserved text reading order with text block counts 6, 3, 38, 31, and 27.
+  - A Node `execFileSync` smoke call to `scripts/pdf-ocr-worker.py --render-only --crops-json ...` rendered `/tmp/crop-smoke/crop-001-smoke.png` from a bounded bbox and returned no crop warnings.
+- Commands run:
+  - `node tests/run-import-tests.cjs` failed because direct `node.exe` execution was denied by the local shell.
+  - `node node_modules/typescript/bin/tsc --noEmit` failed because direct `node.exe` execution was denied by the local shell.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe tests/run-import-tests.cjs` passed.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules/typescript/bin/tsc --noEmit` passed.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules/typescript/bin/tsc -p tmp-pdf-import-fault-finding-20260521/tsconfig.probe.json` passed.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules/next/dist/bin/next lint` passed with no ESLint warnings or errors.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe scripts/predeploy-check.cjs` passed with only expected local `.env.local`, `.mock-db.json`, and running-process inspection warnings.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe tmp-pdf-import-fault-finding-20260521/build/tmp-pdf-import-fault-finding-20260521/probe-pdf-import.js` passed and refreshed `tmp-pdf-import-fault-finding-20260521/probe-report.json`.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe tmp-pdf-import-fault-finding-20260521/probe-real-pdf-summaries.cjs` passed and refreshed `tmp-pdf-import-fault-finding-20260521/real-pdf-summary-report.json`.
+- Remaining visual work: detect vector/table bboxes, associate crops more precisely with nearby question text, and add fixture coverage with a real embedded image block. True page-chunk resumability and `qp-2024-chemistry.pdf` MCQ recovery remain open.

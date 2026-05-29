@@ -30,9 +30,148 @@ Module._resolveFilename = function resolveAlias(request, parent, isMain, options
 
 const { parseAdminQuestionImportJson } = require(path.join(buildRoot, "lib", "ap-question-format.js"));
 const { normalizeMathDelimiters } = require(path.join(buildRoot, "lib", "math-markdown.js"));
+const { analyzePdfUpload } = require(path.join(buildRoot, "lib", "pdf.js"));
 
 function source(relPath) {
   return fs.readFileSync(path.join(root, relPath), "utf8");
+}
+
+function pdfString(value) {
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/\(/g, "\\(")
+    .replace(/\)/g, "\\)")
+    .replace(/\r?\n/g, " ");
+}
+
+function makeTextPdf(filePath, pages) {
+  const objects = [];
+  const fontObjectNumber = 3 + pages.length * 2;
+  objects[0] = "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n";
+  const pageObjectNumbers = pages.map((_, index) => 3 + index * 2);
+  objects[1] = `2 0 obj\n<< /Type /Pages /Kids [${pageObjectNumbers.map((item) => `${item} 0 R`).join(" ")}] /Count ${pages.length} >>\nendobj\n`;
+
+  pages.forEach((page, index) => {
+    const pageObject = 3 + index * 2;
+    const contentObject = pageObject + 1;
+    const lines = page.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    const textOps = [
+      "BT",
+      "/F1 11 Tf",
+      "50 760 Td",
+      ...lines.flatMap((line, lineIndex) => [
+        lineIndex === 0 ? "" : "0 -15 Td",
+        `(${pdfString(line)}) Tj`
+      ]).filter(Boolean),
+      "ET"
+    ].join("\n");
+    objects[pageObject - 1] =
+      `${pageObject} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 ${fontObjectNumber} 0 R >> >> /Contents ${contentObject} 0 R >>\nendobj\n`;
+    objects[contentObject - 1] =
+      `${contentObject} 0 obj\n<< /Length ${Buffer.byteLength(textOps, "binary")} >>\nstream\n${textOps}\nendstream\nendobj\n`;
+  });
+
+  objects[fontObjectNumber - 1] = `${fontObjectNumber} 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n`;
+  let body = "%PDF-1.4\n";
+  const offsets = [0];
+  for (const object of objects.filter(Boolean)) {
+    offsets.push(Buffer.byteLength(body, "binary"));
+    body += object;
+  }
+  const xrefOffset = Buffer.byteLength(body, "binary");
+  body += `xref\n0 ${offsets.length}\n0000000000 65535 f \n`;
+  for (let index = 1; index < offsets.length; index += 1) {
+    body += `${String(offsets[index]).padStart(10, "0")} 00000 n \n`;
+  }
+  body += `trailer\n<< /Root 1 0 R /Size ${offsets.length} >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, body, "binary");
+}
+
+function uploadFor(filePath, id) {
+  return {
+    id,
+    file_name: path.basename(filePath),
+    file_url: filePath,
+    subject: "AP Physics 1",
+    unit: "Fixture tests",
+    topic: "PDF import",
+    status: "uploaded",
+    uploaded_by: null,
+    created_at: new Date("2026-05-24T00:00:00.000Z").toISOString(),
+    updated_at: new Date("2026-05-24T00:00:00.000Z").toISOString()
+  };
+}
+
+async function runPdfFixtureAssertions() {
+  const fixtureDir = path.join(buildRoot, "pdf-fixtures");
+  const answerKeyPath = path.join(fixtureDir, "answer-key-with-explanations.pdf");
+  const neutralRubricPath = path.join(fixtureDir, "neutral-rubric-content.pdf");
+  const mixedPromptScoringPath = path.join(fixtureDir, "mixed-prompt-and-scoring.pdf");
+
+  makeTextPdf(answerKeyPath, [
+    `1. Which claim is supported by the table below?
+A. Energy is conserved
+B. Momentum is always zero
+C. Time is negative
+D. Mass disappears
+
+2. What quantity is a vector?
+A. Speed
+B. Displacement
+C. Temperature
+D. Time`,
+    `Answer Key
+1. A
+2. B
+Explanations
+1. The table values support conservation across the listed states.
+2. Displacement includes both magnitude and direction.`
+  ]);
+  makeTextPdf(neutralRubricPath, [
+    `Sample Response A
+Scoring criteria
+One point is earned for identifying the independent variable.
+One point is earned for connecting evidence to the claim.
+The response does not earn the graph interpretation point.
+Commentary: This student sample is partially correct.`,
+    `Question 1
+Scoring Guidelines
+Maximum points: 4
+Acceptable responses include a valid claim, evidence, and reasoning.
+Row A: 1 point awarded for a claim.
+Row B: 1 point awarded for evidence.`
+  ]);
+  makeTextPdf(mixedPromptScoringPath, [
+    `1. Which claim is best supported by the graph shown below?
+A. The slope is positive
+B. The slope is negative
+C. The y-value is constant
+D. The x-value is zero`,
+    `Scoring Guidelines
+One point is earned for selecting the positive-slope claim.
+The response does not earn the point if it describes an unrelated table.`
+  ]);
+
+  const answerKey = await analyzePdfUpload(uploadFor(answerKeyPath, "fixture-answer-key"));
+  assert.equal(answerKey.status, "needs_review", "fixture answer-key PDF creates review drafts");
+  assert.equal(answerKey.draftQuestions.length, 2, "fixture answer-key PDF creates two drafts");
+  assert.equal(answerKey.draftQuestions[0].correct_answer, "A", "fixture answer key attaches explicit answer A");
+  assert.equal(answerKey.draftQuestions[1].correct_answer, "B", "fixture answer key attaches explicit answer B");
+  assert.match(answerKey.draftQuestions[0].explanation, /conservation/i, "fixture explanation is attached from explicit source text");
+  assert.match(answerKey.draftQuestions[1].explanation, /magnitude and direction/i, "second fixture explanation is attached from explicit source text");
+  assert.match(answerKey.warnings.join(" "), /Matched explicit explanation\/rationale entries to 2 draft/, "fixture job warns about cited explanation matching");
+  assert.match(answerKey.draftQuestions[0].warnings.join(" "), /Explanation matched from explicit explanation\/rationale page 2/, "fixture draft cites explanation source page");
+
+  const neutralRubric = await analyzePdfUpload(uploadFor(neutralRubricPath, "fixture-neutral-rubric"));
+  assert.equal(neutralRubric.status, "failed", "neutral filename rubric fixture fails closed");
+  assert.equal(neutralRubric.draftQuestions.length, 0, "neutral filename rubric fixture creates no drafts");
+  assert.match(neutralRubric.warnings.join(" "), /Content-based scoring-guide detection suppressed draft generation/, "neutral rubric fixture uses content-based suppression");
+
+  const mixedPromptScoring = await analyzePdfUpload(uploadFor(mixedPromptScoringPath, "fixture-mixed-prompt-scoring"));
+  assert.equal(mixedPromptScoring.status, "needs_review", "mixed prompt/scoring fixture keeps valid prompt drafts");
+  assert.equal(mixedPromptScoring.draftQuestions.length, 1, "mixed prompt/scoring fixture excludes scoring page without suppressing prompt page");
+  assert.match(mixedPromptScoring.warnings.join(" "), /Excluded 1 scoring\/rubric-only page/, "mixed prompt/scoring fixture reports scoring page exclusion");
 }
 
 function validDraft(overrides = {}) {
@@ -82,6 +221,12 @@ expectInvalid(
 expectInvalid(
   "rejects full-question image paths",
   validDraft({ images: [{ id: "bad", path: "/uploads/ap-physics-1-2023-full-question-3.png" }] }),
+  /forbidden full-page screenshot reference/
+);
+
+expectInvalid(
+  "rejects PDF import page preview images",
+  validDraft({ images: [{ id: "bad", path: "/uploads/pdf-import-pages/job-1/page-001.png" }] }),
   /forbidden full-page screenshot reference/
 );
 
@@ -239,6 +384,8 @@ assert.match(pdfImportSource, /raw_blocks: rawBlocks/, "PDF import stores struct
 assert.match(pdfImportSource, /No explicit answer key was detected/, "PDF import warns instead of inventing answer keys");
 assert.match(pdfImportSource, /embedded text appears font-encoded or garbled/, "PDF import rejects garbled embedded text before drafting");
 assert.match(pdfImportSource, /function acceptedPageText/, "PDF import centralizes accepted page text selection");
+assert.match(pdfImportSource, /function normalizeConfidence/, "PDF import normalizes confidence values before storage and display");
+assert.match(pdfImportSource, /value > 1 \? value \/ 100 : value/, "PDF import converts Tesseract percent confidence values to 0..1");
 assert.match(pdfImportSource, /page\.extraction_method === "text"\) return page\.text_extracted/, "PDF import accepts embedded text only from accepted text pages");
 assert.match(pdfImportSource, /page\.extraction_method === "ocr"\) return page\.ocr_text/, "PDF import accepts OCR text only from accepted OCR pages");
 assert.match(pdfImportSource, /return "";\s*\}\s*function splitTrailingLabeledSections/, "PDF import does not segment rejected page text");
@@ -253,10 +400,33 @@ assert.match(pdfImportSource, /Configured TESSERACT_CMD was not found/, "PDF imp
 assert.match(pdfImportSource, /skippedPageNumbers/, "PDF import distinguishes page-limit skipped OCR pages");
 assert.match(pdfImportSource, /OCR text ignored/, "PDF import rejects unusable OCR text instead of drafting it");
 assert.match(pdfImportSource, /function isAnswerKeyLikeText/, "PDF import excludes answer-key-like pages from segmentation");
+assert.match(pdfImportSource, /function extractAnswerKeyEntries/, "PDF import parses explicit answer-key entries from answer-key-like pages");
+assert.match(pdfImportSource, /function applyExplicitAnswerKeyEntries/, "PDF import can associate explicit answer-key entries with matching MCQ drafts");
+assert.match(pdfImportSource, /Correct answer matched from explicit answer-key page/, "PDF import cites source pages when attaching explicit answer keys");
+assert.match(pdfImportSource, /Conflicting explicit answer-key entries/, "PDF import refuses conflicting answer-key entries");
+assert.match(pdfImportSource, /function extractExplanationEntries/, "PDF import parses explicit explanation entries from source pages");
+assert.match(pdfImportSource, /function applyExplicitExplanationEntries/, "PDF import associates explanations only from explicit source entries");
+assert.match(pdfImportSource, /Explanation matched from explicit explanation\/rationale page/, "PDF import cites source pages when attaching explanations");
+assert.match(pdfImportSource, /Conflicting explicit explanation entries/, "PDF import refuses conflicting explanation entries");
+assert.match(pdfImportSource, /function buildSegmentationSections/, "PDF import builds section-aware segmentation context");
+assert.match(pdfImportSource, /isTableOfContentsLikeText/, "PDF import filters table-of-contents pages before question segmentation");
+assert.match(pdfImportSource, /isScoringSectionStart/, "PDF import filters answer and scoring sections before question segmentation");
+assert.match(pdfImportSource, /filterOutOfSequenceFrqDrafts/, "PDF import filters out-of-sequence FRQ-like starts caused by formulas or subparts");
 assert.match(pdfImportSource, /function choiceDiagnostics/, "PDF import warns on suspicious choice parsing");
 assert.match(pdfImportSource, /merged or corrupted choices/, "PDF import explicitly flags severe merged-choice drafts");
 assert.match(pdfImportSource, /Candidate source page for a visual reference/, "PDF import creates visual source-page asset candidates");
+assert.match(pdfImportSource, /function draftNeedsVisualEvidence/, "PDF import detects drafts that need source-page visual evidence");
+assert.match(pdfImportSource, /function buildVisualCropCandidates/, "PDF import proposes visual crop candidates from structured page blocks");
+assert.match(pdfImportSource, /runLocalVisualCropRender/, "PDF import renders cropped visual evidence candidates separately from page previews");
+assert.match(pdfImportSource, /pdf-import-crops/, "PDF import stores generated crop candidates outside full-page preview paths");
+assert.match(pdfImportSource, /No usable crop candidate was found/, "PDF import warns when visual prompts lack a usable crop candidate");
+assert.match(pdfImportSource, /PDF_RENDER_MAX_PAGES/, "PDF import limits render-only source-page preview work");
+assert.match(pdfImportSource, /--render-only/, "PDF import can render source-page previews without running OCR");
 assert.match(pdfImportSource, /function isScoringGuidePdf/, "PDF import detects scoring-guide-like PDFs");
+assert.match(pdfImportSource, /function classifyScoringGuideContent/, "PDF import classifies scoring-guide content without relying only on filenames");
+assert.match(pdfImportSource, /function scoringGuideSignalScore/, "PDF import scores rubric/sample-response content signals");
+assert.match(pdfImportSource, /function isScoringGuideOnlyText/, "PDF import can exclude scoring-only pages before segmentation");
+assert.match(pdfImportSource, /Content-based scoring-guide detection suppressed draft generation/, "PDF import fails closed on content-detected scoring-guide packets");
 assert.match(pdfImportSource, /Draft generation was suppressed/, "PDF import suppresses scoring-guide drafts instead of importing rubrics as questions");
 assert.match(pdfImportSource, /function isFrqPacket/, "PDF import detects FRQ packets before MCQ classification");
 assert.match(pdfImportSource, /if \(starts\.length === 0\) \{\s*return \[\];\s*\}/, "PDF import does not create a giant draft when question boundaries are missing");
@@ -265,6 +435,12 @@ assert.doesNotMatch(pdfImportSource, /status:\s*"published"/, "PDF import analyz
 const pdfReviewSource = source("components/admin/PdfDraftQuestionReview.tsx");
 assert.match(pdfReviewSource, /sourcePages/, "PDF import review shows source-page audit context");
 assert.match(pdfReviewSource, /page\.page_image_url/, "PDF import review can show OCR/rendered source page images");
+assert.match(pdfReviewSource, /Candidate visual evidence/, "PDF import review shows candidate visual evidence separately from saved question images");
+assert.match(pdfReviewSource, /Not saved automatically/, "PDF import review warns that candidate page images are not automatically saved");
+assert.match(pdfReviewSource, /Cropped asset URL/, "PDF import review requires a cropped asset URL before adding visual evidence to saved drafts");
+assert.match(pdfReviewSource, /Use cropped asset in saved draft/, "PDF import review has explicit keep controls for cropped visual evidence");
+assert.match(pdfReviewSource, /Crop\/source bbox JSON/, "PDF import review captures crop/source bbox metadata for approved visuals");
+assert.doesNotMatch(pdfReviewSource, /page\.confidence > 1/, "PDF import review assumes normalized 0..1 confidence values");
 assert.match(pdfReviewSource, /Scoring notes from source/, "PDF import review carries scoring notes into the save form");
 assert.match(pdfReviewSource, /selection_type/, "PDF import review submits selection type metadata");
 assert.match(pdfReviewSource, /multi-select/, "PDF import review tags select-two/multi-select drafts");
@@ -272,6 +448,9 @@ assert.doesNotMatch(pdfReviewSource, /Add an explanation during admin review/, "
 
 const dataSource = source("lib/data.ts");
 assert.match(dataSource, /PDF upload not found for import analysis/, "Mock PDF import rejects missing uploads like Supabase foreign keys");
+assert.match(dataSource, /getAdminAccountHealth/, "Admin data layer exposes Supabase/mock account health");
+assert.match(dataSource, /auth\.admin\.listUsers/, "Admin account health checks Supabase Auth users server-side");
+assert.match(dataSource, /adminProfilesMissingAuthCount/, "Admin account health reports admin profile/Auth mismatches");
 assert.match(dataSource, /PDF import draft question not found/, "PDF draft status updates fail loudly when the draft is missing");
 assert.match(dataSource, /draft asset references a missing draft question index/, "PDF import rejects out-of-range draft asset links");
 assert.match(dataSource, /extraction_method === "text"[\s\S]*extraction_method === "ocr"/, "PDF import extracted-page metrics count only usable text/OCR pages");
@@ -282,10 +461,16 @@ const pdfAdminPageSource = source("app/admin/pdfs/page.tsx");
 assert.match(pdfAdminPageSource, /PdfImportWorkspace/, "PDF admin page renders the same-page import workspace");
 assert.match(pdfAdminPageSource, /job_id/, "PDF admin page can select an import job inline");
 
+const adminHomeSource = source("app/admin/page.tsx");
+assert.match(adminHomeSource, /Account health/, "Admin dashboard surfaces account health");
+assert.match(adminHomeSource, /Supabase connected/, "Admin dashboard identifies Supabase account mode");
+assert.match(adminHomeSource, /Admin profiles/, "Admin dashboard shows admin profile counts");
+
 const pdfWorkspaceSource = source("components/admin/PdfImportWorkspace.tsx");
 assert.match(pdfWorkspaceSource, /api\/admin\/pdf-imports\/\$\{jobId\}\/process/, "PDF import workspace polls the processing route");
 assert.match(pdfWorkspaceSource, /Generated draft questions/, "PDF import workspace renders generated draft questions inline");
 assert.match(pdfWorkspaceSource, /PdfDraftQuestionReview/, "PDF import workspace reuses the admin draft review cards");
+assert.match(pdfWorkspaceSource, /candidateAssets/, "PDF import workspace passes draft visual candidates into review cards");
 
 const pdfProcessRouteSource = source("app/api/admin/pdf-imports/[jobId]/process/route.ts");
 assert.match(pdfProcessRouteSource, /requireAdmin/, "PDF import process route is admin protected");
@@ -295,12 +480,17 @@ assert.match(pdfProcessRouteSource, /completePdfImportJob/, "PDF import process 
 const pdfOcrWorker = source("scripts/pdf-ocr-worker.py");
 assert.match(pdfOcrWorker, /pytesseract/, "PDF OCR worker uses Tesseract");
 assert.match(pdfOcrWorker, /get_pixmap/, "PDF OCR worker renders PDF pages before OCR");
+assert.match(pdfOcrWorker, /render-only/, "PDF OCR worker supports render-only source-page previews");
 assert.match(pdfOcrWorker, /rendered_lines/, "PDF OCR worker preserves line breaks for segmentation");
+assert.match(pdfOcrWorker, /crops-json/, "PDF OCR worker can render bounded visual evidence crops");
+assert.match(pdfOcrWorker, /too close to a full page/, "PDF OCR worker refuses crop requests that look like full-page screenshots");
 
 const pdfTextWorker = source("scripts/pdf-text-worker.py");
 assert.match(pdfTextWorker, /get_text\("blocks"/, "PDF text worker extracts positioned text blocks");
 assert.match(pdfTextWorker, /likely_two_columns/, "PDF text worker detects two-column layouts");
 assert.match(pdfTextWorker, /reading_order/, "PDF text worker records block reading order");
+assert.match(pdfTextWorker, /"kind": "image"/, "PDF text worker preserves PyMuPDF image blocks for crop candidates");
+assert.match(pdfTextWorker, /text_blocks = \[block for block in blocks if block\.get\("kind"\) == "text"\]/, "PDF text worker uses text blocks, not image blocks, to detect reading order");
 assert.match(pdfTextWorker, /UNAUTHORIZED COPYING/, "PDF text worker filters repeated AP footer noise");
 
 const authSource = source("lib/auth.ts");
@@ -398,4 +588,11 @@ for (const file of checkedFiles) {
   );
 }
 
-console.log("Import, rendering, and auth guard tests passed.");
+runPdfFixtureAssertions()
+  .then(() => {
+    console.log("Import, rendering, PDF fixture, and auth guard tests passed.");
+  })
+  .catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });

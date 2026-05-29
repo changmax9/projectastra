@@ -2164,12 +2164,13 @@ export async function getStudentDetail(studentId: string) {
 }
 
 export async function getAdminStats() {
-  const [students, exams, questions, guides, submissions] = await Promise.all([
+  const [students, exams, questions, guides, submissions, accountHealth] = await Promise.all([
     adminListStudents(),
     adminListExams(),
     listQuestions({}),
     adminListReviewGuides({}),
-    adminListSubmissions()
+    adminListSubmissions(),
+    getAdminAccountHealth()
   ]);
 
   return {
@@ -2177,7 +2178,77 @@ export async function getAdminStats() {
     examsCount: exams.length,
     questionsCount: questions.length,
     reviewGuidesCount: guides.length,
-    recentSubmissions: submissions.slice(0, 5)
+    recentSubmissions: submissions.slice(0, 5),
+    accountHealth
+  };
+}
+
+export async function getAdminAccountHealth() {
+  const seedAdminEmailConfigured = Boolean(process.env.ADMIN_EMAIL);
+  const seedStudentEmailConfigured = Boolean(process.env.STUDENT_EMAIL);
+
+  if (hasSupabaseEnv()) {
+    const supabase = adminClient();
+    const { data: profiles, error: profilesError } = await supabase
+      .from("profiles")
+      .select("id,email,role,created_at")
+      .order("created_at", { ascending: false });
+    if (profilesError) throw new Error(profilesError.message);
+
+    const { data: usersData, error: usersError } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
+    const profilesList = (profiles || []) as Pick<Profile, "id" | "email" | "role" | "created_at">[];
+    const users = usersData?.users || [];
+    const userIds = new Set(users.map((user) => user.id));
+    const profileIds = new Set(profilesList.map((profile) => profile.id));
+    const adminProfiles = profilesList.filter((profile) => profile.role === "admin");
+    const studentProfiles = profilesList.filter((profile) => profile.role === "student");
+    const adminProfilesMissingAuth = adminProfiles.filter((profile) => !userIds.has(profile.id));
+    const authUsersMissingProfile = users.filter((user) => !profileIds.has(user.id));
+    const warnings = [
+      adminProfiles.length === 0 ? "No admin profile rows exist in Supabase." : "",
+      usersError ? `Unable to inspect Supabase Auth users: ${usersError.message}` : "",
+      adminProfilesMissingAuth.length > 0 ? `${adminProfilesMissingAuth.length} admin profile(s) have no matching Supabase Auth user.` : "",
+      authUsersMissingProfile.length > 0 ? `${authUsersMissingProfile.length} Supabase Auth user(s) have no profile row.` : "",
+      !seedAdminEmailConfigured ? "ADMIN_EMAIL is not set locally; seed scripts cannot create/update the configured admin account." : ""
+    ].filter(Boolean);
+
+    return {
+      mode: "supabase" as const,
+      supabaseConfigured: true,
+      profileCount: profilesList.length,
+      adminProfileCount: adminProfiles.length,
+      studentProfileCount: studentProfiles.length,
+      authUserCount: users.length,
+      adminProfilesMissingAuthCount: adminProfilesMissingAuth.length,
+      authUsersMissingProfileCount: authUsersMissingProfile.length,
+      seedAdminEmailConfigured,
+      seedStudentEmailConfigured,
+      adminEmails: adminProfiles.map((profile) => profile.email).sort(),
+      warnings
+    };
+  }
+
+  await ensureMockStore();
+  const adminProfiles = mockProfiles.filter((profile) => profile.role === "admin");
+  const studentProfiles = mockProfiles.filter((profile) => profile.role === "student");
+  const warnings = [
+    adminProfiles.length === 0 ? "No mock admin profile exists." : "",
+    !seedAdminEmailConfigured ? "ADMIN_EMAIL is not set locally; mock fallback uses bundled demo/default accounts." : ""
+  ].filter(Boolean);
+
+  return {
+    mode: "mock" as const,
+    supabaseConfigured: false,
+    profileCount: mockProfiles.length,
+    adminProfileCount: adminProfiles.length,
+    studentProfileCount: studentProfiles.length,
+    authUserCount: mockProfiles.length,
+    adminProfilesMissingAuthCount: 0,
+    authUsersMissingProfileCount: 0,
+    seedAdminEmailConfigured,
+    seedStudentEmailConfigured,
+    adminEmails: adminProfiles.map((profile) => profile.email).sort(),
+    warnings
   };
 }
 

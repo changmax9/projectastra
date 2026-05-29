@@ -173,7 +173,8 @@ export function PdfImportWorkspace({ initialJob }: { initialJob: PdfImportJobDet
             const sourcePages = job.pages.filter(
               (page) => page.page_number >= draft.source_page_start && page.page_number <= draft.source_page_end
             );
-            return <PdfDraftQuestionReview key={draft.id} draft={draft} sourcePages={sourcePages} />;
+            const candidateAssets = job.draft_assets.filter((asset) => asset.draft_question_id === draft.id);
+            return <PdfDraftQuestionReview key={draft.id} draft={draft} sourcePages={sourcePages} candidateAssets={candidateAssets} />;
           })}
         </div>
       )}

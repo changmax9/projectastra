@@ -3,7 +3,7 @@ import type { QuestionChoice, QuestionImage, QuestionImportItem } from "@/lib/ty
 const CHOICE_MARKER_RE = /\s\(([A-D])\)(?=\s)/g;
 const PLACEHOLDER_CHOICE_RE = /^choice\s+[A-D]$/i;
 const PDF_PAGE_IMAGE_RE =
-  /(?:\b(?:mcq|frq)-page(?:-\d+)?|page-screenshot|full-page|pdf-page|pdf-page-image|whole-page|question-screenshot|full-question)/i;
+  /(?:\b(?:mcq|frq)-page(?:-\d+)?|page-screenshot|full-page|pdf-page|pdf-page-image|whole-page|question-screenshot|full-question|pdf-import-pages\b|\/page-\d{3}\.png\b)/i;
 
 function cleanExtractedText(value: string) {
   return String(value || "")

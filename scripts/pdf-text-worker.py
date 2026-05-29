@@ -56,7 +56,8 @@ def likely_two_columns(blocks, page_width):
 
 
 def sort_blocks(blocks, page_width, page_height):
-    two_columns = likely_two_columns(blocks, page_width)
+    text_blocks = [block for block in blocks if block.get("kind") == "text"]
+    two_columns = likely_two_columns(text_blocks, page_width)
 
     def key(block):
         x0, y0, x1, _ = block["bbox"]
@@ -72,12 +73,15 @@ def sort_blocks(blocks, page_width, page_height):
         column = 0 if center < page_width / 2 else 1
         return (1, column, y0, x0)
 
+    ordered_text_blocks = sorted(text_blocks, key=key)
+    text_order = {id(block): index for index, block in enumerate(ordered_text_blocks)}
     ordered = sorted(blocks, key=key)
     for block in ordered:
         x0, _, x1, _ = block["bbox"]
         center = (x0 + x1) / 2
         block["column"] = 0 if center < page_width / 2 else 1
-        block["reading_order"] = ordered.index(block)
+        block["reading_order"] = text_order.get(id(block))
+        block["block_order"] = ordered.index(block)
         if two_columns:
             block["layout"] = "two-column"
         else:
@@ -115,10 +119,22 @@ def main():
                 if len(item) < 7:
                     continue
                 x0, y0, x1, y1, text, block_number, block_type = item[:7]
+                bbox = [round(float(x0), 2), round(float(y0), 2), round(float(x1), 2), round(float(y1), 2)]
                 if block_type != 0:
+                    if block_type == 1:
+                        raw_blocks.append(
+                            {
+                                "bbox": bbox,
+                                "text": "",
+                                "block_number": int(block_number),
+                                "source": "pymupdf",
+                                "kind": "image",
+                                "page_width": round(page_width, 2),
+                                "page_height": round(page_height, 2),
+                            }
+                        )
                     continue
                 cleaned = clean_text(text)
-                bbox = [round(float(x0), 2), round(float(y0), 2), round(float(x1), 2), round(float(y1), 2)]
                 if is_noise_block(cleaned, bbox, page_height):
                     continue
                 raw_blocks.append(
@@ -127,10 +143,13 @@ def main():
                         "text": cleaned,
                         "block_number": int(block_number),
                         "source": "pymupdf",
+                        "kind": "text",
+                        "page_width": round(page_width, 2),
+                        "page_height": round(page_height, 2),
                     }
                 )
             ordered_blocks = sort_blocks(raw_blocks, page_width, page_height)
-            page_text = "\n".join(block["text"] for block in ordered_blocks).strip()
+            page_text = "\n".join(block["text"] for block in ordered_blocks if block.get("text")).strip()
             pages.append(
                 {
                     "page_number": page_index + 1,

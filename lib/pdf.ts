@@ -19,12 +19,45 @@ export const PARSER_VERSION = "pdf-import-mvp-2026-05-23";
 const CHOICE_MARKER_RE = /(?:^|\s)(?:\(([A-E])\)|([A-E])[\).])\s+/g;
 const FRQ_PART_RE = /(?:^|\s)\(((?:[a-g])|(?:i{1,3}|iv|v))\)\s+/gi;
 const DEFAULT_OCR_MAX_PAGES = 12;
+const DEFAULT_RENDER_MAX_PAGES = 24;
 const DEFAULT_OCR_TIMEOUT_MS = 30_000;
 const DEFAULT_TEXT_TIMEOUT_MS = 15_000;
 const execFileAsync = promisify(execFile);
 
 type DraftQuestionWithoutStorage = PdfImportAnalysisInput["draftQuestions"][number];
 type PageWithoutStorage = PdfImportAnalysisInput["pages"][number];
+type PdfQuestionSection = "mcq" | "frq" | "unknown" | "non_question";
+
+interface QuestionBlockCandidate {
+  questionNumber: number | null;
+  pageStart: number;
+  pageEnd: number;
+  text: string;
+  pageNumbers?: number[];
+  section: PdfQuestionSection;
+}
+
+interface AnswerKeyEntry {
+  questionNumber: number;
+  answer: string;
+  pageNumber: number;
+}
+
+interface ExplanationEntry {
+  questionNumber: number;
+  explanation: string;
+  pageNumber: number;
+}
+
+interface ScoringContentClassification {
+  shouldSuppressDrafts: boolean;
+  textPageCount: number;
+  scoringHeavyPageNumbers: number[];
+  scoringOnlyPageNumbers: number[];
+  questionLikePageNumbers: number[];
+  warningsByPage: Map<number, string[]>;
+  warnings: string[];
+}
 
 interface OcrProvider {
   name: string;
@@ -64,6 +97,27 @@ interface LocalOcrRunResult {
   results: Map<number, LocalOcrPageResult>;
   warnings: string[];
   skippedPageNumbers: Set<number>;
+}
+
+interface LocalRenderRunResult {
+  results: Map<number, { page_number: number; image_url: string | null; warnings: string[] }>;
+  warnings: string[];
+  skippedPageNumbers: Set<number>;
+}
+
+interface VisualCropCandidate {
+  candidateId: string;
+  draftIndex: number;
+  pageNumber: number;
+  assetType: "diagram" | "table" | "unknown";
+  bbox: [number, number, number, number];
+  blockNumber: number | null;
+  source: string;
+}
+
+interface LocalVisualCropRunResult {
+  results: Map<string, { candidate_id: string; page_number: number; image_url: string | null; bbox: [number, number, number, number] | null; warnings: string[] }>;
+  warnings: string[];
 }
 
 interface LocalTextPageResult {
@@ -130,6 +184,19 @@ function parseOcrTimeoutMs() {
     return {
       value: DEFAULT_OCR_TIMEOUT_MS,
       warning: `Invalid PDF_OCR_TIMEOUT_MS value "${raw}". Using the default timeout of ${DEFAULT_OCR_TIMEOUT_MS} ms.`
+    };
+  }
+  return { value: Math.floor(parsed), warning: null as string | null };
+}
+
+function parseRenderMaxPages() {
+  const raw = process.env.PDF_RENDER_MAX_PAGES;
+  if (raw === undefined || raw.trim() === "") return { value: DEFAULT_RENDER_MAX_PAGES, warning: null as string | null };
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return {
+      value: DEFAULT_RENDER_MAX_PAGES,
+      warning: `Invalid PDF_RENDER_MAX_PAGES value "${raw}". Using the default limit of ${DEFAULT_RENDER_MAX_PAGES} pages.`
     };
   }
   return { value: Math.floor(parsed), warning: null as string | null };
@@ -349,6 +416,170 @@ async function runLocalTesseractOcr(pdf: PdfUpload, pageNumbers: number[]) {
   }
 }
 
+async function runLocalPageRender(pdf: PdfUpload, pageNumbers: number[]) {
+  const pythonPath = findTextPythonCommand();
+  const warnings: string[] = [];
+  if (!pythonPath) {
+    warnings.push(
+      process.env.PDF_TEXT_PYTHON || process.env.PDF_OCR_PYTHON
+        ? "Configured Python path for PDF rendering was not found."
+        : "Python executable was not found. Set PDF_TEXT_PYTHON or PDF_OCR_PYTHON to render visual source pages."
+    );
+    return { results: new Map(), warnings, skippedPageNumbers: new Set<number>() } satisfies LocalRenderRunResult;
+  }
+
+  const uniquePageNumbers = Array.from(new Set(pageNumbers.filter((pageNumber) => Number.isInteger(pageNumber) && pageNumber > 0))).sort((a, b) => a - b);
+  const { value: maxPages, warning: maxPagesWarning } = parseRenderMaxPages();
+  const { value: timeoutMs, warning: timeoutWarning } = parseOcrTimeoutMs();
+  const selectedPages = maxPages > 0 ? uniquePageNumbers.slice(0, maxPages) : uniquePageNumbers;
+  const skippedPageNumbers = new Set(uniquePageNumbers.filter((pageNumber) => !selectedPages.includes(pageNumber)));
+  if (maxPagesWarning) warnings.push(maxPagesWarning);
+  if (timeoutWarning) warnings.push(timeoutWarning);
+  if (maxPages > 0 && uniquePageNumbers.length > selectedPages.length) {
+    warnings.push(`Source page rendering limited to first ${selectedPages.length} of ${uniquePageNumbers.length} visual-reference pages. Set PDF_RENDER_MAX_PAGES=0 to render all candidates.`);
+  }
+  if (selectedPages.length === 0) {
+    return { results: new Map(), warnings, skippedPageNumbers } satisfies LocalRenderRunResult;
+  }
+
+  const pdfPath = await materializePdfForWorker(pdf);
+  const outputKey = `${safePathSegment(pdf.id)}-visual-${Date.now().toString(36)}`;
+  const outputDir = path.join(process.cwd(), "public", "uploads", "pdf-import-pages", outputKey);
+  const publicPrefix = `/uploads/pdf-import-pages/${outputKey}`;
+  await mkdir(outputDir, { recursive: true });
+  const env = {
+    ...process.env,
+    PYTHONPATH: [
+      process.env.PDF_OCR_PYTHONPATH,
+      "D:\\Codex\\tools\\pdf-ocr-python",
+      process.env.PYTHONPATH
+    ]
+      .filter(Boolean)
+      .join(path.delimiter)
+  };
+
+  try {
+    const { stdout } = await execFileAsync(
+      pythonPath,
+      [
+        path.join(process.cwd(), "scripts", "pdf-ocr-worker.py"),
+        "--pdf",
+        pdfPath,
+        "--pages",
+        selectedPages.join(","),
+        "--out-dir",
+        outputDir,
+        "--public-prefix",
+        publicPrefix,
+        "--render-only"
+      ],
+      { env, maxBuffer: 20 * 1024 * 1024, timeout: timeoutMs }
+    );
+    const jsonStart = stdout.lastIndexOf('{"ok"');
+    const jsonText = jsonStart >= 0 ? stdout.slice(jsonStart) : stdout;
+    const parsed = JSON.parse(jsonText) as {
+      ok: boolean;
+      error?: string;
+      pages?: Array<{ page_number: number; image_url: string | null; warnings: string[] }>;
+    };
+    if (!parsed.ok) {
+      return { results: new Map(), warnings: [...warnings, parsed.error || "PDF page rendering failed."], skippedPageNumbers } satisfies LocalRenderRunResult;
+    }
+    return {
+      results: new Map((parsed.pages || []).map((page) => [page.page_number, page])),
+      warnings,
+      skippedPageNumbers
+    } satisfies LocalRenderRunResult;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "PDF page rendering failed.";
+    const maybeChildError = error as { killed?: boolean; signal?: string } | null;
+    const workerWarning =
+      maybeChildError?.killed || maybeChildError?.signal === "SIGTERM" || /timed out/i.test(errorMessage)
+        ? `PDF page rendering timed out after ${timeoutMs} ms.`
+        : errorMessage;
+    return { results: new Map(), warnings: [...warnings, workerWarning], skippedPageNumbers } satisfies LocalRenderRunResult;
+  }
+}
+
+async function runLocalVisualCropRender(pdf: PdfUpload, candidates: VisualCropCandidate[]) {
+  const pythonPath = findTextPythonCommand();
+  const warnings: string[] = [];
+  if (!pythonPath) {
+    warnings.push(
+      process.env.PDF_TEXT_PYTHON || process.env.PDF_OCR_PYTHON
+        ? "Configured Python path for PDF crop rendering was not found."
+        : "Python executable was not found. Set PDF_TEXT_PYTHON or PDF_OCR_PYTHON to render visual evidence crops."
+    );
+    return { results: new Map(), warnings } satisfies LocalVisualCropRunResult;
+  }
+  if (candidates.length === 0) {
+    return { results: new Map(), warnings } satisfies LocalVisualCropRunResult;
+  }
+
+  const { value: timeoutMs, warning: timeoutWarning } = parseOcrTimeoutMs();
+  if (timeoutWarning) warnings.push(timeoutWarning);
+  const pdfPath = await materializePdfForWorker(pdf);
+  const outputKey = `${safePathSegment(pdf.id)}-crops-${Date.now().toString(36)}`;
+  const outputDir = path.join(process.cwd(), "public", "uploads", "pdf-import-crops", outputKey);
+  const publicPrefix = `/uploads/pdf-import-crops/${outputKey}`;
+  await mkdir(outputDir, { recursive: true });
+  const env = {
+    ...process.env,
+    PYTHONPATH: [
+      process.env.PDF_OCR_PYTHONPATH,
+      "D:\\Codex\\tools\\pdf-ocr-python",
+      process.env.PYTHONPATH
+    ]
+      .filter(Boolean)
+      .join(path.delimiter)
+  };
+
+  try {
+    const { stdout } = await execFileAsync(
+      pythonPath,
+      [
+        path.join(process.cwd(), "scripts", "pdf-ocr-worker.py"),
+        "--pdf",
+        pdfPath,
+        "--out-dir",
+        outputDir,
+        "--public-prefix",
+        publicPrefix,
+        "--render-only",
+        "--crops-json",
+        JSON.stringify(candidates.map((candidate) => ({
+          candidate_id: candidate.candidateId,
+          page_number: candidate.pageNumber,
+          bbox: candidate.bbox
+        })))
+      ],
+      { env, maxBuffer: 20 * 1024 * 1024, timeout: timeoutMs }
+    );
+    const jsonStart = stdout.lastIndexOf('{"ok"');
+    const jsonText = jsonStart >= 0 ? stdout.slice(jsonStart) : stdout;
+    const parsed = JSON.parse(jsonText) as {
+      ok: boolean;
+      error?: string;
+      crops?: Array<{ candidate_id: string; page_number: number; image_url: string | null; bbox: [number, number, number, number] | null; warnings: string[] }>;
+    };
+    if (!parsed.ok) {
+      return { results: new Map(), warnings: [...warnings, parsed.error || "PDF crop rendering failed."] } satisfies LocalVisualCropRunResult;
+    }
+    return {
+      results: new Map((parsed.crops || []).map((crop) => [crop.candidate_id, crop])),
+      warnings
+    } satisfies LocalVisualCropRunResult;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "PDF crop rendering failed.";
+    const maybeChildError = error as { killed?: boolean; signal?: string } | null;
+    const workerWarning =
+      maybeChildError?.killed || maybeChildError?.signal === "SIGTERM" || /timed out/i.test(errorMessage)
+        ? `PDF crop rendering timed out after ${timeoutMs} ms.`
+        : errorMessage;
+    return { results: new Map(), warnings: [...warnings, workerWarning] } satisfies LocalVisualCropRunResult;
+  }
+}
+
 function cleanText(value: string) {
   return value
     .replace(/\r/g, "\n")
@@ -356,6 +587,12 @@ function cleanText(value: string) {
     .replace(/[ \t]*\n[ \t]*/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+function normalizeConfidence(value: number | null | undefined) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  const normalized = value > 1 ? value / 100 : value;
+  return Math.max(0, Math.min(1, Number(normalized.toFixed(4))));
 }
 
 function textQuality(value: string) {
@@ -574,6 +811,274 @@ function isAnswerKeyLikeText(text: string) {
   return shortAnswerLines >= 3 && shortAnswerLines / Math.max(1, cleaned.split(/\n+/).filter(Boolean).length) > 0.5;
 }
 
+function scoringGuideSignalScore(text: string) {
+  const cleaned = cleanText(text);
+  if (!cleaned || isAnswerKeyLikeText(cleaned)) return 0;
+  const phraseMatches = cleaned.match(
+    /\b(?:answer\s+and\s+scoring\s+guidelines?|scoring\s+guidelines?|scoring\s+guide|rubric|scoring\s+criteria|sample\s+responses?|student\s+samples?|chief\s+reader|commentary|model\s+solution|acceptable\s+responses?|expected\s+responses?|does\s+not\s+earn|earns?\s+(?:the\s+)?point|point\s+(?:is\s+)?(?:earned|awarded)|select\s+a\s+point\s+value|maximum\s+points?|task\s+verbs?|learning\s+objective)\b/gi
+  ) || [];
+  const pointLineMatches = cleaned.match(
+    /(?:^|\s)(?:one|two|three|four|five|\d+)\s+points?\b|\b\d+\s+point\b|\b\d+\/\d+\s+point\b/gi
+  ) || [];
+  const scoringTableMatches = cleaned.match(/\b(?:row|point|criteria|decision\s+rules?)\b.{0,80}\b(?:earned|awarded|response|score)\b/gi) || [];
+  return phraseMatches.length * 2 + pointLineMatches.length + scoringTableMatches.length;
+}
+
+function hasQuestionPromptContent(text: string) {
+  const cleaned = cleanText(text);
+  if (!cleaned) return false;
+  const questionStarts = cleaned.match(/(?:^|\n|\s)(?:Question\s+)?\d{1,3}[\).]\s+(?=[A-Z(])/g) || [];
+  const { choices } = splitChoices(cleaned);
+  const frqParts = extractFrqParts(cleaned);
+  const promptLikeStart = questionStarts.length > 0 && /\b(?:which|what|why|how|calculate|derive|explain|describe|identify|select|choose|answer)\b/i.test(cleaned);
+  return promptLikeStart || choices.length >= 2 || frqParts.length >= 2 || /\bFree-Response\s+Questions\b/i.test(cleaned);
+}
+
+function isScoringGuideContentHeavy(text: string) {
+  return scoringGuideSignalScore(text) >= 3 || isScoringSectionStart(text);
+}
+
+function isScoringGuideOnlyText(text: string) {
+  const cleaned = cleanText(text);
+  if (!cleaned || isAnswerKeyLikeText(cleaned)) return false;
+  return isScoringGuideContentHeavy(cleaned) && !hasQuestionPromptContent(cleaned);
+}
+
+function classifyScoringGuideContent(pages: PageWithoutStorage[]): ScoringContentClassification {
+  const warningsByPage = new Map<number, string[]>();
+  const scoringHeavyPageNumbers: number[] = [];
+  const scoringOnlyPageNumbers: number[] = [];
+  const questionLikePageNumbers: number[] = [];
+  let totalSignalScore = 0;
+  let textPageCount = 0;
+
+  for (const page of pages) {
+    const text = acceptedPageText(page);
+    if (!text) continue;
+    textPageCount += 1;
+    const score = scoringGuideSignalScore(text);
+    const questionLike = hasQuestionPromptContent(text);
+    const scoringHeavy = score >= 3 || isScoringSectionStart(text);
+    totalSignalScore += score;
+    if (questionLike) questionLikePageNumbers.push(page.page_number);
+    if (scoringHeavy) scoringHeavyPageNumbers.push(page.page_number);
+    if (scoringHeavy && !questionLike && !isAnswerKeyLikeText(text)) {
+      scoringOnlyPageNumbers.push(page.page_number);
+      warningsByPage.set(page.page_number, ["Excluded from question segmentation because content signals look like scoring/rubric/sample-response material."]);
+    }
+  }
+
+  const scoringHeavyRatio = scoringHeavyPageNumbers.length / Math.max(1, textPageCount);
+  const scoringOnlyRatio = scoringOnlyPageNumbers.length / Math.max(1, textPageCount);
+  const shouldSuppressDrafts = textPageCount > 0 && scoringHeavyPageNumbers.length > 0 && (
+    (scoringOnlyRatio >= 0.5 && scoringOnlyPageNumbers.length > questionLikePageNumbers.length) ||
+    (scoringHeavyRatio >= 0.6 && totalSignalScore >= textPageCount * 2) ||
+    (scoringHeavyPageNumbers.length >= 2 && questionLikePageNumbers.length <= Math.max(1, Math.floor(scoringHeavyPageNumbers.length / 3)))
+  );
+  const warnings: string[] = [];
+  if (scoringOnlyPageNumbers.length > 0) {
+    warnings.push(`Excluded ${scoringOnlyPageNumbers.length} scoring/rubric-only page(s) from question segmentation.`);
+  }
+  if (shouldSuppressDrafts) {
+    warnings.push("Content-based scoring-guide detection suppressed draft generation because the document is mostly scoring, rubric, sample-response, or commentary material.");
+  } else if (scoringHeavyPageNumbers.length > 0) {
+    warnings.push(`Detected scoring/rubric signals on ${scoringHeavyPageNumbers.length} page(s); admin must verify prompts are not scoring-guide material.`);
+  }
+
+  return {
+    shouldSuppressDrafts,
+    textPageCount,
+    scoringHeavyPageNumbers,
+    scoringOnlyPageNumbers,
+    questionLikePageNumbers,
+    warningsByPage,
+    warnings
+  };
+}
+
+function extractAnswerKeyEntries(text: string, pageNumber: number) {
+  if (!isAnswerKeyLikeText(text)) return [] as AnswerKeyEntry[];
+  const entries: AnswerKeyEntry[] = [];
+  const seen = new Set<string>();
+  const normalized = cleanText(text);
+  const entryRe = /(?:^|\s)(\d{1,3})[\).]?\s*(?:answer\s*)?[:\-]?\s*\(?([A-E](?:\s*,\s*[A-E])?)\)?(?=\s|$)/gi;
+  for (const match of normalized.matchAll(entryRe)) {
+    const questionNumber = Number(match[1]);
+    const answer = match[2]
+      .split(",")
+      .map((label) => label.trim().toUpperCase())
+      .filter(Boolean)
+      .join(",");
+    if (!Number.isInteger(questionNumber) || questionNumber < 1 || !answer) continue;
+    const key = `${questionNumber}:${answer}:${pageNumber}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    entries.push({ questionNumber, answer, pageNumber });
+  }
+  return entries;
+}
+
+function extractExplanationEntries(text: string, pageNumber: number) {
+  const cleaned = cleanText(text);
+  if (!cleaned || !/\b(?:explanations?|rationales?)\b/i.test(cleaned)) return [] as ExplanationEntry[];
+  const sectionMatch = cleaned.match(/\b(?:explanations?|rationales?)\b[:\-\s]*([\s\S]+)$/i);
+  const explanationSection = cleanText(sectionMatch?.[1] || "");
+  if (!explanationSection) return [];
+  const starts = [...explanationSection.matchAll(/(?:^|\s)(\d{1,3})[\).]\s+(?=[A-Z(])/g)];
+  if (starts.length === 0) return [];
+  const entries: ExplanationEntry[] = [];
+  const seen = new Set<string>();
+  starts.forEach((match, index) => {
+    const questionNumber = Number(match[1]);
+    const start = (match.index || 0) + match[0].length;
+    const end = starts[index + 1]?.index ?? explanationSection.length;
+    const explanation = cleanText(explanationSection.slice(start, end));
+    if (!Number.isInteger(questionNumber) || questionNumber < 1 || explanation.length < 12) return;
+    if (/^[A-E](?:\s*,\s*[A-E])?$/i.test(explanation)) return;
+    const key = `${questionNumber}:${pageNumber}:${explanation}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    entries.push({ questionNumber, explanation, pageNumber });
+  });
+  return entries;
+}
+
+function applyExplicitAnswerKeyEntries(drafts: DraftQuestionWithoutStorage[], entries: AnswerKeyEntry[]) {
+  const warnings: string[] = [];
+  if (entries.length === 0) return { appliedCount: 0, warnings };
+  const byQuestion = new Map<number, AnswerKeyEntry[]>();
+  for (const entry of entries) {
+    const group = byQuestion.get(entry.questionNumber) || [];
+    group.push(entry);
+    byQuestion.set(entry.questionNumber, group);
+  }
+
+  let appliedCount = 0;
+  for (const draft of drafts) {
+    if (draft.type !== "mcq" || draft.correct_answer || draft.question_number === null || draft.choices.length === 0) continue;
+    const candidates = byQuestion.get(draft.question_number) || [];
+    if (candidates.length === 0) continue;
+    const uniqueAnswers = Array.from(new Set(candidates.map((entry) => entry.answer)));
+    if (uniqueAnswers.length !== 1) {
+      warnings.push(`Conflicting explicit answer-key entries were found for question ${draft.question_number}; no answer was attached.`);
+      continue;
+    }
+    const answer = uniqueAnswers[0];
+    const labels = answer.split(",");
+    const choiceIds = new Set(draft.choices.map((choice) => choice.id));
+    if (!labels.every((label) => choiceIds.has(label))) {
+      warnings.push(`Explicit answer-key entry for question ${draft.question_number} did not match parsed choices; no answer was attached.`);
+      continue;
+    }
+    const sourcePages = Array.from(new Set(candidates.filter((entry) => entry.answer === answer).map((entry) => entry.pageNumber))).sort((a, b) => a - b);
+    draft.correct_answer = answer;
+    draft.warnings = Array.from(new Set([
+      ...draft.warnings.filter((warning) => !/No explicit answer key was detected/i.test(warning)),
+      `Correct answer matched from explicit answer-key page ${sourcePages.join(", ")}. Admin must verify before saving.`
+    ]));
+    appliedCount += 1;
+  }
+  return { appliedCount, warnings };
+}
+
+function applyExplicitExplanationEntries(drafts: DraftQuestionWithoutStorage[], entries: ExplanationEntry[]) {
+  const warnings: string[] = [];
+  if (entries.length === 0) return { appliedCount: 0, warnings };
+  const byQuestion = new Map<number, ExplanationEntry[]>();
+  for (const entry of entries) {
+    const group = byQuestion.get(entry.questionNumber) || [];
+    group.push(entry);
+    byQuestion.set(entry.questionNumber, group);
+  }
+
+  let appliedCount = 0;
+  for (const draft of drafts) {
+    if (draft.explanation || draft.question_number === null) continue;
+    const candidates = byQuestion.get(draft.question_number) || [];
+    if (candidates.length === 0) continue;
+    const uniqueExplanations = Array.from(new Set(candidates.map((entry) => entry.explanation)));
+    if (uniqueExplanations.length !== 1) {
+      warnings.push(`Conflicting explicit explanation entries were found for question ${draft.question_number}; no explanation was attached.`);
+      continue;
+    }
+    const explanation = uniqueExplanations[0];
+    const sourcePages = Array.from(new Set(candidates.filter((entry) => entry.explanation === explanation).map((entry) => entry.pageNumber))).sort((a, b) => a - b);
+    draft.explanation = explanation;
+    draft.warnings = Array.from(new Set([
+      ...draft.warnings,
+      `Explanation matched from explicit explanation/rationale page ${sourcePages.join(", ")}. Admin must verify before saving.`
+    ]));
+    appliedCount += 1;
+  }
+  return { appliedCount, warnings };
+}
+
+function isTableOfContentsLikeText(text: string) {
+  const cleaned = cleanText(text);
+  return /\bContents\b/i.test(cleaned) && /\bSECTION\s+I\b/i.test(cleaned) && /\bSECTION\s+II\b/i.test(cleaned);
+}
+
+function isScoringSectionStart(text: string) {
+  const cleaned = cleanText(text);
+  if (!cleaned || isTableOfContentsLikeText(cleaned)) return false;
+  return (
+    /\bAnswer\s+and\s+Scoring\s+Guidelines\b/i.test(cleaned) ||
+    /^Scoring\s+Guide\b/i.test(cleaned) ||
+    /\bSelect\s+a\s+point\s+value\s+to\s+view\s+scoring\s+criteria\b/i.test(cleaned)
+  );
+}
+
+function isFrqSectionStart(text: string) {
+  const cleaned = cleanText(text);
+  if (!cleaned || isTableOfContentsLikeText(cleaned)) return false;
+  return /\bSECTION\s+II\b/i.test(cleaned) || /\bFree-Response\s+Questions\b/i.test(cleaned);
+}
+
+function isMcqSectionStart(text: string) {
+  const cleaned = cleanText(text);
+  if (!cleaned || isTableOfContentsLikeText(cleaned)) return false;
+  return (
+    /\bSECTION\s+I\b/i.test(cleaned) ||
+    /\bMultiple\s+Choice\s+Questions\b/i.test(cleaned) ||
+    /\bquestions\s+or\s+incomplete\s+statements\b.*\bfour\s+suggested\s+answers\b/i.test(cleaned)
+  );
+}
+
+function buildSegmentationSections(pages: PageWithoutStorage[]) {
+  const sectionByPage = new Map<number, PdfQuestionSection>();
+  const warningsByPage = new Map<number, string[]>();
+  let currentSection: PdfQuestionSection = "unknown";
+  let inScoringSection = false;
+
+  for (const page of pages) {
+    const text = acceptedPageText(page);
+    const warnings: string[] = [];
+    let section: PdfQuestionSection = currentSection;
+    if (!text) {
+      sectionByPage.set(page.page_number, "non_question");
+      continue;
+    }
+    if (isTableOfContentsLikeText(text)) {
+      section = "non_question";
+      warnings.push("Excluded from question segmentation because this page looks like a table of contents.");
+    } else if (inScoringSection || isScoringSectionStart(text) || isScoringGuideOnlyText(text) || isAnswerKeyLikeText(text)) {
+      inScoringSection = true;
+      section = "non_question";
+      warnings.push("Excluded from question segmentation because this page looks like answer/scoring material.");
+    } else if (isFrqSectionStart(text)) {
+      currentSection = "frq";
+      section = "frq";
+    } else if (isMcqSectionStart(text)) {
+      currentSection = "mcq";
+      section = "mcq";
+    }
+    sectionByPage.set(page.page_number, section);
+    if (warnings.length > 0) warningsByPage.set(page.page_number, warnings);
+  }
+
+  return { sectionByPage, warningsByPage };
+}
+
 function choiceDiagnostics(choices: QuestionChoice[]) {
   const warnings: string[] = [];
   const ids = choices.map((choice) => choice.id);
@@ -643,46 +1148,63 @@ function extractFrqParts(text: string): PdfFrqPartDraft[] {
   });
 }
 
-function splitQuestionBlocks(pages: PageWithoutStorage[]) {
+function splitQuestionBlocks(pages: PageWithoutStorage[], sectionByPage: Map<number, PdfQuestionSection>) {
   const joined = pages
     .map((page) => {
       const usableText = acceptedPageText(page);
-      if (!usableText || isAnswerKeyLikeText(usableText)) return "";
-      return `\n\n[[PAGE ${page.page_number}]]\n${usableText}`;
+      const section = sectionByPage.get(page.page_number) || "unknown";
+      if (!usableText || section === "non_question") return "";
+      return `\n\n[[PAGE ${page.page_number} SECTION ${section}]]\n${usableText}`;
     })
     .filter(Boolean)
     .join("\n");
-  const questionStartRe = /(?:^|\n)(?:\[\[PAGE\s+(\d+)\]\]\s*)?(?:Question\s+)?(\d{1,3})[\).]\s+/gi;
+  const pageMarkerRe = /\[\[PAGE\s+(\d+)\s+SECTION\s+([a-z_]+)\]\]/g;
+  const pageMarkers = [...joined.matchAll(pageMarkerRe)].map((match) => ({
+    index: match.index || 0,
+    pageNumber: Number(match[1]),
+    section: (match[2] || "unknown") as PdfQuestionSection
+  }));
+  function pageMarkerAt(index: number) {
+    let current = pageMarkers[0] || { pageNumber: 1, section: "unknown" as PdfQuestionSection, index: 0 };
+    for (const marker of pageMarkers) {
+      if (marker.index <= index) current = marker;
+      else break;
+    }
+    return current;
+  }
+
+  const questionStartRe = /(?:^|\n)(?:Question\s+)?(\d{1,3})[\).]\s+(?=[A-Z(])/g;
   const starts = [...joined.matchAll(questionStartRe)];
   if (starts.length === 0) {
     return [];
   }
 
-  return starts.map((match, index) => {
+  return starts.map((match, index): QuestionBlockCandidate => {
+    const startMarker = pageMarkerAt(match.index || 0);
     const start = (match.index || 0) + match[0].length;
     const end = starts[index + 1]?.index ?? joined.length;
     const chunk = joined.slice(start, end);
-    const pageMarkers = [...chunk.matchAll(/\[\[PAGE\s+(\d+)\]\]/g)].map((item) => Number(item[1]));
-    const pageFromPrefix = match[1] ? Number(match[1]) : null;
-    const fallbackPage = pageFromPrefix || pageMarkers[0] || 1;
+    const chunkPageMarkers = [...chunk.matchAll(pageMarkerRe)].map((item) => Number(item[1]));
+    const pageNumbers = Array.from(new Set([startMarker.pageNumber, ...chunkPageMarkers].filter(Number.isFinite))).sort((a, b) => a - b);
     return {
-      questionNumber: Number(match[2]),
-      pageStart: Math.min(fallbackPage, ...pageMarkers.filter(Number.isFinite)),
-      pageEnd: Math.max(fallbackPage, ...pageMarkers.filter(Number.isFinite)),
-      text: cleanText(chunk.replace(/\[\[PAGE\s+\d+\]\]/g, "")),
-      pageNumbers: Array.from(new Set([fallbackPage, ...pageMarkers].filter(Number.isFinite))).sort((a, b) => a - b)
+      questionNumber: Number(match[1]),
+      pageStart: Math.min(...pageNumbers),
+      pageEnd: Math.max(...pageNumbers),
+      text: cleanText(chunk.replace(pageMarkerRe, "")),
+      pageNumbers,
+      section: startMarker.section
     };
   });
 }
 
 function draftFromBlock(
-  block: { questionNumber: number | null; pageStart: number; pageEnd: number; text: string; pageNumbers?: number[] },
+  block: QuestionBlockCandidate,
   pages: PageWithoutStorage[],
   pdf: PdfUpload
 ): DraftQuestionWithoutStorage {
   const { stem, choices } = splitChoices(block.text);
   const frqParts = extractFrqParts(block.text);
-  const type = !isFrqPacket(pdf) && choices.length >= 2 ? "mcq" : "frq";
+  const type = block.section === "mcq" && choices.length >= 2 && !isFrqPacket(pdf) ? "mcq" : block.section === "frq" ? "frq" : !isFrqPacket(pdf) && choices.length >= 2 ? "mcq" : "frq";
   const course = pdf.subject?.startsWith("AP ") ? pdf.subject : pdf.subject || "AP Course";
   const subject = course.startsWith("AP ") ? inferSubjectFromCourse(course) : pdf.subject || "AP";
   const year = parseYearFromText(pdf.file_name, block.text);
@@ -700,7 +1222,7 @@ function draftFromBlock(
     warnings.push("No explicit answer key was detected.");
   }
   if (/figure|diagram|graph|table|shown|below/i.test(block.text)) {
-    warnings.push("The text appears to reference a visual. Diagram/table cropping is not automatic in this local OCR MVP.");
+    warnings.push("The text appears to reference a visual. A source crop or verified visual evidence is required before saving.");
   }
   if (type === "frq" && /(?:^|\s)[A-E][\).]?\s+\S/i.test(block.text)) {
     warnings.push("Possible answer choices were detected, but labels were too noisy to create a reliable MCQ draft.");
@@ -709,7 +1231,8 @@ function draftFromBlock(
   const normalizedConfidences = blockPages
     .map((page) => page.confidence)
     .filter((value): value is number => typeof value === "number")
-    .map((value) => (value > 1 ? value / 100 : value));
+    .map((value) => normalizeConfidence(value))
+    .filter((value): value is number => typeof value === "number");
   const minPageConfidence = normalizedConfidences.length > 0 ? Math.min(...normalizedConfidences) : null;
   let confidence = choices.length >= 2 || frqParts.length > 0 ? 0.65 : 0.35;
   if (choiceWarnings.length > 0) confidence -= 0.2;
@@ -742,6 +1265,129 @@ function draftFromBlock(
     confidence,
     warnings
   };
+}
+
+function isSegmentedBlockWorthReview(block: QuestionBlockCandidate, pdf: PdfUpload) {
+  if (block.section === "non_question") return false;
+  if (block.text.length < 20) return false;
+  const { choices } = splitChoices(block.text);
+  const frqParts = extractFrqParts(block.text);
+  if (block.section === "mcq" && !isFrqPacket(pdf)) {
+    return choices.length >= 2;
+  }
+  if (block.section === "frq") {
+    if (block.questionNumber !== null && block.questionNumber > 20) return false;
+    return frqParts.length > 0 || /\bAnswer\s+the\s+following\s+questions\b/i.test(block.text);
+  }
+  return block.text.length >= 20;
+}
+
+function draftNeedsVisualEvidence(draft: DraftQuestionWithoutStorage) {
+  const text = [draft.question_text, ...draft.choices.map((choice) => choice.text), draft.scoring_notes, draft.explanation].join(" ");
+  return /figure|diagram|graph|table|shown|below|image|plot|chart/i.test(text) ||
+    draft.warnings.some((warning) => /visual|diagram|table|graph/i.test(warning));
+}
+
+function recordNumber(record: JsonRecord, key: string) {
+  const value = record[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function rawBlockBbox(record: JsonRecord): [number, number, number, number] | null {
+  const raw = record.bbox;
+  if (!Array.isArray(raw) || raw.length !== 4) return null;
+  const values = raw.map((value) => (typeof value === "number" && Number.isFinite(value) ? value : null));
+  if (values.some((value) => value === null)) return null;
+  const [x0, y0, x1, y1] = values as [number, number, number, number];
+  if (x1 <= x0 || y1 <= y0) return null;
+  return [x0, y0, x1, y1];
+}
+
+function usableVisualBlock(record: JsonRecord) {
+  if (record.kind !== "image") return null;
+  const bbox = rawBlockBbox(record);
+  if (!bbox) return null;
+  const [x0, y0, x1, y1] = bbox;
+  const width = x1 - x0;
+  const height = y1 - y0;
+  if (width < 16 || height < 16) return null;
+  const pageWidth = recordNumber(record, "page_width");
+  const pageHeight = recordNumber(record, "page_height");
+  if (pageWidth && pageHeight) {
+    const pageArea = pageWidth * pageHeight;
+    const blockArea = width * height;
+    if (blockArea > pageArea * 0.72) return null;
+  }
+  return {
+    bbox,
+    blockNumber: recordNumber(record, "block_number"),
+    y0,
+    x0
+  };
+}
+
+function visualAssetTypeForDraft(draft: DraftQuestionWithoutStorage): "diagram" | "table" | "unknown" {
+  const text = [draft.question_text, ...draft.choices.map((choice) => choice.text), draft.scoring_notes, draft.explanation].join(" ");
+  if (/table/i.test(text)) return "table";
+  if (/diagram|graph|figure|shown|below|image|plot|chart/i.test(text)) return "diagram";
+  return "unknown";
+}
+
+function buildVisualCropCandidates(drafts: DraftQuestionWithoutStorage[], pages: PageWithoutStorage[]) {
+  const candidates: VisualCropCandidate[] = [];
+  const pagesByNumber = new Map(pages.map((page) => [page.page_number, page]));
+
+  for (const [draftIndex, draft] of drafts.entries()) {
+    if (!draftNeedsVisualEvidence(draft)) continue;
+    const assetType = visualAssetTypeForDraft(draft);
+    const blocks = Array.from(
+      { length: Math.max(0, draft.source_page_end - draft.source_page_start + 1) },
+      (_, offset) => draft.source_page_start + offset
+    )
+      .flatMap((pageNumber) => {
+        const page = pagesByNumber.get(pageNumber);
+        return (page?.raw_blocks || [])
+          .map((block) => ({ pageNumber, block: usableVisualBlock(block), raw: block }))
+          .filter((item): item is { pageNumber: number; block: NonNullable<ReturnType<typeof usableVisualBlock>>; raw: JsonRecord } => Boolean(item.block));
+      })
+      .sort((a, b) => a.pageNumber - b.pageNumber || a.block.y0 - b.block.y0 || a.block.x0 - b.block.x0)
+      .slice(0, 3);
+
+    for (const [blockIndex, item] of blocks.entries()) {
+      candidates.push({
+        candidateId: `draft-${draftIndex}-page-${item.pageNumber}-image-${blockIndex}`,
+        draftIndex,
+        pageNumber: item.pageNumber,
+        assetType,
+        bbox: item.block.bbox,
+        blockNumber: item.block.blockNumber,
+        source: typeof item.raw.source === "string" ? item.raw.source : "pymupdf"
+      });
+    }
+  }
+
+  return candidates;
+}
+
+function filterOutOfSequenceFrqDrafts(drafts: DraftQuestionWithoutStorage[]) {
+  const kept: DraftQuestionWithoutStorage[] = [];
+  let highestFrqQuestion: number | null = null;
+  let removedCount = 0;
+  for (const draft of drafts) {
+    if (draft.type !== "frq" || draft.question_number === null) {
+      kept.push(draft);
+      continue;
+    }
+    if (highestFrqQuestion !== null && draft.question_number !== highestFrqQuestion + 1) {
+      if (draft.question_number <= highestFrqQuestion || draft.question_number > highestFrqQuestion + 1) {
+        removedCount += 1;
+        continue;
+      }
+    }
+    highestFrqQuestion = draft.question_number;
+    kept.push(draft);
+  }
+  return { drafts: kept, removedCount };
 }
 
 export async function analyzePdfUpload(pdf: PdfUpload): Promise<PdfImportAnalysisInput> {
@@ -821,7 +1467,7 @@ export async function analyzePdfUpload(pdf: PdfUpload): Promise<PdfImportAnalysi
             text_extracted: "",
             ocr_text: ocrText,
             page_image_url: ocr.image_url,
-            confidence: ocr.confidence,
+            confidence: normalizeConfidence(ocr.confidence),
             warnings: [
               ...(text ? [`Embedded text ignored: ${quality.reason}.`] : []),
               `OCR text ignored: ${ocrQuality.reason}.`,
@@ -839,7 +1485,7 @@ export async function analyzePdfUpload(pdf: PdfUpload): Promise<PdfImportAnalysi
           text_extracted: "",
           ocr_text: ocrText,
           page_image_url: ocr.image_url,
-          confidence: ocr.confidence,
+          confidence: normalizeConfidence(ocr.confidence),
           warnings: [
             ...(text ? [`Embedded text ignored: ${quality.reason}.`] : []),
             ...(isAnswerKeyLikeText(ocrText) ? ["This OCR page looks like answer-key/explanation material and was excluded from question segmentation."] : []),
@@ -876,7 +1522,7 @@ export async function analyzePdfUpload(pdf: PdfUpload): Promise<PdfImportAnalysi
         text_extracted: "",
         ocr_text: cleanText(ocr?.text || ""),
         page_image_url: ocr?.image_url || null,
-        confidence: ocr?.confidence || null,
+        confidence: normalizeConfidence(ocr?.confidence),
         warnings: text
           ? [`Embedded text ignored: ${quality.reason}.`, ...(structuredPage?.warnings || []), ...(ocr?.warnings.length ? ocr.warnings : unavailable.warnings)]
           : [...(structuredPage?.warnings || []), ...(ocr?.warnings.length ? ocr.warnings : unavailable.warnings)],
@@ -885,33 +1531,129 @@ export async function analyzePdfUpload(pdf: PdfUpload): Promise<PdfImportAnalysi
     }
   }
 
-  let draftQuestions = splitQuestionBlocks(pages)
-    .filter((block) => block.text.length >= 20)
+  const scoringContent = classifyScoringGuideContent(pages);
+  warnings.push(...scoringContent.warnings);
+  const segmentationSections = buildSegmentationSections(pages);
+  for (const page of pages) {
+    const extraWarnings = [
+      ...(scoringContent.warningsByPage.get(page.page_number) || []),
+      ...(segmentationSections.warningsByPage.get(page.page_number) || [])
+    ];
+    if (extraWarnings.length > 0) page.warnings = Array.from(new Set([...page.warnings, ...extraWarnings]));
+  }
+
+  let draftQuestions = splitQuestionBlocks(pages, segmentationSections.sectionByPage)
+    .filter((block) => isSegmentedBlockWorthReview(block, pdf))
     .map((block) => draftFromBlock(block, pages, pdf));
-  if (isScoringGuidePdf(pdf)) {
+  const frqSequenceFilter = filterOutOfSequenceFrqDrafts(draftQuestions);
+  draftQuestions = frqSequenceFilter.drafts;
+  if (frqSequenceFilter.removedCount > 0) {
+    warnings.push(`Filtered ${frqSequenceFilter.removedCount} out-of-sequence FRQ-like starts that looked like formula/subpart noise.`);
+  }
+  const answerKeyEntries = pages.flatMap((page) => extractAnswerKeyEntries(acceptedPageText(page), page.page_number));
+  const answerKeyAssociation = applyExplicitAnswerKeyEntries(draftQuestions, answerKeyEntries);
+  warnings.push(...answerKeyAssociation.warnings);
+  if (answerKeyAssociation.appliedCount > 0) {
+    warnings.push(`Matched explicit answer-key entries to ${answerKeyAssociation.appliedCount} MCQ draft(s). Verify every answer before saving.`);
+  }
+  const explanationEntries = pages.flatMap((page) => extractExplanationEntries(acceptedPageText(page), page.page_number));
+  const explanationAssociation = applyExplicitExplanationEntries(draftQuestions, explanationEntries);
+  warnings.push(...explanationAssociation.warnings);
+  if (explanationAssociation.appliedCount > 0) {
+    warnings.push(`Matched explicit explanation/rationale entries to ${explanationAssociation.appliedCount} draft(s). Verify every explanation before saving.`);
+  }
+  if (isScoringGuidePdf(pdf) || scoringContent.shouldSuppressDrafts) {
     if (draftQuestions.length > 0) {
       warnings.push("This file looks like a scoring guide or sample-response document. Draft generation was suppressed to avoid importing rubric/scoring text as questions.");
     }
     draftQuestions = [];
   }
-  const draftAssets = draftQuestions.flatMap((draft, draftIndex) => {
-    if (!draft.warnings.some((warning) => /visual|diagram|table|graph/i.test(warning))) return [];
-    const sourcePage = pages.find(
-      (page) => page.page_number >= draft.source_page_start && page.page_number <= draft.source_page_end && page.page_image_url
-    );
-    if (!sourcePage?.page_image_url) return [];
-    const assetType = /table/i.test(draft.question_text) ? "table" : /diagram|graph|figure|shown|below/i.test(draft.question_text) ? "diagram" : "unknown";
+  const visualPageNumbers = draftQuestions
+    .filter(draftNeedsVisualEvidence)
+    .flatMap((draft) =>
+      Array.from(
+        { length: Math.max(0, draft.source_page_end - draft.source_page_start + 1) },
+        (_, offset) => draft.source_page_start + offset
+      )
+    )
+    .filter((pageNumber) => {
+      const page = pages.find((item) => item.page_number === pageNumber);
+      return page && !page.page_image_url;
+    });
+  if (visualPageNumbers.length > 0) {
+    const renderedPages = await runLocalPageRender(pdf, visualPageNumbers);
+    warnings.push(...renderedPages.warnings);
+    for (const page of pages) {
+      const rendered = renderedPages.results.get(page.page_number);
+      if (rendered?.image_url) {
+        page.page_image_url = rendered.image_url;
+        page.warnings = Array.from(
+          new Set([
+            ...page.warnings,
+            "Rendered source-page preview for visual-reference review. Crop/verify before using as a question image.",
+            ...(rendered.warnings || [])
+          ])
+        );
+      } else if (renderedPages.skippedPageNumbers.has(page.page_number)) {
+        page.warnings = Array.from(new Set([...page.warnings, "Source-page preview rendering was skipped by PDF_RENDER_MAX_PAGES."]));
+      }
+    }
+  }
+  const visualCropCandidates = buildVisualCropCandidates(draftQuestions, pages);
+  const visualCropResults = visualCropCandidates.length > 0
+    ? await runLocalVisualCropRender(pdf, visualCropCandidates)
+    : { results: new Map<string, { candidate_id: string; page_number: number; image_url: string | null; bbox: [number, number, number, number] | null; warnings: string[] }>(), warnings: [] };
+  warnings.push(...visualCropResults.warnings);
+  const cropCandidateCountsByDraft = new Map<number, number>();
+  const renderedCropCountsByDraft = new Map<number, number>();
+  const draftAssets = visualCropCandidates.flatMap((candidate) => {
+    cropCandidateCountsByDraft.set(candidate.draftIndex, (cropCandidateCountsByDraft.get(candidate.draftIndex) || 0) + 1);
+    const rendered = visualCropResults.results.get(candidate.candidateId);
+    const renderedWarnings = rendered?.warnings || [];
+    if (rendered?.image_url) renderedCropCountsByDraft.set(candidate.draftIndex, (renderedCropCountsByDraft.get(candidate.draftIndex) || 0) + 1);
+    const bbox = rendered?.bbox || candidate.bbox;
     return [{
-      draft_question_index: draftIndex,
-      page_number: sourcePage.page_number,
-      asset_type: assetType as "diagram" | "table" | "unknown",
-      image_url: sourcePage.page_image_url,
-      bbox: null,
+      draft_question_index: candidate.draftIndex,
+      page_number: candidate.pageNumber,
+      asset_type: candidate.assetType,
+      image_url: rendered?.image_url || null,
+      bbox: {
+        page_number: candidate.pageNumber,
+        bbox,
+        source: candidate.source,
+        block_number: candidate.blockNumber,
+        candidate_id: candidate.candidateId
+      },
       keep_for_question: false,
       status: "candidate" as const,
-      notes: "Candidate source page for a visual reference. Admin must crop/verify before using as a question image."
+      notes: [
+        "Candidate source page for a visual reference. This is a cropped source candidate, not saved automatically.",
+        rendered?.image_url ? "Admin must verify the crop before using it as a question image." : "Crop rendering did not produce an image; use the source page preview to crop manually.",
+        ...renderedWarnings
+      ].filter(Boolean).join(" ")
     }];
   });
+  for (const [draftIndex, draft] of draftQuestions.entries()) {
+    if (!draftNeedsVisualEvidence(draft)) continue;
+    const candidateCount = cropCandidateCountsByDraft.get(draftIndex) || 0;
+    const renderedCount = renderedCropCountsByDraft.get(draftIndex) || 0;
+    if (renderedCount > 0) {
+      draft.warnings = Array.from(new Set([
+        ...draft.warnings,
+        `Generated ${renderedCount} cropped visual evidence candidate(s) from PDF image blocks. Admin must verify before saving.`
+      ]));
+    } else if (candidateCount > 0) {
+      draft.warnings = Array.from(new Set([
+        ...draft.warnings,
+        "Found possible visual source blocks, but automatic crop rendering failed. Use the source page preview to crop manually before saving."
+      ]));
+    } else {
+      draft.warnings = Array.from(new Set([
+        ...draft.warnings,
+        "No usable crop candidate was found for the referenced visual/table/diagram. Treat this draft as incomplete until source visual evidence is supplied."
+      ]));
+    }
+  }
 
   if (draftQuestions.length === 0) {
     warnings.push("No draft questions were segmented. Admin review needs OCR text or a text-based PDF.");

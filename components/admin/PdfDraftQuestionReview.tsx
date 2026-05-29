@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useFormState, useFormStatus } from "react-dom";
 import {
@@ -8,7 +9,7 @@ import {
   type ActionState
 } from "@/app/actions";
 import { MathMarkdown } from "@/components/MathMarkdown";
-import type { PdfImportDraftQuestion, PdfImportPage } from "@/lib/types";
+import type { PdfImportDraftAsset, PdfImportDraftQuestion, PdfImportPage } from "@/lib/types";
 
 function SaveDraftButton({ disabled }: { disabled?: boolean }) {
   const { pending } = useFormStatus();
@@ -54,14 +55,66 @@ function explanationDefault(draft: PdfImportDraftQuestion) {
     .join("\n\n");
 }
 
+type CandidateSelectionState = Record<string, {
+  enabled: boolean;
+  croppedUrl: string;
+  caption: string;
+  alt: string;
+  bbox: string;
+}>;
+
+function initialCandidateSelection(asset: PdfImportDraftAsset) {
+  const bbox = asset.bbox && typeof asset.bbox === "object" ? asset.bbox : null;
+  const hasGeneratedCrop = Boolean(asset.image_url && bbox && "bbox" in bbox);
+  return {
+    enabled: false,
+    croppedUrl: hasGeneratedCrop ? asset.image_url || "" : "",
+    caption: `${asset.asset_type === "unknown" ? "Visual evidence" : asset.asset_type} from PDF page ${asset.page_number}`,
+    alt: `Cropped source evidence from PDF page ${asset.page_number}`,
+    bbox: JSON.stringify(asset.bbox || { page_number: asset.page_number, source_image_url: asset.image_url }, null, 2)
+  };
+}
+
+function buildQuestionImagesJson(
+  draft: PdfImportDraftQuestion,
+  candidateAssets: PdfImportDraftAsset[],
+  selections: CandidateSelectionState
+) {
+  const approvedCrops = candidateAssets.flatMap((asset) => {
+    const selection = selections[asset.id];
+    const croppedUrl = selection?.croppedUrl.trim();
+    if (!selection?.enabled || !croppedUrl) return [];
+    const bbox = selection.bbox.trim();
+    const caption = [
+      selection.caption.trim(),
+      bbox ? `Crop/source bbox: ${bbox.replace(/\s+/g, " ")}` : ""
+    ].filter(Boolean).join(" ");
+    return [{
+      id: `pdf-crop-${asset.id}`,
+      url: croppedUrl,
+      caption: caption || null,
+      alt: selection.alt.trim() || null
+    }];
+  });
+  return JSON.stringify([...draft.question_images, ...approvedCrops], null, 2);
+}
+
 export function PdfDraftQuestionReview({
   draft,
-  sourcePages
+  sourcePages,
+  candidateAssets = []
 }: {
   draft: PdfImportDraftQuestion;
   sourcePages?: PdfImportPage[];
+  candidateAssets?: PdfImportDraftAsset[];
 }) {
   const [state, action] = useFormState<ActionState, FormData>(adminSavePdfDraftQuestionAction, {});
+  const [candidateSelections, setCandidateSelections] = useState<CandidateSelectionState>(() =>
+    Object.fromEntries(candidateAssets.map((asset) => [asset.id, initialCandidateSelection(asset)]))
+  );
+  const [questionImagesJson, setQuestionImagesJson] = useState(() =>
+    buildQuestionImagesJson(draft, candidateAssets, {})
+  );
   const disabled = draft.review_status !== "pending";
   const selectionMeta = inferredSelectionMeta(draft);
   const textWithParts =
@@ -76,6 +129,34 @@ export function PdfDraftQuestionReview({
       "needs-admin-review"
     ])
   ).join(", ");
+  const candidateSelectionValues = useMemo(
+    () => candidateAssets.map((asset) => ({
+      asset,
+      selection: candidateSelections[asset.id] || initialCandidateSelection(asset)
+    })),
+    [candidateAssets, candidateSelections]
+  );
+
+  function updateCandidateSelection(assetId: string, patch: Partial<CandidateSelectionState[string]>) {
+    setCandidateSelections((current) => {
+      const asset = candidateAssets.find((item) => item.id === assetId);
+      const next = {
+        ...current,
+        [assetId]: {
+          ...(current[assetId] || (asset ? initialCandidateSelection(asset) : {
+            enabled: false,
+            croppedUrl: "",
+            caption: "",
+            alt: "",
+            bbox: ""
+          })),
+          ...patch
+        }
+      };
+      setQuestionImagesJson(buildQuestionImagesJson(draft, candidateAssets, next));
+      return next;
+    });
+  }
 
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
@@ -136,7 +217,7 @@ export function PdfDraftQuestionReview({
                   <span className="font-semibold text-ink">Page {page.page_number}</span>
                   <span>
                     {page.extraction_method} · {page.ocr_status}
-                    {page.confidence !== null ? ` · ${Math.round(page.confidence > 1 ? page.confidence : page.confidence * 100)}%` : ""}
+                    {page.confidence !== null ? ` · ${Math.round(page.confidence * 100)}%` : ""}
                   </span>
                 </div>
                 {page.page_image_url ? (
@@ -155,6 +236,72 @@ export function PdfDraftQuestionReview({
                     ))}
                   </ul>
                 ) : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {candidateAssets.length > 0 ? (
+        <div className="mt-4 rounded-md border border-blue-200 bg-blue-50 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-blue-900">Candidate visual evidence</p>
+            <span className="text-xs font-medium text-blue-800">Not saved automatically</span>
+          </div>
+          <div className="mt-3 grid gap-3 lg:grid-cols-2">
+            {candidateSelectionValues.map(({ asset, selection }) => (
+              <div key={asset.id} className="rounded-md border border-blue-100 bg-white p-3 text-xs text-slate-600">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-semibold text-ink">Page {asset.page_number} · {asset.asset_type}</span>
+                  <span>{asset.status}</span>
+                </div>
+                {asset.image_url ? (
+                  <a href={asset.image_url} target="_blank" className="mt-2 block overflow-hidden rounded border border-slate-200">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={asset.image_url} alt={`Candidate visual evidence from page ${asset.page_number}`} className="h-auto max-h-80 w-full object-contain" />
+                  </a>
+                ) : null}
+                <p className="mt-2 leading-5">{asset.notes}</p>
+                <div className="mt-3 space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3">
+                  <label className="flex items-center gap-2 font-medium text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={selection.enabled}
+                      onChange={(event) => updateCandidateSelection(asset.id, { enabled: event.target.checked })}
+                      disabled={disabled}
+                    />
+                    Use cropped asset in saved draft
+                  </label>
+                  <label className="block font-medium text-slate-700">
+                    Cropped asset URL
+                    <input
+                      value={selection.croppedUrl}
+                      onChange={(event) => updateCandidateSelection(asset.id, { croppedUrl: event.target.value })}
+                      placeholder="/uploads/media/cropped-diagram.png"
+                      className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1"
+                      disabled={disabled}
+                    />
+                  </label>
+                  <label className="block font-medium text-slate-700">
+                    Caption
+                    <input
+                      value={selection.caption}
+                      onChange={(event) => updateCandidateSelection(asset.id, { caption: event.target.value })}
+                      className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1"
+                      disabled={disabled}
+                    />
+                  </label>
+                  <label className="block font-medium text-slate-700">
+                    Crop/source bbox JSON
+                    <textarea
+                      value={selection.bbox}
+                      onChange={(event) => updateCandidateSelection(asset.id, { bbox: event.target.value })}
+                      rows={3}
+                      className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1 font-mono"
+                      disabled={disabled}
+                    />
+                  </label>
+                </div>
               </div>
             ))}
           </div>
@@ -235,7 +382,7 @@ export function PdfDraftQuestionReview({
           </label>
           <label className="block text-sm font-medium text-slate-700">
             Question images JSON
-            <textarea name="question_images_json" rows={7} defaultValue={JSON.stringify(draft.question_images, null, 2)} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-xs" />
+            <textarea name="question_images_json" rows={7} value={questionImagesJson} onChange={(event) => setQuestionImagesJson(event.target.value)} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-xs" />
           </label>
         </div>
         <div className="grid gap-3 md:grid-cols-4">
