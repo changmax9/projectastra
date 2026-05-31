@@ -215,6 +215,32 @@ function parseTextTimeoutMs() {
   return { value: Math.floor(parsed), warning: null as string | null };
 }
 
+function stringFromChildOutput(value: unknown) {
+  if (typeof value === "string") return value;
+  if (Buffer.isBuffer(value)) return value.toString("utf8");
+  return "";
+}
+
+function workerFailureMessage(error: unknown, fallback: string) {
+  const childError = error as { stdout?: unknown; stderr?: unknown } | null;
+  const stdout = stringFromChildOutput(childError?.stdout);
+  const jsonStart = stdout.lastIndexOf('{"ok"');
+  if (jsonStart >= 0) {
+    try {
+      const parsed = JSON.parse(stdout.slice(jsonStart)) as { ok?: boolean; error?: string };
+      if (parsed.ok === false && parsed.error) return parsed.error;
+    } catch {
+      // Fall through to stderr/Error.message.
+    }
+  }
+
+  const stderr = stringFromChildOutput(childError?.stderr).trim();
+  if (stderr) return stderr.split(/\r?\n/).slice(-3).join("\n");
+
+  const message = error instanceof Error ? error.message : fallback;
+  return message.replaceAll(process.cwd(), "<project>");
+}
+
 async function materializePdfForWorker(pdf: PdfUpload) {
   if (!/^https?:\/\//i.test(pdf.file_url) && !pdf.file_url.startsWith("/")) return pdf.file_url;
   const bytes = await loadPdfBytes(pdf);
@@ -286,12 +312,12 @@ async function runLocalStructuredTextExtraction(pdf: PdfUpload) {
       warnings
     } satisfies LocalTextRunResult;
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Structured PDF text extraction failed.";
     const maybeChildError = error as { killed?: boolean; signal?: string } | null;
+    const workerMessage = workerFailureMessage(error, "Structured PDF text extraction failed.");
     const workerWarning =
-      maybeChildError?.killed || maybeChildError?.signal === "SIGTERM" || /timed out/i.test(errorMessage)
+      maybeChildError?.killed || maybeChildError?.signal === "SIGTERM" || /timed out/i.test(workerMessage)
         ? `Structured PDF text worker timed out after ${timeoutMs} ms.`
-        : errorMessage;
+        : workerMessage;
     return {
       provider: "embedded-text",
       pageCount: null,
@@ -401,12 +427,12 @@ async function runLocalTesseractOcr(pdf: PdfUpload, pageNumbers: number[]) {
       skippedPageNumbers
     } satisfies LocalOcrRunResult;
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Local OCR worker failed.";
     const maybeChildError = error as { killed?: boolean; signal?: string } | null;
+    const workerMessage = workerFailureMessage(error, "Local OCR worker failed.");
     const workerWarning =
-      maybeChildError?.killed || maybeChildError?.signal === "SIGTERM" || /timed out/i.test(errorMessage)
+      maybeChildError?.killed || maybeChildError?.signal === "SIGTERM" || /timed out/i.test(workerMessage)
         ? `Local OCR worker timed out after ${timeoutMs} ms.`
-        : errorMessage;
+        : workerMessage;
     return {
       provider: unavailableOcrProvider.name,
       results: new Map<number, LocalOcrPageResult>(),
@@ -491,12 +517,12 @@ async function runLocalPageRender(pdf: PdfUpload, pageNumbers: number[]) {
       skippedPageNumbers
     } satisfies LocalRenderRunResult;
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "PDF page rendering failed.";
     const maybeChildError = error as { killed?: boolean; signal?: string } | null;
+    const workerMessage = workerFailureMessage(error, "PDF page rendering failed.");
     const workerWarning =
-      maybeChildError?.killed || maybeChildError?.signal === "SIGTERM" || /timed out/i.test(errorMessage)
+      maybeChildError?.killed || maybeChildError?.signal === "SIGTERM" || /timed out/i.test(workerMessage)
         ? `PDF page rendering timed out after ${timeoutMs} ms.`
-        : errorMessage;
+        : workerMessage;
     return { results: new Map(), warnings: [...warnings, workerWarning], skippedPageNumbers } satisfies LocalRenderRunResult;
   }
 }
@@ -570,12 +596,12 @@ async function runLocalVisualCropRender(pdf: PdfUpload, candidates: VisualCropCa
       warnings
     } satisfies LocalVisualCropRunResult;
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "PDF crop rendering failed.";
     const maybeChildError = error as { killed?: boolean; signal?: string } | null;
+    const workerMessage = workerFailureMessage(error, "PDF crop rendering failed.");
     const workerWarning =
-      maybeChildError?.killed || maybeChildError?.signal === "SIGTERM" || /timed out/i.test(errorMessage)
+      maybeChildError?.killed || maybeChildError?.signal === "SIGTERM" || /timed out/i.test(workerMessage)
         ? `PDF crop rendering timed out after ${timeoutMs} ms.`
-        : errorMessage;
+        : workerMessage;
     return { results: new Map(), warnings: [...warnings, workerWarning] } satisfies LocalVisualCropRunResult;
   }
 }
@@ -760,6 +786,9 @@ function isPdfBytes(bytes: Buffer) {
 }
 
 async function loadPdfBytes(pdf: PdfUpload) {
+  if (path.isAbsolute(pdf.file_url) && existsSync(pdf.file_url)) {
+    return readFile(pdf.file_url);
+  }
   if (pdf.file_url.startsWith("/")) {
     const relative = pdf.file_url.replace(/^\/+/, "");
     return readFile(path.join(process.cwd(), "public", relative));
@@ -1197,6 +1226,136 @@ function splitQuestionBlocks(pages: PageWithoutStorage[], sectionByPage: Map<num
   });
 }
 
+function isQuestionGroupExportText(text: string) {
+  return /\bAll Question Groups\b|\bGROUPS\s+QUESTIONS\s+SECTIONS\b|\bSection\s+\d+,\s*Module\s+\d+/i.test(text);
+}
+
+function isQuestionGroupHeaderLine(line: string) {
+  return (
+    /^All Question Groups$/i.test(line) ||
+    /^Source:/i.test(line) ||
+    /^(?:GROUPS|QUESTIONS|SECTIONS|CONTENTS|All|normal|NORMAL)$/i.test(line) ||
+    /^Section\s+\d+,\s*Module\s+\d+/i.test(line) ||
+    /^\d+\s+questions$/i.test(line)
+  );
+}
+
+function inferAnswerDelimitedQuestionNumber(lines: string[], expectedQuestionNumber: number | null) {
+  const explicitQuestion = lines
+    .map((line) => line.match(/^Question\s+(\d{1,3})\b/i)?.[1])
+    .find(Boolean);
+  if (explicitQuestion) return Number(explicitQuestion);
+
+  const standaloneNumbers = lines
+    .map((line, index) => ({ index, value: Number(line) }))
+    .filter((item) => Number.isInteger(item.value) && item.value > 0 && item.value < 200);
+
+  if (expectedQuestionNumber !== null) {
+    const expected = standaloneNumbers.find((item) => item.value === expectedQuestionNumber && item.index < 40);
+    if (expected) return expected.value;
+  }
+
+  const beforeChoices = standaloneNumbers.find((item) => {
+    const followingText = lines.slice(item.index + 1, item.index + 8).join(" ");
+    return /\b(?:which|what|does|if|based|assuming|according|find|calculate|estimate|determine)\b/i.test(followingText);
+  });
+  if (beforeChoices) return beforeChoices.value;
+
+  return expectedQuestionNumber;
+}
+
+function cleanAnswerDelimitedQuestionText(rawText: string, questionNumber: number | null) {
+  const lines = cleanText(rawText.replace(/\[\[PAGE\s+\d+\s+SECTION\s+[a-z_]+\]\]/g, ""))
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length === 0) return "";
+
+  const questionNumberIndex =
+    questionNumber === null ? -1 : lines.findIndex((line) => line === String(questionNumber));
+  let startIndex = questionNumberIndex >= 0 ? questionNumberIndex : 0;
+  while (startIndex > 0) {
+    const previous = lines[startIndex - 1];
+    if (isQuestionGroupHeaderLine(previous)) break;
+    if (/^\d{1,3}$/.test(previous) && questionNumberIndex - startIndex > 4) break;
+    startIndex -= 1;
+  }
+
+  const kept = lines.slice(startIndex).filter((line, index) => {
+    if (questionNumber !== null && line === String(questionNumber) && (questionNumberIndex < 0 || startIndex + index === questionNumberIndex)) {
+      return false;
+    }
+    return !isQuestionGroupHeaderLine(line);
+  });
+  return cleanText(kept.join("\n"));
+}
+
+function splitAnswerDelimitedMcqBlocks(pages: PageWithoutStorage[], sectionByPage: Map<number, PdfQuestionSection>) {
+  const joined = pages
+    .map((page) => {
+      const usableText = acceptedPageText(page);
+      if (!usableText) return "";
+      const section = sectionByPage.get(page.page_number) || "unknown";
+      const canUseNonQuestionPage = isQuestionGroupExportText(usableText);
+      const canUseAnswerDelimitedPage = canUseNonQuestionPage || /\bAnswer\s*:\s*[A-E]\b/i.test(usableText);
+      if (section === "non_question" && !canUseAnswerDelimitedPage) return "";
+      if (isAnswerKeyLikeText(usableText) && !canUseAnswerDelimitedPage) return "";
+      if (isScoringGuideOnlyText(usableText) && !canUseAnswerDelimitedPage) return "";
+      return `\n\n[[PAGE ${page.page_number} SECTION ${section === "non_question" ? "mcq" : section}]]\n${usableText}`;
+    })
+    .filter(Boolean)
+    .join("\n");
+  if (!joined || !/\bAnswer\s*:\s*[A-E]\b/i.test(joined)) return [] as QuestionBlockCandidate[];
+
+  const pageMarkerRe = /\[\[PAGE\s+(\d+)\s+SECTION\s+([a-z_]+)\]\]/g;
+  const pageMarkers = [...joined.matchAll(pageMarkerRe)].map((match) => ({
+    index: match.index || 0,
+    pageNumber: Number(match[1]),
+    section: (match[2] || "unknown") as PdfQuestionSection
+  }));
+  function pageMarkerAt(index: number) {
+    let current = pageMarkers[0] || { pageNumber: 1, section: "mcq" as PdfQuestionSection, index: 0 };
+    for (const marker of pageMarkers) {
+      if (marker.index <= index) current = marker;
+      else break;
+    }
+    return current;
+  }
+
+  const answerRe = /\bAnswer\s*:\s*([A-E])\b/gi;
+  const blocks: QuestionBlockCandidate[] = [];
+  let blockStart = 0;
+  let lastQuestionNumber = 0;
+  for (const match of joined.matchAll(answerRe)) {
+    const chunkStart = blockStart;
+    const answerEnd = (match.index || 0) + match[0].length;
+    const rawChunk = joined.slice(chunkStart, answerEnd);
+    blockStart = answerEnd;
+    const cleanChunkWithoutMarkers = cleanText(rawChunk.replace(pageMarkerRe, ""));
+    const lines = cleanChunkWithoutMarkers.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+    const expected = lastQuestionNumber > 0 ? lastQuestionNumber + 1 : 1;
+    const questionNumber = inferAnswerDelimitedQuestionNumber(lines, expected);
+    const questionText = cleanAnswerDelimitedQuestionText(rawChunk, questionNumber);
+    const { choices } = splitChoices(questionText);
+    if (!questionText || choices.length < 2) continue;
+
+    const startMarker = pageMarkerAt(chunkStart);
+    const answerMarker = pageMarkerAt(match.index || 0);
+    const chunkPageMarkers = [...rawChunk.matchAll(pageMarkerRe)].map((item) => Number(item[1]));
+    const pageNumbers = Array.from(new Set([startMarker.pageNumber, answerMarker.pageNumber, ...chunkPageMarkers].filter(Number.isFinite))).sort((a, b) => a - b);
+    blocks.push({
+      questionNumber,
+      pageStart: Math.min(...pageNumbers),
+      pageEnd: Math.max(...pageNumbers),
+      text: questionText,
+      pageNumbers,
+      section: "mcq"
+    });
+    if (questionNumber !== null) lastQuestionNumber = questionNumber;
+  }
+  return blocks;
+}
+
 function draftFromBlock(
   block: QuestionBlockCandidate,
   pages: PageWithoutStorage[],
@@ -1542,7 +1701,18 @@ export async function analyzePdfUpload(pdf: PdfUpload): Promise<PdfImportAnalysi
     if (extraWarnings.length > 0) page.warnings = Array.from(new Set([...page.warnings, ...extraWarnings]));
   }
 
-  let draftQuestions = splitQuestionBlocks(pages, segmentationSections.sectionByPage)
+  let questionBlocks = splitQuestionBlocks(pages, segmentationSections.sectionByPage);
+  if (questionBlocks.length === 0) {
+    const answerDelimitedBlocks = splitAnswerDelimitedMcqBlocks(pages, segmentationSections.sectionByPage);
+    if (answerDelimitedBlocks.length > 0) {
+      warnings.push(
+        `Used answer-delimited MCQ fallback segmentation for ${answerDelimitedBlocks.length} draft question(s). Admin must verify every question before saving.`
+      );
+      questionBlocks = answerDelimitedBlocks;
+    }
+  }
+
+  let draftQuestions = questionBlocks
     .filter((block) => isSegmentedBlockWorthReview(block, pdf))
     .map((block) => draftFromBlock(block, pages, pdf));
   const frqSequenceFilter = filterOutOfSequenceFrqDrafts(draftQuestions);

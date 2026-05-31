@@ -108,6 +108,7 @@ async function runPdfFixtureAssertions() {
   const answerKeyPath = path.join(fixtureDir, "answer-key-with-explanations.pdf");
   const neutralRubricPath = path.join(fixtureDir, "neutral-rubric-content.pdf");
   const mixedPromptScoringPath = path.join(fixtureDir, "mixed-prompt-and-scoring.pdf");
+  const questionGroupExportPath = path.join(fixtureDir, "question-group-export.pdf");
 
   makeTextPdf(answerKeyPath, [
     `1. Which claim is supported by the table below?
@@ -152,6 +153,38 @@ D. The x-value is zero`,
 One point is earned for selecting the positive-slope claim.
 The response does not earn the point if it describes an unrelated table.`
   ]);
+  makeTextPdf(questionGroupExportPath, [
+    `All Question Groups
+Source: AP Statistics Practice
+2
+46
+2
+GROUPS
+QUESTIONS
+SECTIONS
+CONTENTS
+Section 0, Module 0: Section I
+NORMAL
+40 questions
+Which of the following is closest to the 60th percentile of the distribution?
+1
+The dotplot shows fuel economy for 50 car models.
+A. 20 mpg
+B. 25 mpg
+C. 30 mpg
+D. 35 mpg
+E. 45 mpg
+Answer: D
+Of the following, which is the best method for assigning treatments?
+2
+A school district will compare three plans using a randomized block design.
+A. Randomly assigning all students among the three plans
+B. Randomly assigning juniors among the three plans and seniors among the three plans
+C. Assigning juniors to Plan A and seniors to Plan B
+D. Letting students pick their preferred plan
+E. Assigning all seniors to Plan C
+Answer: B`
+  ]);
 
   const answerKey = await analyzePdfUpload(uploadFor(answerKeyPath, "fixture-answer-key"));
   assert.equal(answerKey.status, "needs_review", "fixture answer-key PDF creates review drafts");
@@ -172,6 +205,15 @@ The response does not earn the point if it describes an unrelated table.`
   assert.equal(mixedPromptScoring.status, "needs_review", "mixed prompt/scoring fixture keeps valid prompt drafts");
   assert.equal(mixedPromptScoring.draftQuestions.length, 1, "mixed prompt/scoring fixture excludes scoring page without suppressing prompt page");
   assert.match(mixedPromptScoring.warnings.join(" "), /Excluded 1 scoring\/rubric-only page/, "mixed prompt/scoring fixture reports scoring page exclusion");
+
+  const questionGroupExport = await analyzePdfUpload(uploadFor(questionGroupExportPath, "fixture-question-group-export"));
+  assert.equal(questionGroupExport.status, "needs_review", "question-group export fixture creates review drafts");
+  assert.equal(questionGroupExport.draftQuestions.length, 2, "answer-delimited export fallback creates two drafts");
+  assert.equal(questionGroupExport.draftQuestions[0].question_number, 1, "answer-delimited export preserves question 1");
+  assert.equal(questionGroupExport.draftQuestions[0].correct_answer, "D", "answer-delimited export attaches answer D");
+  assert.equal(questionGroupExport.draftQuestions[1].question_number, 2, "answer-delimited export preserves question 2");
+  assert.equal(questionGroupExport.draftQuestions[1].correct_answer, "B", "answer-delimited export attaches answer B");
+  assert.match(questionGroupExport.warnings.join(" "), /answer-delimited MCQ fallback segmentation/, "question-group export warns about fallback segmentation");
 }
 
 function validDraft(overrides = {}) {
