@@ -152,3 +152,5 @@ Check Vercel Function logs. Common causes are missing Supabase env variables, mi
 ### Supabase table or migration missing
 
 If errors mention missing `exam_attempts`, `section_progress`, `student_answers`, or `exam_sections`, apply all migrations in `supabase/migrations`, especially the production data-layer migration.
+
+If PDF analysis says its import tables are missing, run `npm run check:supabase:pdf-import` locally and apply `supabase/migrations/008_pdf_import_pipeline.sql` to the exact Supabase project reported by that command.

@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { execFile } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import path from "node:path";
@@ -139,14 +139,15 @@ function safePathSegment(value: string) {
 }
 
 function commandExists(candidate: string) {
-  return candidate === "python" || candidate === "tesseract" || existsSync(candidate);
+  if (path.isAbsolute(candidate)) return existsSync(candidate);
+  return spawnSync(candidate, ["--version"], { stdio: "ignore", windowsHide: true }).status === 0;
 }
 
 function findPythonCommand() {
   if (process.env.PDF_OCR_PYTHON) {
     return commandExists(process.env.PDF_OCR_PYTHON) ? process.env.PDF_OCR_PYTHON : null;
   }
-  return ["D:\\Anaconda\\python.exe", "python"].find(commandExists) || null;
+  return ["D:\\Anaconda\\python.exe", "python3", "python"].find(commandExists) || null;
 }
 
 function findTesseractCommand() {

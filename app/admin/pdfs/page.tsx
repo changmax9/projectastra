@@ -17,6 +17,7 @@ export default async function AdminPdfsPage({ searchParams }: { searchParams?: {
   const selectedJobId = searchParams?.job_id || jobs[0]?.id || "";
   const selectedJob = selectedJobId ? await getPdfImportJobDetails(selectedJobId) : null;
   const showMissingSchemaWarning = !importSchemaStatus.available || searchParams?.import_error === "schema_missing";
+  const showStartFailureWarning = searchParams?.import_error === "start_failed";
 
   return (
     <div className="space-y-6">
@@ -37,6 +38,15 @@ export default async function AdminPdfsPage({ searchParams }: { searchParams?: {
           <p className="mt-2">
             Supabase is connected, but the PDF import tables are not available in this project yet. Existing PDF uploads
             still work, but OCR analysis is disabled until <code className="rounded bg-amber-100 px-1">supabase/migrations/008_pdf_import_pipeline.sql</code> is applied.
+          </p>
+        </section>
+      ) : null}
+      {showStartFailureWarning ? (
+        <section className="rounded-lg border border-red-200 bg-red-50 p-5 text-sm leading-6 text-red-800">
+          <h2 className="font-semibold">Unable to start PDF analysis</h2>
+          <p className="mt-2">
+            The import job could not be queued. Check the server log for the underlying error and confirm that the
+            current Supabase project has every migration through <code className="rounded bg-red-100 px-1">008_pdf_import_pipeline.sql</code>.
           </p>
         </section>
       ) : null}

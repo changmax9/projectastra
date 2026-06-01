@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
-import { completePdfImportJob, getPdfImportJobDetails, getPdfUpload } from "@/lib/data";
+import {
+  completePdfImportJob,
+  getPdfImportJobDetails,
+  getPdfImportSchemaStatus,
+  getPdfUpload,
+  isPdfImportSchemaSetupError
+} from "@/lib/data";
 import { analyzePdfUpload } from "@/lib/pdf";
 
 export const dynamic = "force-dynamic";
@@ -23,6 +29,10 @@ function progressFromJob(job: NonNullable<Awaited<ReturnType<typeof getPdfImport
 
 export async function POST(_: Request, { params }: { params: { jobId: string } }) {
   const admin = await requireAdmin();
+  const schemaStatus = await getPdfImportSchemaStatus();
+  if (!schemaStatus.available) {
+    return NextResponse.json({ error: schemaStatus.message }, { status: 503 });
+  }
   const current = await getPdfImportJobDetails(params.jobId);
   if (!current) {
     return NextResponse.json({ error: "PDF import job not found." }, { status: 404 });
@@ -58,7 +68,15 @@ export async function POST(_: Request, { params }: { params: { jobId: string } }
       draftQuestions: [],
       draftAssets: []
     };
-    await completePdfImportJob(current.id, failedAnalysis, admin.id);
+    try {
+      await completePdfImportJob(current.id, failedAnalysis, admin.id);
+    } catch (persistError) {
+      const persistMessage = isPdfImportSchemaSetupError(persistError)
+        ? "PDF import database tables are unavailable. Apply supabase/migrations/008_pdf_import_pipeline.sql and retry."
+        : "PDF import failed, and its failed state could not be saved. Check the server log.";
+      console.error("Unable to save failed PDF import state:", persistError);
+      return NextResponse.json({ done: true, error: persistMessage }, { status: 500 });
+    }
     const failed = await getPdfImportJobDetails(current.id);
     return NextResponse.json(
       { job: failed, progress: failed ? progressFromJob(failed) : null, done: true, error: failedAnalysis.errorMessage },

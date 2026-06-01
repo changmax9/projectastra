@@ -411,6 +411,8 @@ assert.match(actionsSource, /status: "draft"/, "PDF import drafts save as draft 
 assert.match(actionsSource, /needs-admin-review/, "PDF import saved questions stay in the admin review queue");
 assert.match(actionsSource, /createPdfImportJob/, "PDF import start action queues a processing job");
 assert.doesNotMatch(actionsSource, /const analysis = await analyzePdfUpload\(pdf\)/, "PDF import start action does not synchronously OCR the PDF");
+assert.match(actionsSource, /isPdfImportSchemaSetupError/, "PDF import start action catches missing-schema races");
+assert.match(actionsSource, /import_error=start_failed/, "PDF import start action redirects unexpected queue failures to an admin warning");
 assert.match(actionsSource, /selection_type/, "PDF import draft save preserves selection type metadata");
 assert.match(actionsSource, /required_selections/, "PDF import draft save preserves required selection metadata");
 assert.match(actionsSource, /max_selections/, "PDF import draft save preserves max selection metadata");
@@ -462,6 +464,10 @@ assert.match(pdfImportSource, /function buildVisualCropCandidates/, "PDF import 
 assert.match(pdfImportSource, /runLocalVisualCropRender/, "PDF import renders cropped visual evidence candidates separately from page previews");
 assert.match(pdfImportSource, /pdf-import-crops/, "PDF import stores generated crop candidates outside full-page preview paths");
 assert.match(pdfImportSource, /No usable crop candidate was found/, "PDF import warns when visual prompts lack a usable crop candidate");
+assert.match(pdfImportSource, /function workerFailureMessage/, "PDF import preserves worker stderr for actionable local OCR failures");
+assert.match(pdfImportSource, /stringFromChildOutput/, "PDF import worker diagnostics include captured stderr or stdout");
+assert.match(pdfImportSource, /spawnSync\(candidate, \["--version"\]/, "PDF import checks whether local worker commands actually run");
+assert.match(pdfImportSource, /"python3", "python"/, "PDF import supports the common macOS python3 executable");
 assert.match(pdfImportSource, /PDF_RENDER_MAX_PAGES/, "PDF import limits render-only source-page preview work");
 assert.match(pdfImportSource, /--render-only/, "PDF import can render source-page previews without running OCR");
 assert.match(pdfImportSource, /function isScoringGuidePdf/, "PDF import detects scoring-guide-like PDFs");
@@ -498,10 +504,15 @@ assert.match(dataSource, /draft asset references a missing draft question index/
 assert.match(dataSource, /extraction_method === "text"[\s\S]*extraction_method === "ocr"/, "PDF import extracted-page metrics count only usable text/OCR pages");
 assert.match(dataSource, /createPdfImportJob/, "PDF import data layer can create processing jobs");
 assert.match(dataSource, /completePdfImportJob/, "PDF import data layer can complete queued jobs with analysis results");
+assert.match(dataSource, /PDF_IMPORT_SCHEMA_CHECKS/, "PDF import schema preflight checks the migration as a group");
+assert.match(dataSource, /pdf_import_pages/, "PDF import schema preflight checks page audit storage");
+assert.match(dataSource, /pdf_import_draft_questions/, "PDF import schema preflight checks draft storage");
+assert.match(dataSource, /pdf_import_draft_assets/, "PDF import schema preflight checks visual asset storage");
 
 const pdfAdminPageSource = source("app/admin/pdfs/page.tsx");
 assert.match(pdfAdminPageSource, /PdfImportWorkspace/, "PDF admin page renders the same-page import workspace");
 assert.match(pdfAdminPageSource, /job_id/, "PDF admin page can select an import job inline");
+assert.match(pdfAdminPageSource, /Unable to start PDF analysis/, "PDF admin page shows queue failures without a runtime overlay");
 
 const adminHomeSource = source("app/admin/page.tsx");
 assert.match(adminHomeSource, /Account health/, "Admin dashboard surfaces account health");
@@ -518,6 +529,8 @@ const pdfProcessRouteSource = source("app/api/admin/pdf-imports/[jobId]/process/
 assert.match(pdfProcessRouteSource, /requireAdmin/, "PDF import process route is admin protected");
 assert.match(pdfProcessRouteSource, /analyzePdfUpload/, "PDF import process route performs OCR analysis outside the form submit");
 assert.match(pdfProcessRouteSource, /completePdfImportJob/, "PDF import process route persists completed analysis");
+assert.match(pdfProcessRouteSource, /getPdfImportSchemaStatus/, "PDF import process route rechecks schema before analysis");
+assert.match(pdfProcessRouteSource, /failed state could not be saved/, "PDF import process route handles failed-state persistence errors");
 
 const pdfOcrWorker = source("scripts/pdf-ocr-worker.py");
 assert.match(pdfOcrWorker, /pytesseract/, "PDF OCR worker uses Tesseract");
@@ -534,6 +547,13 @@ assert.match(pdfTextWorker, /reading_order/, "PDF text worker records block read
 assert.match(pdfTextWorker, /"kind": "image"/, "PDF text worker preserves PyMuPDF image blocks for crop candidates");
 assert.match(pdfTextWorker, /text_blocks = \[block for block in blocks if block\.get\("kind"\) == "text"\]/, "PDF text worker uses text blocks, not image blocks, to detect reading order");
 assert.match(pdfTextWorker, /UNAUTHORIZED COPYING/, "PDF text worker filters repeated AP footer noise");
+
+const pdfSchemaCheckSource = source("scripts/check-supabase-pdf-import-schema.cjs");
+assert.match(pdfSchemaCheckSource, /pdf_import_jobs/, "PDF import schema checker verifies job storage");
+assert.match(pdfSchemaCheckSource, /pdf_import_pages/, "PDF import schema checker verifies page audit storage");
+assert.match(pdfSchemaCheckSource, /pdf_import_draft_questions/, "PDF import schema checker verifies draft storage");
+assert.match(pdfSchemaCheckSource, /pdf_import_draft_assets/, "PDF import schema checker verifies asset storage");
+assert.match(pdfSchemaCheckSource, /Supabase project:/, "PDF import schema checker identifies the configured project without printing credentials");
 
 const authSource = source("lib/auth.ts");
 assert.match(authSource, /auth\.signInWithPassword/, "login uses Supabase Auth password verification");

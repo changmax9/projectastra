@@ -187,24 +187,35 @@ Validation is implemented in `lib/schemas.ts` with Zod. The import UI shows exac
 
 Admin page: `/admin/pdfs`
 
-MVP behavior:
+Current review-first behavior:
 
 1. Upload PDF and metadata.
 2. Save the file record in `pdf_uploads`.
-3. Show the PDF list.
-4. Keep parsing as a placeholder.
+3. Start an async text/OCR import job.
+4. Review page extraction status, warnings, source previews, and generated draft questions on `/admin/pdfs`.
+5. Save only manually verified draft questions with `needs-admin-review`.
 
-Do not directly write parsed PDF content into the question bank. Future flow:
+Imported questions are never published directly. OCR output and generated drafts are untrusted until the admin verifies them against source evidence.
 
-PDF upload → OCR/AI parse to JSON → admin preview/edit → Zod validation → import into `questions` → create exam.
+Supabase mode requires `supabase/migrations/008_pdf_import_pipeline.sql`. Verify the connected project before testing:
 
-Placeholder interface:
+```bash
+npm run check:supabase:pdf-import
+```
 
-```ts
-async function parsePdfToQuestions(pdfUploadId: string): Promise<QuestionImportItem[]> {
-  // TODO: Extract text/images, OCR or AI parse, validate, preview, import.
-  return [];
-}
+Local OCR uses Python, PyMuPDF, Pillow, pytesseract, and a Tesseract installation. If they are not on the default executable paths, configure:
+
+```env
+PDF_TEXT_PYTHON=
+PDF_OCR_PYTHON=
+TESSERACT_CMD=
+```
+
+Typical macOS setup:
+
+```bash
+brew install tesseract
+python3 -m pip install pymupdf pillow pytesseract
 ```
 
 ## File Uploads
@@ -298,7 +309,7 @@ Admin:
 
 - Full Supabase SSR session refresh is simplified; login verifies Supabase Auth, then stores a server-only profile cookie. Production should replace this with `@supabase/ssr` session cookies.
 - FRQ manual grading UI fields exist in DB, but the grading UI is not fully implemented yet.
-- PDF parsing returns `[]`. Add OCR/AI parser behind `parsePdfToQuestions`.
+- PDF import remains review-first. True bounded page-chunk resumability and more precise vector/table crop detection are still in progress.
 - Mock mode stores data in memory, so submissions created in mock mode reset when the dev server restarts.
 - Local mock uploads write to `public/uploads`, which is not production storage.
 
@@ -308,3 +319,5 @@ Admin:
 - If image/PDF upload fails with Supabase, confirm buckets `question-media` and `pdf-uploads` exist.
 - If RLS blocks an admin action, confirm the logged-in user's profile row has `role = 'admin'`.
 - If JSON import fails, check MCQ `correct_answer` matches a `choices[].id`, and FRQ has `choices: []` plus `correct_answer: null`.
+- If PDF analysis says import tables are not installed, run `npm run check:supabase:pdf-import` and apply `supabase/migrations/008_pdf_import_pipeline.sql` to the exact Supabase project reported by that command.
+- If PDF analysis reaches OCR but fails locally, install Python packages `pymupdf`, `pillow`, and `pytesseract`, install Tesseract, and set `PDF_TEXT_PYTHON`, `PDF_OCR_PYTHON`, or `TESSERACT_CMD` when the executables are not on the default paths.

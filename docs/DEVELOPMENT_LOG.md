@@ -1223,3 +1223,32 @@ npx tsc --noEmit
   - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe tmp-pdf-import-fault-finding-20260521/build/tmp-pdf-import-fault-finding-20260521/probe-pdf-import.js` passed and refreshed `tmp-pdf-import-fault-finding-20260521/probe-report.json`.
   - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe tmp-pdf-import-fault-finding-20260521/probe-real-pdf-summaries.cjs` passed and refreshed `tmp-pdf-import-fault-finding-20260521/real-pdf-summary-report.json`.
 - Remaining visual work: detect vector/table bboxes, associate crops more precisely with nearby question text, and add fixture coverage with a real embedded image block. True page-chunk resumability and `qp-2024-chemistry.pdf` MCQ recovery remain open.
+
+### 2026-05-31 Supabase PDF-import setup and Mac OCR diagnostics pass
+
+- Investigated an admin screenshot showing an unhandled `createPdfImportJob` error claiming `supabase/migrations/008_pdf_import_pipeline.sql` was missing. Ran `git status --short --branch` first, re-read the development log/TODO/local summary, preserved local handoff artifacts, did not apply migrations, did not mutate Supabase rows, and did not publish imported questions.
+- Confirmed read-only that migration `008` is committed in GitHub and the currently configured Supabase project has all expected columns in `pdf_import_jobs`, `pdf_import_pages`, `pdf_import_draft_questions`, and `pdf_import_draft_assets`.
+- Read-only inspection found an existing live import job created from a Mac path under `/Users/maxchang/Documents/AP Website/`. That later job reached the import tables successfully but failed during local Python OCR execution and produced zero drafts. This indicates the screenshot and the later OCR failure were separate setup issues over time.
+- Strengthened `getPdfImportSchemaStatus()` so it checks all four migration-008 tables and key columns instead of checking only `pdf_import_jobs`. Partial migrations now fail closed before analysis starts.
+- Updated `adminStartPdfImportAction` and the processing route so missing-schema races and failed-state persistence errors return friendly admin warnings instead of surfacing a Next.js runtime overlay.
+- Improved local worker diagnostics by preserving stderr/stdout tails from Python worker failures. Changed executable detection to verify commands with `--version` and added `python3` before `python` as a cross-platform fallback for macOS.
+- Added read-only `npm run check:supabase:pdf-import`, which prints the configured Supabase hostname and verifies the four required PDF-import tables without exposing credentials. Updated `README.md` and `docs/DEPLOY_VERCEL_FREE.md` with migration-008 troubleshooting and typical macOS OCR setup commands.
+- Supplied-PDF read-only analyzer smoke: `practice exam 2016(1).pdf` completed from the updated local build in about 2.9 seconds with 62 accepted text pages and 56 review drafts (55 MCQ, 1 FRQ). It attached 55 explicit answer-key matches and published/saved nothing.
+- Browser smoke: started Next dev on `http://127.0.0.1:3024`, opened `/admin/pdfs` through the in-app browser, and confirmed unauthenticated access redirects to `/login`. Full authenticated click-through remains blocked locally because no admin login credentials are configured in `.env.local`.
+- Commands run:
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe scripts/check-supabase-pdf-import-schema.cjs` passed against the configured Supabase project.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe tests/run-import-tests.cjs` passed.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules/typescript/bin/tsc --noEmit` passed.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules/next/dist/bin/next lint` passed with no ESLint warnings or errors.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe scripts/predeploy-check.cjs` passed with expected local warnings only.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules/typescript/bin/tsc -p tmp-pdf-import-fault-finding-20260521/tsconfig.probe.json` passed.
+- No live migration action is currently needed for the configured Supabase project. If the boss still sees the missing-schema warning, compare his `NEXT_PUBLIC_SUPABASE_URL` hostname using `npm run check:supabase:pdf-import`; he is likely connected to a different project or stale dev server.
+
+### 2026-06-01 Live Supabase PDF-import browser verification
+
+- With explicit user authorization for a live PDF upload/import test, used the authenticated `/admin/pdfs` website flow against the configured Supabase project. Preserved existing dirty/untracked work and did not stage, commit, push, seed, migrate, reject, save, or publish imported questions.
+- Uploaded `practice exam 2016(1).pdf` through the website as `AP Microeconomics`, unit `1`, topic `Past Test`. The resulting live upload is `pdf_gv677vtn_mpv8q4w8`; its status advanced from `uploaded` to `parsed`.
+- Started review-only analysis through the website. Live job `pdf_job_91clwyo1_mpv8vhcj` completed as `needs_review` using `embedded-text`: 62 pages processed, 62 accepted text pages, 56 draft questions, and no processing error.
+- Read-only Supabase verification found 56 pending drafts: 55 MCQ and 1 FRQ. 55 MCQ drafts have explicit answer-key matches, 0 drafts have explanations, 0 drafts have a `saved_question_id`, 0 drafts have saved `question_images`, and 0 draft assets were kept. The question-bank count remained 107.
+- Admin-visible warnings remained conservative: one scoring/rubric-only page was excluded, scoring/rubric signals were detected on five pages, and every matched answer still requires admin verification before saving.
+- This verifies authenticated upload, select, analyze, progress completion, same-page review, and review-only persistence on live Supabase. Save-as-draft and reject behavior were intentionally not exercised against live question data.

@@ -22,6 +22,7 @@ import {
   getSubmission,
   importQuestionBatch,
   importQuestions,
+  isPdfImportSchemaSetupError,
   listQuestions,
   linkImageToChoice,
   linkImageToQuestion,
@@ -751,9 +752,16 @@ export async function adminStartPdfImportAction(formData: FormData) {
   if (!pdfId) throw new Error("Missing PDF id.");
   const schemaStatus = await getPdfImportSchemaStatus();
   if (!schemaStatus.available) redirect("/admin/pdfs?import_error=schema_missing");
-  const pdf = await getPdfUpload(pdfId);
-  if (!pdf) throw new Error("PDF upload not found.");
-  const job = await createPdfImportJob(pdf.id, admin.id, PARSER_VERSION);
+  let job: Awaited<ReturnType<typeof createPdfImportJob>>;
+  try {
+    const pdf = await getPdfUpload(pdfId);
+    if (!pdf) throw new Error("PDF upload not found.");
+    job = await createPdfImportJob(pdf.id, admin.id, PARSER_VERSION);
+  } catch (error) {
+    if (isPdfImportSchemaSetupError(error)) redirect("/admin/pdfs?import_error=schema_missing");
+    console.error("Unable to start PDF import:", error);
+    redirect("/admin/pdfs?import_error=start_failed");
+  }
   revalidatePath("/admin/pdfs");
   revalidatePath(`/admin/pdf-imports/${job.id}`);
   redirect(`/admin/pdfs?job_id=${job.id}`);

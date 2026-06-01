@@ -2412,12 +2412,47 @@ export interface PdfImportAnalysisInput {
 const PDF_IMPORT_SCHEMA_SETUP_MESSAGE =
   "PDF import database tables are not installed. Apply supabase/migrations/008_pdf_import_pipeline.sql before analyzing PDFs in Supabase mode.";
 
+const PDF_IMPORT_SCHEMA_CHECKS = [
+  {
+    table: "pdf_import_jobs",
+    columns: "id,pdf_upload_id,status,parser_version,ocr_provider,page_count,extracted_page_count,draft_question_count,warnings,error_message"
+  },
+  {
+    table: "pdf_import_pages",
+    columns: "id,job_id,pdf_upload_id,page_number,extraction_method,ocr_status,text_extracted,ocr_text,page_image_url,confidence,warnings,raw_blocks"
+  },
+  {
+    table: "pdf_import_draft_questions",
+    columns: "id,job_id,pdf_upload_id,question_number,source_page_start,source_page_end,type,question_text,choices,correct_answer,explanation,scoring_notes,frq_parts,question_images,confidence,warnings,review_status,saved_question_id"
+  },
+  {
+    table: "pdf_import_draft_assets",
+    columns: "id,job_id,pdf_upload_id,draft_question_id,page_number,asset_type,image_url,bbox,keep_for_question,status,notes"
+  }
+] as const;
+
 function isMissingPdfImportSchemaError(error: { code?: string; message?: string; details?: string } | null | undefined) {
   const text = [error?.code, error?.message, error?.details].filter(Boolean).join(" ").toLowerCase();
   return (
     text.includes("pdf_import_") &&
-    (text.includes("schema cache") || text.includes("does not exist") || text.includes("could not find the table"))
+    (
+      text.includes("schema cache") ||
+      text.includes("does not exist") ||
+      text.includes("could not find the table") ||
+      text.includes("could not find the")
+    )
   );
+}
+
+export function isPdfImportSchemaSetupError(error: unknown) {
+  if (error instanceof Error && error.message === PDF_IMPORT_SCHEMA_SETUP_MESSAGE) return true;
+  if (typeof error === "string" && error === PDF_IMPORT_SCHEMA_SETUP_MESSAGE) return true;
+  if (!error || typeof error !== "object") return false;
+  return isMissingPdfImportSchemaError(error as { code?: string; message?: string; details?: string });
+}
+
+function checkPdfImportSchemaTable(table: string, columns: string) {
+  return adminClient().from(table).select(columns, { head: true, count: "exact" });
 }
 
 export async function getPdfImportSchemaStatus() {
@@ -2425,12 +2460,19 @@ export async function getPdfImportSchemaStatus() {
     return { available: true, message: null as string | null };
   }
 
-  const { error } = await adminClient().from("pdf_import_jobs").select("id", { head: true, count: "exact" });
-  if (!error) return { available: true, message: null as string | null };
-  if (isMissingPdfImportSchemaError(error)) {
-    return { available: false, message: PDF_IMPORT_SCHEMA_SETUP_MESSAGE };
+  const checks = await Promise.all(
+    PDF_IMPORT_SCHEMA_CHECKS.map(({ table, columns }) =>
+      checkPdfImportSchemaTable(table, columns)
+    )
+  );
+  for (const { error } of checks) {
+    if (!error) continue;
+    if (isMissingPdfImportSchemaError(error)) {
+      return { available: false, message: PDF_IMPORT_SCHEMA_SETUP_MESSAGE };
+    }
+    throw new Error(error.message);
   }
-  throw new Error(error.message);
+  return { available: true, message: null as string | null };
 }
 
 function pdfImportExtractedPageCount(pages: PdfImportAnalysisInput["pages"]) {
