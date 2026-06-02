@@ -34,6 +34,7 @@ import type {
   PdfImportJob,
   PdfImportJobDetails,
   PdfImportPage,
+  PdfImportReviewQueue,
   PdfUpload,
   Profile,
   Question,
@@ -2164,13 +2165,14 @@ export async function getStudentDetail(studentId: string) {
 }
 
 export async function getAdminStats() {
-  const [students, exams, questions, guides, submissions, accountHealth] = await Promise.all([
+  const [students, exams, questions, guides, submissions, accountHealth, pdfImportReviewQueue] = await Promise.all([
     adminListStudents(),
     adminListExams(),
     listQuestions({}),
     adminListReviewGuides({}),
     adminListSubmissions(),
-    getAdminAccountHealth()
+    getAdminAccountHealth(),
+    getPdfImportReviewQueue()
   ]);
 
   return {
@@ -2178,6 +2180,7 @@ export async function getAdminStats() {
     examsCount: exams.length,
     questionsCount: questions.length,
     reviewGuidesCount: guides.length,
+    pdfImportReviewQueue,
     recentSubmissions: submissions.slice(0, 5),
     accountHealth
   };
@@ -2726,6 +2729,62 @@ export async function listPdfImportJobs(pdfUploadId?: string) {
     .filter((job) => !pdfUploadId || job.pdf_upload_id === pdfUploadId)
     .map((job) => ({ ...job, pdf_upload: uploadsById.get(job.pdf_upload_id) || null }))
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
+}
+
+export async function getPdfImportReviewQueue(): Promise<PdfImportReviewQueue> {
+  const reviewStatuses: PdfImportJob["status"][] = ["processing", "needs_review", "failed"];
+  const jobs = (await listPdfImportJobs())
+    .filter((job) => reviewStatuses.includes(job.status))
+    .slice(0, 8);
+  const countsByJob = new Map<string, { pending: number; saved: number; rejected: number }>();
+
+  if (jobs.length > 0) {
+    if (hasSupabaseEnv()) {
+      const { data, error } = await adminClient()
+        .from("pdf_import_draft_questions")
+        .select("job_id,review_status")
+        .in("job_id", jobs.map((job) => job.id));
+      if (isMissingPdfImportSchemaError(error)) {
+        return { items: [], pending_draft_count: 0, processing_job_count: 0, failed_job_count: 0 };
+      }
+      if (error) throw new Error(error.message);
+      for (const draft of data || []) {
+        const counts = countsByJob.get(draft.job_id) || { pending: 0, saved: 0, rejected: 0 };
+        if (draft.review_status === "pending") counts.pending += 1;
+        if (draft.review_status === "saved") counts.saved += 1;
+        if (draft.review_status === "rejected") counts.rejected += 1;
+        countsByJob.set(draft.job_id, counts);
+      }
+    } else {
+      await ensureMockStore();
+      for (const draft of mockPdfImportDraftQuestions.filter((item) => jobs.some((job) => job.id === item.job_id))) {
+        const counts = countsByJob.get(draft.job_id) || { pending: 0, saved: 0, rejected: 0 };
+        if (draft.review_status === "pending") counts.pending += 1;
+        if (draft.review_status === "saved") counts.saved += 1;
+        if (draft.review_status === "rejected") counts.rejected += 1;
+        countsByJob.set(draft.job_id, counts);
+      }
+    }
+  }
+
+  const items = jobs
+    .map((job) => {
+      const counts = countsByJob.get(job.id) || { pending: 0, saved: 0, rejected: 0 };
+      return {
+        ...job,
+        pending_draft_count: counts.pending,
+        saved_draft_count: counts.saved,
+        rejected_draft_count: counts.rejected
+      };
+    })
+    .filter((job) => job.status === "processing" || job.status === "failed" || job.pending_draft_count > 0);
+
+  return {
+    items,
+    pending_draft_count: items.reduce((sum, job) => sum + job.pending_draft_count, 0),
+    processing_job_count: items.filter((job) => job.status === "processing").length,
+    failed_job_count: items.filter((job) => job.status === "failed").length
+  };
 }
 
 export async function getPdfImportJobDetails(jobId: string): Promise<PdfImportJobDetails | null> {

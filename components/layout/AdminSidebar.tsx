@@ -18,7 +18,7 @@ const links = [
   { href: "/admin/questions", label: "Questions", icon: ListChecks },
   { href: "/admin/import", label: "JSON Import", icon: FileJson },
   { href: "/admin/media", label: "Media", icon: GalleryHorizontal },
-  { href: "/admin/pdfs", label: "PDFs", icon: FileText },
+  { href: "/admin/pdfs", label: "PDF Imports", icon: FileText },
   { href: "/admin/submissions", label: "Submissions", icon: BarChart3 },
   { href: "/admin/review-guides", label: "Review Guides", icon: BookOpen }
 ];

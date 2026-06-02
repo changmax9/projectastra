@@ -504,6 +504,8 @@ assert.match(dataSource, /draft asset references a missing draft question index/
 assert.match(dataSource, /extraction_method === "text"[\s\S]*extraction_method === "ocr"/, "PDF import extracted-page metrics count only usable text/OCR pages");
 assert.match(dataSource, /createPdfImportJob/, "PDF import data layer can create processing jobs");
 assert.match(dataSource, /completePdfImportJob/, "PDF import data layer can complete queued jobs with analysis results");
+assert.match(dataSource, /getPdfImportReviewQueue/, "Admin dashboard can summarize PDF imports awaiting review");
+assert.match(dataSource, /pending_draft_count/, "PDF import review queue reports unsaved draft counts");
 assert.match(dataSource, /PDF_IMPORT_SCHEMA_CHECKS/, "PDF import schema preflight checks the migration as a group");
 assert.match(dataSource, /pdf_import_pages/, "PDF import schema preflight checks page audit storage");
 assert.match(dataSource, /pdf_import_draft_questions/, "PDF import schema preflight checks draft storage");
@@ -518,6 +520,15 @@ const adminHomeSource = source("app/admin/page.tsx");
 assert.match(adminHomeSource, /Account health/, "Admin dashboard surfaces account health");
 assert.match(adminHomeSource, /Supabase connected/, "Admin dashboard identifies Supabase account mode");
 assert.match(adminHomeSource, /Admin profiles/, "Admin dashboard shows admin profile counts");
+assert.match(adminHomeSource, /AdminPdfImportReviewQueue/, "Admin dashboard surfaces the PDF import review queue before drafts are saved");
+
+const adminPdfImportReviewQueueSource = source("components/admin/AdminPdfImportReviewQueue.tsx");
+assert.match(adminPdfImportReviewQueueSource, /PDF drafts awaiting review/, "Admin PDF queue clearly labels pending OCR drafts");
+assert.match(adminPdfImportReviewQueueSource, /They do not appear in Questions or student exams yet/, "Admin PDF queue explains review-only draft visibility");
+assert.match(adminPdfImportReviewQueueSource, /Review drafts/, "Admin PDF queue links directly to draft review");
+
+const adminSidebarSource = source("components/layout/AdminSidebar.tsx");
+assert.match(adminSidebarSource, /PDF Imports/, "Admin sidebar labels the PDF import workspace clearly");
 
 const pdfWorkspaceSource = source("components/admin/PdfImportWorkspace.tsx");
 assert.match(pdfWorkspaceSource, /api\/admin\/pdf-imports\/\$\{jobId\}\/process/, "PDF import workspace polls the processing route");

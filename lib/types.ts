@@ -293,6 +293,19 @@ export interface PdfImportJobDetails extends PdfImportJob {
   draft_assets: PdfImportDraftAsset[];
 }
 
+export interface PdfImportReviewQueueItem extends PdfImportJob {
+  pending_draft_count: number;
+  saved_draft_count: number;
+  rejected_draft_count: number;
+}
+
+export interface PdfImportReviewQueue {
+  items: PdfImportReviewQueueItem[];
+  pending_draft_count: number;
+  processing_job_count: number;
+  failed_job_count: number;
+}
+
 export interface ReviewGuide {
   id: string;
   title: string;

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AdminPdfImportReviewQueue } from "@/components/admin/AdminPdfImportReviewQueue";
 import { AdminStatsCards } from "@/components/admin/AdminStatsCards";
 import { DataTable } from "@/components/admin/DataTable";
 import { getAdminStats } from "@/lib/data";
@@ -16,7 +17,12 @@ export default async function AdminHomePage() {
         <p className="text-sm font-semibold uppercase tracking-wide text-brand">Admin</p>
         <h1 className="mt-2 text-3xl font-semibold text-ink">Platform overview</h1>
       </div>
-      <AdminStatsCards {...stats} adminsCount={accountHealth.adminProfileCount} />
+      <AdminPdfImportReviewQueue queue={stats.pdfImportReviewQueue} />
+      <AdminStatsCards
+        {...stats}
+        adminsCount={accountHealth.adminProfileCount}
+        pdfDraftsPendingCount={stats.pdfImportReviewQueue.pending_draft_count}
+      />
       <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>

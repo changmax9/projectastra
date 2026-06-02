@@ -1,28 +1,31 @@
-import { BookOpen, FileQuestion, GraduationCap, School, ShieldCheck } from "lucide-react";
+import { BookOpen, FileQuestion, FileSearch, GraduationCap, School, ShieldCheck } from "lucide-react";
 
 export function AdminStatsCards({
   studentsCount,
   adminsCount,
   examsCount,
   questionsCount,
-  reviewGuidesCount
+  reviewGuidesCount,
+  pdfDraftsPendingCount
 }: {
   studentsCount: number;
   adminsCount?: number;
   examsCount: number;
   questionsCount: number;
   reviewGuidesCount: number;
+  pdfDraftsPendingCount: number;
 }) {
   const cards = [
     { label: "Students", value: studentsCount, icon: GraduationCap },
     { label: "Admins", value: adminsCount ?? 0, icon: ShieldCheck },
     { label: "Exams", value: examsCount, icon: School },
     { label: "Questions", value: questionsCount, icon: FileQuestion },
-    { label: "Review Guides", value: reviewGuidesCount, icon: BookOpen }
+    { label: "Review Guides", value: reviewGuidesCount, icon: BookOpen },
+    { label: "PDF drafts", value: pdfDraftsPendingCount, icon: FileSearch }
   ];
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
       {cards.map((card) => {
         const Icon = card.icon;
         return (

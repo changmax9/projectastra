@@ -1252,3 +1252,18 @@ npx tsc --noEmit
 - Read-only Supabase verification found 56 pending drafts: 55 MCQ and 1 FRQ. 55 MCQ drafts have explicit answer-key matches, 0 drafts have explanations, 0 drafts have a `saved_question_id`, 0 drafts have saved `question_images`, and 0 draft assets were kept. The question-bank count remained 107.
 - Admin-visible warnings remained conservative: one scoring/rubric-only page was excluded, scoring/rubric signals were detected on five pages, and every matched answer still requires admin verification before saving.
 - This verifies authenticated upload, select, analyze, progress completion, same-page review, and review-only persistence on live Supabase. Save-as-draft and reject behavior were intentionally not exercised against live question data.
+
+### 2026-06-02 Admin PDF-import review queue visibility pass
+
+- Investigated why an admin did not find the live AP Microeconomics OCR drafts. Read-only Supabase verification confirmed upload `pdf_gv677vtn_mpv8q4w8`, review job `pdf_job_91clwyo1_mpv8vhcj`, and all 56 pending drafts still exist. Authenticated browser verification confirmed the hosted `https://www.projectastra.uk/admin/pdfs` page also shows the upload and `Review 56` link.
+- Confirmed the confusion was a product-discovery issue, not missing data: review-only OCR candidates intentionally do not appear in `/admin/questions` or student exam lists until an admin manually verifies and saves them.
+- Added a prominent dashboard PDF-import review queue above account health. It explains the review-only lifecycle, lists actionable jobs with source metadata and pending/saved/rejected counts, and links directly to each inline review workspace.
+- Added a `PDF drafts` overview statistic and renamed the sidebar entry from `PDFs` to `PDF Imports`.
+- Kept the dashboard summary read-only in both Supabase and mock fallback modes. No OCR draft was saved, rejected, or published.
+- Verification:
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe tests/run-import-tests.cjs` passed.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules/typescript/bin/tsc --noEmit` passed.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules/next/dist/bin/next lint` passed with no ESLint warnings or errors.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe scripts/predeploy-check.cjs` passed with expected local warnings only.
+  - `git diff --check` passed with CRLF normalization warnings only.
+  - Authenticated local browser smoke at `http://127.0.0.1:3025/admin` showed the Microeconomics queue item with `56 pending`, the Statistics item with `39 pending`, a total `PDF drafts` count of `95`, and direct `Review drafts` links on desktop and mobile viewports.
