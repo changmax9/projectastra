@@ -428,6 +428,8 @@ assert.match(pdfImportSource, /raw_blocks: rawBlocks/, "PDF import stores struct
 assert.match(pdfImportSource, /No explicit answer key was detected/, "PDF import warns instead of inventing answer keys");
 assert.match(pdfImportSource, /embedded text appears font-encoded or garbled/, "PDF import rejects garbled embedded text before drafting");
 assert.match(pdfImportSource, /function acceptedPageText/, "PDF import centralizes accepted page text selection");
+assert.ok(pdfImportSource.includes("(?:^|\\n)\\s*(Answer\\s+Key|Answer|Correct\\s+Answer|Key|"), "PDF import only treats unpunctuated answer labels as labels at line starts");
+assert.ok(pdfImportSource.includes("[ \\t]*\\n(?=[a-z])"), "PDF import recognizes lowercase formula text on the line after a numbered prompt without treating decimal measurements as question starts");
 assert.match(pdfImportSource, /function normalizeConfidence/, "PDF import normalizes confidence values before storage and display");
 assert.match(pdfImportSource, /value > 1 \? value \/ 100 : value/, "PDF import converts Tesseract percent confidence values to 0..1");
 assert.match(pdfImportSource, /page\.extraction_method === "text"\) return page\.text_extracted/, "PDF import accepts embedded text only from accepted text pages");
@@ -438,6 +440,7 @@ assert.match(pdfImportSource, /function stripPdfStreams/, "PDF import page count
 assert.match(pdfImportSource, /function isImageOrBinaryStream/, "PDF import skips image/binary streams during embedded-text parsing");
 assert.match(pdfImportSource, /function hasPdfTextOperators/, "PDF import only parses streams that look like PDF text content");
 assert.match(pdfImportSource, /Invalid PDF_OCR_MAX_PAGES value/, "PDF import warns on invalid OCR page limit values");
+assert.match(pdfImportSource, /Invalid PDF_OCR_PSM value/, "PDF import warns on invalid OCR page segmentation mode values");
 assert.match(pdfImportSource, /PDF_OCR_TIMEOUT_MS/, "PDF import has a configurable OCR worker timeout");
 assert.match(pdfImportSource, /Local OCR worker timed out/, "PDF import reports OCR worker timeouts clearly");
 assert.match(pdfImportSource, /Configured TESSERACT_CMD was not found/, "PDF import fails closed for invalid explicit Tesseract config");
@@ -453,14 +456,19 @@ assert.match(pdfImportSource, /function applyExplicitExplanationEntries/, "PDF i
 assert.match(pdfImportSource, /Explanation matched from explicit explanation\/rationale page/, "PDF import cites source pages when attaching explanations");
 assert.match(pdfImportSource, /Conflicting explicit explanation entries/, "PDF import refuses conflicting explanation entries");
 assert.match(pdfImportSource, /function buildSegmentationSections/, "PDF import builds section-aware segmentation context");
+assert.match(pdfImportSource, /followingEnd = chunkMarkers\[markerIndex \+ 1\]\?\.index \?\? chunk\.length/, "PDF import excludes trailing next-page markers that have no question text");
 assert.match(pdfImportSource, /isTableOfContentsLikeText/, "PDF import filters table-of-contents pages before question segmentation");
 assert.match(pdfImportSource, /isScoringSectionStart/, "PDF import filters answer and scoring sections before question segmentation");
+assert.match(pdfImportSource, /filterDuplicateMcqDrafts/, "PDF import filters broader duplicate MCQ candidates caused by instruction-page starts");
 assert.match(pdfImportSource, /filterOutOfSequenceFrqDrafts/, "PDF import filters out-of-sequence FRQ-like starts caused by formulas or subparts");
 assert.match(pdfImportSource, /function choiceDiagnostics/, "PDF import warns on suspicious choice parsing");
 assert.match(pdfImportSource, /merged or corrupted choices/, "PDF import explicitly flags severe merged-choice drafts");
 assert.match(pdfImportSource, /Candidate source page for a visual reference/, "PDF import creates visual source-page asset candidates");
 assert.match(pdfImportSource, /function draftNeedsVisualEvidence/, "PDF import detects drafts that need source-page visual evidence");
 assert.match(pdfImportSource, /function buildVisualCropCandidates/, "PDF import proposes visual crop candidates from structured page blocks");
+assert.match(pdfImportSource, /function visualBlockAssociationScore/, "PDF import ranks visual crop candidates against their draft question anchors");
+assert.match(pdfImportSource, /matches below-reference cue/, "PDF import prefers nearby visual regions that match below-reference cues");
+assert.match(pdfImportSource, /\["image", "table", "vector"\]/, "PDF import accepts bounded raster, table, and vector crop evidence blocks");
 assert.match(pdfImportSource, /runLocalVisualCropRender/, "PDF import renders cropped visual evidence candidates separately from page previews");
 assert.match(pdfImportSource, /pdf-import-crops/, "PDF import stores generated crop candidates outside full-page preview paths");
 assert.match(pdfImportSource, /No usable crop candidate was found/, "PDF import warns when visual prompts lack a usable crop candidate");
@@ -548,6 +556,9 @@ assert.match(pdfOcrWorker, /pytesseract/, "PDF OCR worker uses Tesseract");
 assert.match(pdfOcrWorker, /get_pixmap/, "PDF OCR worker renders PDF pages before OCR");
 assert.match(pdfOcrWorker, /render-only/, "PDF OCR worker supports render-only source-page previews");
 assert.match(pdfOcrWorker, /rendered_lines/, "PDF OCR worker preserves line breaks for segmentation");
+assert.match(pdfOcrWorker, /choices=\[3, 4, 6, 11\], default=6/, "PDF OCR worker keeps the proven single-block default with bounded segmentation overrides");
+assert.match(pdfOcrWorker, /normalize_choice_lines/, "PDF OCR worker conservatively normalizes complete sequential OCR choice-label runs");
+assert.match(pdfOcrWorker, /normalize_question_lines/, "PDF OCR worker conservatively restores dropped punctuation on question-like OCR starts");
 assert.match(pdfOcrWorker, /crops-json/, "PDF OCR worker can render bounded visual evidence crops");
 assert.match(pdfOcrWorker, /too close to a full page/, "PDF OCR worker refuses crop requests that look like full-page screenshots");
 
@@ -556,7 +567,15 @@ assert.match(pdfTextWorker, /get_text\("blocks"/, "PDF text worker extracts posi
 assert.match(pdfTextWorker, /likely_two_columns/, "PDF text worker detects two-column layouts");
 assert.match(pdfTextWorker, /reading_order/, "PDF text worker records block reading order");
 assert.match(pdfTextWorker, /"kind": "image"/, "PDF text worker preserves PyMuPDF image blocks for crop candidates");
+assert.match(pdfTextWorker, /page\.cluster_drawings\(\)/, "PDF text worker clusters PDF-native vector drawings into visual crop candidates");
+assert.match(pdfTextWorker, /"kind": "table" if looks_like_table else "vector"/, "PDF text worker preserves bounded vector diagram evidence");
+assert.match(pdfTextWorker, /looks_like_table = vertical_lines >= 2 and horizontal_lines >= 2/, "PDF text worker classifies table-like drawing grids without an expensive all-page table scan");
+assert.match(pdfTextWorker, /bboxes_touch/, "PDF text worker associates zero-width and zero-height stroked lines with drawing clusters");
+assert.match(pdfTextWorker, /dedupe_visual_blocks/, "PDF text worker deduplicates overlapping table and vector crop candidates");
 assert.match(pdfTextWorker, /text_blocks = \[block for block in blocks if block\.get\("kind"\) == "text"\]/, "PDF text worker uses text blocks, not image blocks, to detect reading order");
+assert.match(pdfTextWorker, /matching_question_stem/, "PDF text worker pairs overlapping accessibility choice blocks with their numbered prompt");
+assert.match(pdfTextWorker, /id\(block\) not in choice_parent/, "PDF text worker does not treat paired accessibility choice blocks as page headers");
+assert.match(pdfTextWorker, /column = 0 if x0 < page_width \/ 2 else 1/, "PDF text worker assigns two-column reading order from each block's left edge");
 assert.match(pdfTextWorker, /UNAUTHORIZED COPYING/, "PDF text worker filters repeated AP footer noise");
 
 const pdfSchemaCheckSource = source("scripts/check-supabase-pdf-import-schema.cjs");

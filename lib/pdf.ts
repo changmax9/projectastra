@@ -15,10 +15,11 @@ import type {
   QuestionChoice
 } from "@/lib/types";
 
-export const PARSER_VERSION = "pdf-import-mvp-2026-05-23";
+export const PARSER_VERSION = "pdf-import-mvp-2026-06-02";
 const CHOICE_MARKER_RE = /(?:^|\s)(?:\(([A-E])\)|([A-E])[\).])\s+/g;
 const FRQ_PART_RE = /(?:^|\s)\(((?:[a-g])|(?:i{1,3}|iv|v))\)\s+/gi;
 const DEFAULT_OCR_MAX_PAGES = 12;
+const DEFAULT_OCR_PSM = 6;
 const DEFAULT_RENDER_MAX_PAGES = 24;
 const DEFAULT_OCR_TIMEOUT_MS = 30_000;
 const DEFAULT_TEXT_TIMEOUT_MS = 15_000;
@@ -113,6 +114,7 @@ interface VisualCropCandidate {
   bbox: [number, number, number, number];
   blockNumber: number | null;
   source: string;
+  association: string;
 }
 
 interface LocalVisualCropRunResult {
@@ -175,6 +177,19 @@ function parseOcrMaxPages() {
     };
   }
   return { value: Math.floor(parsed), warning: null as string | null };
+}
+
+function parseOcrPsm() {
+  const raw = process.env.PDF_OCR_PSM;
+  if (raw === undefined || raw.trim() === "") return { value: DEFAULT_OCR_PSM, warning: null as string | null };
+  const parsed = Number(raw);
+  if (![3, 4, 6, 11].includes(parsed)) {
+    return {
+      value: DEFAULT_OCR_PSM,
+      warning: `Invalid PDF_OCR_PSM value "${raw}". Using the default page segmentation mode of ${DEFAULT_OCR_PSM}.`
+    };
+  }
+  return { value: parsed, warning: null as string | null };
 }
 
 function parseOcrTimeoutMs() {
@@ -358,6 +373,7 @@ async function runLocalTesseractOcr(pdf: PdfUpload, pageNumbers: number[]) {
   }
 
   const { value: maxPages, warning: maxPagesWarning } = parseOcrMaxPages();
+  const { value: psm, warning: psmWarning } = parseOcrPsm();
   const { value: timeoutMs, warning: timeoutWarning } = parseOcrTimeoutMs();
   const selectedPages = maxPages > 0 ? pageNumbers.slice(0, maxPages) : pageNumbers;
   const skippedPageNumbers = new Set(pageNumbers.filter((pageNumber) => !selectedPages.includes(pageNumber)));
@@ -366,6 +382,7 @@ async function runLocalTesseractOcr(pdf: PdfUpload, pageNumbers: number[]) {
       ? [`OCR limited to first ${selectedPages.length} of ${pageNumbers.length} requested pages. Set PDF_OCR_MAX_PAGES=0 to process all pages.`]
       : [];
   if (maxPagesWarning) warnings.unshift(maxPagesWarning);
+  if (psmWarning) warnings.unshift(psmWarning);
   if (timeoutWarning) warnings.unshift(timeoutWarning);
   if (selectedPages.length === 0) {
     return { provider: "tesseract-local", results: new Map<number, LocalOcrPageResult>(), warnings, skippedPageNumbers } satisfies LocalOcrRunResult;
@@ -402,7 +419,9 @@ async function runLocalTesseractOcr(pdf: PdfUpload, pageNumbers: number[]) {
         "--public-prefix",
         publicPrefix,
         "--tesseract-cmd",
-        tesseractCmd
+        tesseractCmd,
+        "--psm",
+        String(psm)
       ],
       { env, maxBuffer: 20 * 1024 * 1024, timeout: timeoutMs }
     );
@@ -820,7 +839,7 @@ function acceptedPageText(page: PageWithoutStorage) {
 
 function splitTrailingLabeledSections(text: string) {
   const match = text.match(
-    /(?:^|\s)(Answer\s+Key|Answer|Correct\s+Answer|Key|Explanations?|Explanation|Rationale|Scoring\s+Notes?|Rubric|Scoring\s+Guideline)\s*[:\-]?\s+/i
+    /(?:^|\n)\s*(Answer\s+Key|Answer|Correct\s+Answer|Key|Explanations?|Explanation|Rationale|Scoring\s+Notes?|Rubric|Scoring\s+Guideline)\s*[:\-]?\s+|(?:^|\s)(Answer\s+Key|Answer|Correct\s+Answer|Key|Explanations?|Explanation|Rationale|Scoring\s+Notes?|Rubric|Scoring\s+Guideline)\s*[:\-]\s+/i
   );
   if (!match || match.index === undefined) return { promptText: text, labeledText: "" };
   const labelStart = match.index + (match[0].match(/^\s/) ? 1 : 0);
@@ -857,7 +876,7 @@ function scoringGuideSignalScore(text: string) {
 function hasQuestionPromptContent(text: string) {
   const cleaned = cleanText(text);
   if (!cleaned) return false;
-  const questionStarts = cleaned.match(/(?:^|\n|\s)(?:Question\s+)?\d{1,3}[\).]\s+(?=[A-Z(])/g) || [];
+  const questionStarts = cleaned.match(/(?:^|\n|\s)(?:Question\s+)?\d{1,3}[\).](?:\s+(?=[A-Z(])|[ \t]*\n(?=[a-z]))/g) || [];
   const { choices } = splitChoices(cleaned);
   const frqParts = extractFrqParts(cleaned);
   const promptLikeStart = questionStarts.length > 0 && /\b(?:which|what|why|how|calculate|derive|explain|describe|identify|select|choose|answer)\b/i.test(cleaned);
@@ -1203,7 +1222,7 @@ function splitQuestionBlocks(pages: PageWithoutStorage[], sectionByPage: Map<num
     return current;
   }
 
-  const questionStartRe = /(?:^|\n)(?:Question\s+)?(\d{1,3})[\).]\s+(?=[A-Z(])/g;
+  const questionStartRe = /(?:^|\n)(?:Question\s+)?(\d{1,3})[\).](?:\s+(?=[A-Z(])|[ \t]*\n(?=[a-z]))/g;
   const starts = [...joined.matchAll(questionStartRe)];
   if (starts.length === 0) {
     return [];
@@ -1214,7 +1233,14 @@ function splitQuestionBlocks(pages: PageWithoutStorage[], sectionByPage: Map<num
     const start = (match.index || 0) + match[0].length;
     const end = starts[index + 1]?.index ?? joined.length;
     const chunk = joined.slice(start, end);
-    const chunkPageMarkers = [...chunk.matchAll(pageMarkerRe)].map((item) => Number(item[1]));
+    const chunkMarkers = [...chunk.matchAll(pageMarkerRe)];
+    const chunkPageMarkers = chunkMarkers
+      .filter((item, markerIndex) => {
+        const followingStart = (item.index || 0) + item[0].length;
+        const followingEnd = chunkMarkers[markerIndex + 1]?.index ?? chunk.length;
+        return cleanText(chunk.slice(followingStart, followingEnd)).length > 0;
+      })
+      .map((item) => Number(item[1]));
     const pageNumbers = Array.from(new Set([startMarker.pageNumber, ...chunkPageMarkers].filter(Number.isFinite))).sort((a, b) => a - b);
     return {
       questionNumber: Number(match[1]),
@@ -1464,7 +1490,7 @@ function rawBlockBbox(record: JsonRecord): [number, number, number, number] | nu
 }
 
 function usableVisualBlock(record: JsonRecord) {
-  if (record.kind !== "image") return null;
+  if (!["image", "table", "vector"].includes(String(record.kind))) return null;
   const bbox = rawBlockBbox(record);
   if (!bbox) return null;
   const [x0, y0, x1, y1] = bbox;
@@ -1481,16 +1507,101 @@ function usableVisualBlock(record: JsonRecord) {
   return {
     bbox,
     blockNumber: recordNumber(record, "block_number"),
+    kind: String(record.kind) as "image" | "table" | "vector",
+    pageWidth,
+    pageHeight,
     y0,
+    y1,
     x0
   };
 }
 
 function visualAssetTypeForDraft(draft: DraftQuestionWithoutStorage): "diagram" | "table" | "unknown" {
   const text = [draft.question_text, ...draft.choices.map((choice) => choice.text), draft.scoring_notes, draft.explanation].join(" ");
-  if (/table/i.test(text)) return "table";
-  if (/diagram|graph|figure|shown|below|image|plot|chart/i.test(text)) return "diagram";
+  const hasTable = /table/i.test(text);
+  const hasDiagram = /diagram|graph|figure|image|plot|chart/i.test(text);
+  if (hasTable && hasDiagram) return "unknown";
+  if (hasTable) return "table";
+  if (hasDiagram || /shown|below/i.test(text)) return "diagram";
   return "unknown";
+}
+
+function visualReferenceDirection(draft: DraftQuestionWithoutStorage) {
+  const text = [draft.question_text, ...draft.choices.map((choice) => choice.text)].join(" ");
+  if (/\b(?:shown|provided|pictured|illustrated|table|graph|diagram|figure|image|chart|plot)?\s*below\b/i.test(text)) return "below";
+  if (/\b(?:shown|provided|pictured|illustrated|table|graph|diagram|figure|image|chart|plot)?\s*above\b/i.test(text)) return "above";
+  return "nearby";
+}
+
+function draftPromptAnchor(draft: DraftQuestionWithoutStorage, page: PageWithoutStorage) {
+  const textBlocks = (page.raw_blocks || [])
+    .filter((block) => block.kind === "text")
+    .map((block) => ({ block, bbox: rawBlockBbox(block) }))
+    .filter((item): item is { block: JsonRecord; bbox: [number, number, number, number] } => Boolean(item.bbox));
+  if (textBlocks.length === 0) return null;
+  const questionNumberPattern = draft.question_number === null
+    ? null
+    : new RegExp(`(?:^|\\n)(?:Question\\s+)?${draft.question_number}[\\).]\\s+`, "i");
+  const promptPrefix = cleanText(draft.question_text).slice(0, 48).toLowerCase();
+  return textBlocks.find(({ block }) => questionNumberPattern?.test(String(block.text || ""))) ||
+    textBlocks.find(({ block }) => promptPrefix.length >= 16 && String(block.text || "").toLowerCase().includes(promptPrefix)) ||
+    null;
+}
+
+function visualBlockAssetType(
+  draftAssetType: "diagram" | "table" | "unknown",
+  blockKind: "image" | "table" | "vector"
+): "diagram" | "table" | "unknown" {
+  if (blockKind === "table") return "table";
+  if (blockKind === "image" || blockKind === "vector") return draftAssetType === "table" ? "unknown" : "diagram";
+  return draftAssetType;
+}
+
+function visualBlockAssociationScore(
+  draft: DraftQuestionWithoutStorage,
+  page: PageWithoutStorage,
+  pageNumber: number,
+  block: NonNullable<ReturnType<typeof usableVisualBlock>>
+) {
+  const draftAssetType = visualAssetTypeForDraft(draft);
+  const direction = visualReferenceDirection(draft);
+  const anchor = draftPromptAnchor(draft, page);
+  const pageDistance = Math.min(
+    Math.abs(pageNumber - draft.source_page_start),
+    Math.abs(pageNumber - draft.source_page_end)
+  );
+  let score = pageDistance * 10;
+  const reasons = [`${block.kind} block on source page ${pageNumber}`];
+  if (draftAssetType === "table") {
+    score += block.kind === "table" ? -3 : 2;
+  } else if (draftAssetType === "diagram") {
+    score += block.kind === "vector" || block.kind === "image" ? -2 : 1;
+  }
+  if (!anchor) return { score, reason: `${reasons.join(", ")}; ranked by source-page proximity` };
+
+  const [, anchorY0, , anchorY1] = anchor.bbox;
+  const anchorCenter = (anchorY0 + anchorY1) / 2;
+  const blockCenter = (block.y0 + block.y1) / 2;
+  const normalizedDistance = Math.abs(blockCenter - anchorCenter) / Math.max(1, block.pageHeight || 792);
+  score += normalizedDistance;
+  if (direction === "below") {
+    if (blockCenter >= anchorCenter) {
+      score -= 0.75;
+      reasons.push("matches below-reference cue");
+    } else {
+      score += 1.5;
+    }
+  } else if (direction === "above") {
+    if (blockCenter <= anchorCenter) {
+      score -= 0.75;
+      reasons.push("matches above-reference cue");
+    } else {
+      score += 1.5;
+    }
+  } else {
+    reasons.push("nearest to question text");
+  }
+  return { score, reason: reasons.join(", ") };
 }
 
 function buildVisualCropCandidates(drafts: DraftQuestionWithoutStorage[], pages: PageWithoutStorage[]) {
@@ -1510,18 +1621,24 @@ function buildVisualCropCandidates(drafts: DraftQuestionWithoutStorage[], pages:
           .map((block) => ({ pageNumber, block: usableVisualBlock(block), raw: block }))
           .filter((item): item is { pageNumber: number; block: NonNullable<ReturnType<typeof usableVisualBlock>>; raw: JsonRecord } => Boolean(item.block));
       })
-      .sort((a, b) => a.pageNumber - b.pageNumber || a.block.y0 - b.block.y0 || a.block.x0 - b.block.x0)
+      .map((item) => {
+        const page = pagesByNumber.get(item.pageNumber)!;
+        return { ...item, association: visualBlockAssociationScore(draft, page, item.pageNumber, item.block) };
+      })
+      .sort((a, b) => a.association.score - b.association.score || a.pageNumber - b.pageNumber || a.block.y0 - b.block.y0 || a.block.x0 - b.block.x0)
+      .filter((item, index, sorted) => index === 0 || item.association.score <= sorted[0].association.score + 1.25)
       .slice(0, 3);
 
     for (const [blockIndex, item] of blocks.entries()) {
       candidates.push({
-        candidateId: `draft-${draftIndex}-page-${item.pageNumber}-image-${blockIndex}`,
+        candidateId: `draft-${draftIndex}-page-${item.pageNumber}-${item.block.kind}-${blockIndex}`,
         draftIndex,
         pageNumber: item.pageNumber,
-        assetType,
+        assetType: visualBlockAssetType(assetType, item.block.kind),
         bbox: item.block.bbox,
         blockNumber: item.block.blockNumber,
-        source: typeof item.raw.source === "string" ? item.raw.source : "pymupdf"
+        source: typeof item.raw.source === "string" ? item.raw.source : "pymupdf",
+        association: item.association.reason
       });
     }
   }
@@ -1547,6 +1664,24 @@ function filterOutOfSequenceFrqDrafts(drafts: DraftQuestionWithoutStorage[]) {
     highestFrqQuestion = draft.question_number;
     kept.push(draft);
   }
+  return { drafts: kept, removedCount };
+}
+
+function filterDuplicateMcqDrafts(drafts: DraftQuestionWithoutStorage[]) {
+  const narrowestPageSpanByQuestion = new Map<number, number>();
+  let removedCount = 0;
+  for (const draft of drafts) {
+    if (draft.type !== "mcq" || draft.question_number === null) continue;
+    const draftPageSpan = draft.source_page_end - draft.source_page_start;
+    const current = narrowestPageSpanByQuestion.get(draft.question_number);
+    if (current === undefined || draftPageSpan < current) narrowestPageSpanByQuestion.set(draft.question_number, draftPageSpan);
+  }
+  const kept = drafts.filter((draft) => {
+    if (draft.type !== "mcq" || draft.question_number === null) return true;
+    const keep = draft.source_page_end - draft.source_page_start <= (narrowestPageSpanByQuestion.get(draft.question_number) ?? 0);
+    if (!keep) removedCount += 1;
+    return keep;
+  });
   return { drafts: kept, removedCount };
 }
 
@@ -1716,6 +1851,11 @@ export async function analyzePdfUpload(pdf: PdfUpload): Promise<PdfImportAnalysi
   let draftQuestions = questionBlocks
     .filter((block) => isSegmentedBlockWorthReview(block, pdf))
     .map((block) => draftFromBlock(block, pages, pdf));
+  const duplicateMcqFilter = filterDuplicateMcqDrafts(draftQuestions);
+  draftQuestions = duplicateMcqFilter.drafts;
+  if (duplicateMcqFilter.removedCount > 0) {
+    warnings.push(`Filtered ${duplicateMcqFilter.removedCount} duplicate MCQ candidate(s) with broader source-page spans.`);
+  }
   const frqSequenceFilter = filterOutOfSequenceFrqDrafts(draftQuestions);
   draftQuestions = frqSequenceFilter.drafts;
   if (frqSequenceFilter.removedCount > 0) {
@@ -1793,12 +1933,14 @@ export async function analyzePdfUpload(pdf: PdfUpload): Promise<PdfImportAnalysi
         bbox,
         source: candidate.source,
         block_number: candidate.blockNumber,
-        candidate_id: candidate.candidateId
+        candidate_id: candidate.candidateId,
+        association: candidate.association
       },
       keep_for_question: false,
       status: "candidate" as const,
       notes: [
         "Candidate source page for a visual reference. This is a cropped source candidate, not saved automatically.",
+        `Auto-associated for review: ${candidate.association}.`,
         rendered?.image_url ? "Admin must verify the crop before using it as a question image." : "Crop rendering did not produce an image; use the source page preview to crop manually.",
         ...renderedWarnings
       ].filter(Boolean).join(" ")
@@ -1811,7 +1953,7 @@ export async function analyzePdfUpload(pdf: PdfUpload): Promise<PdfImportAnalysi
     if (renderedCount > 0) {
       draft.warnings = Array.from(new Set([
         ...draft.warnings,
-        `Generated ${renderedCount} cropped visual evidence candidate(s) from PDF image blocks. Admin must verify before saving.`
+        `Generated ${renderedCount} cropped visual evidence candidate(s) from bounded PDF source blocks. Admin must verify the association and crop before saving.`
       ]));
     } else if (candidateCount > 0) {
       draft.warnings = Array.from(new Set([

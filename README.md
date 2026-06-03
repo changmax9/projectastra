@@ -209,7 +209,10 @@ Local OCR uses Python, PyMuPDF, Pillow, pytesseract, and a Tesseract installatio
 PDF_TEXT_PYTHON=
 PDF_OCR_PYTHON=
 TESSERACT_CMD=
+PDF_OCR_PSM=6
 ```
+
+`PDF_OCR_PSM` defaults to Tesseract single-block segmentation (`6`). For difficult scanned packets, the supported overrides are `3`, `4`, and `11`.
 
 Typical macOS setup:
 

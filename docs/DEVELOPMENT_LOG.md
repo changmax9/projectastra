@@ -1267,3 +1267,52 @@ npx tsc --noEmit
   - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe scripts/predeploy-check.cjs` passed with expected local warnings only.
   - `git diff --check` passed with CRLF normalization warnings only.
   - Authenticated local browser smoke at `http://127.0.0.1:3025/admin` showed the Microeconomics queue item with `56 pending`, the Statistics item with `39 pending`, a total `PDF drafts` count of `95`, and direct `Review drafts` links on desktop and mobile viewports.
+
+### 2026-06-02 Embedded-text MCQ recovery and conservative OCR label repair
+
+- Continued the PDF import quality pass without changing Supabase data, saving drafts, or publishing imported questions. The supplied Microeconomics packet and `qp-2024-chemistry.pdf` both use accepted embedded/PyMuPDF text, so their missing MCQs were parser-order problems rather than Tesseract-training problems.
+- Stabilized PyMuPDF reading order for overlapping accessibility-description blocks. Choice blocks that overlap a numbered stem are emitted immediately after that stem; paired blocks no longer look like full-width page headers; two-column assignment uses the block left edge. This recovered swallowed MCQs on the supplied Microeconomics packet.
+- Tightened segmentation boundaries. Unpunctuated trailing labels such as ordinary prose `key ingredients` no longer truncate prompts; lowercase formula starts are accepted only after a numbered prompt line break so decimal measurements such as `10. atm` do not become false questions; broader duplicate MCQ candidates are filtered only when a narrower source span exists; and page markers with no following block text no longer spill into the prior question's page attribution.
+- Improved scanned OCR conservatively. `PDF_OCR_PSM` now accepts `3`, `4`, `6`, or `11`, defaults to the existing proven `6`, and warns on invalid values. The worker repairs dropped punctuation only on question-like numeric starts and normalizes OCR choice labels only when it sees a complete sequential A-D/E line run. Every repair is recorded as a source-page warning for admin verification.
+- Tesseract training was deliberately deferred. A ten-page scanned `AP Calc AB 2019.pdf` analyzer comparison found `PDF_OCR_PSM=3` produced 6 review drafts while `PDF_OCR_PSM=6` produced 7; both still contain merged-choice candidates. The next scanned-PDF improvement should build a labeled page-image/ground-truth evaluation corpus and improve line/geometry recovery before training a custom model.
+- Final fault checks:
+  - Supplied `practice exam 2016(1).pdf`: 61 review drafts (60 MCQ, 1 FRQ), up from 56 (55 MCQ, 1 FRQ). Numbered MCQs are exactly 1-60 with no duplicate question numbers. Two visual-heavy drafts still carry explicit noisy-choice warnings instead of being silently repaired.
+  - `qp-2024-chemistry.pdf`: 67 review drafts (60 MCQ, 7 FRQ), up from 64 (57 MCQ, 7 FRQ).
+  - `AP Chem 2023.pdf`: stable at 67 review drafts (60 MCQ, 7 FRQ).
+  - Scanned synthetic fixture: page 1 now becomes a four-choice MCQ candidate with a source warning; low-confidence page 2 is isolated as its own incomplete candidate instead of contaminating page 1.
+  - Scoring-guide/sample-response packets remained failed with zero drafts. The malformed renamed `.pdf` fixture still failed before OCR.
+- Commands run:
+  - `node tests/run-import-tests.cjs`, `node node_modules/typescript/bin/tsc --noEmit`, `node node_modules/next/dist/bin/next lint`, `node scripts/predeploy-check.cjs`, and `node node_modules/typescript/bin/tsc -p tmp-pdf-import-fault-finding-20260521/tsconfig.probe.json` could not launch because the shell-resolved Codex app `node.exe` returned Windows `Access is denied`.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe tests/run-import-tests.cjs` passed.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules/typescript/bin/tsc --noEmit` passed.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules/next/dist/bin/next lint` passed with no ESLint warnings or errors.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe scripts/predeploy-check.cjs` passed with expected local warnings only.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules/typescript/bin/tsc -p tmp-pdf-import-fault-finding-20260521/tsconfig.probe.json` passed.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe tmp-pdf-import-fault-finding-20260521/build/tmp-pdf-import-fault-finding-20260521/probe-pdf-import.js` passed and refreshed `tmp-pdf-import-fault-finding-20260521/probe-report.json`.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe tmp-pdf-import-fault-finding-20260521/probe-real-pdf-summaries.cjs` passed and refreshed `tmp-pdf-import-fault-finding-20260521/real-pdf-summary-report.json`.
+  - `D:\Anaconda\python.exe -c "compile(...)"` passed for both Python workers.
+  - `git diff --check` passed with CRLF normalization warnings only.
+
+### 2026-06-02 PDF-native visual crop association pass
+
+- Continued the PDF import quality pass without changing Supabase data, saving drafts, or publishing imported questions. Re-ran `git status --short --branch` first and re-read this log, `TODO.md`, and `docs/PDF_IMPORT_LOCAL_CHANGES_SUMMARY.md` before edits.
+- Extended `scripts/pdf-text-worker.py` so structured extraction preserves bounded PDF-native vector drawing clusters alongside raster image blocks. Table-like grids are identified from clustered vertical and horizontal strokes without running PyMuPDF's expensive formal table finder across every page. Zero-width and zero-height stroked lines are associated with clusters using a touch/overlap test.
+- Kept text parsing stable: vector/table evidence blocks remain audit metadata and do not participate in accepted page text. Visual extraction now runs independently after recoverable text extraction errors so a text failure does not automatically erase available figure evidence.
+- Tightened `lib/pdf.ts` crop association. Visual-reference drafts accept bounded image, table, and vector blocks; blocks are ranked against nearby question text, source-page distance, block type, and `above`/`below` cues. Weaker same-page neighbors are suppressed unless they are close enough to the best association. Generated assets remain `status: "candidate"` with `keep_for_question: false`.
+- Focused generated-PDF probe: a one-page PDF containing a real vector table grid and a separate vector graph produced exactly two review-only crops. Draft 1 received only the table crop (`783x355` PNG) and draft 2 received only the graph crop (`655x517` PNG). Both used bounded bboxes and neither became a full-page screenshot or saved question image.
+- During fault-finding, the first formal-table implementation caused `AP Chem 2023.pdf` structured extraction to approach timeout and fall to 59 drafts. Replacing it with drawing-cluster classification recovered the known baseline and improved runtime.
+- Final real-PDF summary:
+  - `AP Chem 2023.pdf`: 67 drafts (60 MCQ, 7 FRQ), 93 accepted text pages, about 7.5 seconds.
+  - `practice exam 2016(1).pdf`: 61 drafts (60 MCQ, 1 FRQ), 62 accepted text pages, about 4.5 seconds.
+  - `qp-2024-chemistry.pdf`: 67 drafts (60 MCQ, 7 FRQ), 50 accepted text pages, about 5.3 seconds.
+  - Scoring-guide/sample-response packets remained failed with zero drafts. The malformed renamed `.pdf` fixture still failed before OCR.
+- Added source regression guards for vector/table cluster preservation, zero-area stroke handling, bounded evidence kinds, and draft-anchor association. Added `__pycache__/` to `.gitignore` after Python syntax checks created local bytecode.
+- Commands run:
+  - `D:\Anaconda\python.exe -m py_compile scripts/pdf-text-worker.py scripts/pdf-ocr-worker.py` passed.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe tests/run-import-tests.cjs` passed.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules/typescript/bin/tsc --noEmit` passed.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules/next/dist/bin/next lint` passed with no ESLint warnings or errors.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe scripts/predeploy-check.cjs` passed with expected local warnings only.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules/typescript/bin/tsc -p tmp-pdf-import-fault-finding-20260521/tsconfig.probe.json` passed.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe tmp-pdf-import-fault-finding-20260521/build/tmp-pdf-import-fault-finding-20260521/probe-pdf-import.js` passed and refreshed `tmp-pdf-import-fault-finding-20260521/probe-report.json`.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe tmp-pdf-import-fault-finding-20260521/probe-real-pdf-summaries.cjs` passed and refreshed `tmp-pdf-import-fault-finding-20260521/real-pdf-summary-report.json`.

@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -92,6 +93,68 @@ def render_crop(doc, crop, out_dir, public_prefix, matrix, index):
     return result
 
 
+def choice_label(line):
+    match = re.match(r"^\s*(\(?[A-E]\)?[\.\)]?|\u00a9[\.\)]?|1D)\s+(\S.*)$", line, re.IGNORECASE)
+    if not match:
+        return None
+    token = match.group(1).upper()
+    if token.startswith("\u00a9"):
+        label = "C"
+    elif token == "1D":
+        label = "D"
+    else:
+        label = re.sub(r"[^A-E]", "", token)
+    return label, match.group(2)
+
+
+def normalize_choice_lines(rendered_lines):
+    normalized = list(rendered_lines)
+    recovered = 0
+    index = 0
+    while index < len(rendered_lines):
+        parsed = choice_label(rendered_lines[index])
+        if not parsed or parsed[0] != "A":
+            index += 1
+            continue
+        run = []
+        expected = "A"
+        cursor = index
+        while cursor < len(rendered_lines):
+            parsed = choice_label(rendered_lines[cursor])
+            if not parsed or parsed[0] != expected:
+                break
+            run.append((cursor, parsed[0], parsed[1]))
+            if expected == "E":
+                break
+            expected = chr(ord(expected) + 1)
+            cursor += 1
+        if len(run) >= 4:
+            for line_index, label, text in run:
+                normalized[line_index] = f"{label}. {text}"
+            recovered += len(run)
+            index = run[-1][0] + 1
+            continue
+        index += 1
+    return normalized, recovered
+
+
+def normalize_question_lines(rendered_lines):
+    normalized = []
+    recovered = 0
+    for line in rendered_lines:
+        match = re.match(
+            r"^\s*(\d{1,3})\s+(.+\b(?:question|which|what|why|how|assume|calculate|determine|identify|select|find)\b.*)$",
+            line,
+            re.IGNORECASE,
+        )
+        if match:
+            normalized.append(f"{match.group(1)}. {match.group(2)}")
+            recovered += 1
+        else:
+            normalized.append(line)
+    return normalized, recovered
+
+
 def main():
     parser = argparse.ArgumentParser(description="Render PDF pages and OCR them with Tesseract.")
     parser.add_argument("--pdf", required=True)
@@ -100,6 +163,7 @@ def main():
     parser.add_argument("--public-prefix", required=True)
     parser.add_argument("--tesseract-cmd", default="")
     parser.add_argument("--dpi", type=int, default=220)
+    parser.add_argument("--psm", type=int, choices=[3, 4, 6, 11], default=6)
     parser.add_argument("--render-only", action="store_true")
     parser.add_argument("--crops-json", default="", help="JSON crop requests using PDF page coordinates.")
     args = parser.parse_args()
@@ -186,7 +250,7 @@ def main():
 
             image = Image.open(image_path)
             gray = image.convert("L")
-            data = pytesseract.image_to_data(gray, lang="eng", config="--psm 6", output_type=pytesseract.Output.DICT)
+            data = pytesseract.image_to_data(gray, lang="eng", config=f"--psm {args.psm}", output_type=pytesseract.Output.DICT)
             lines = {}
             confidences = []
             texts = data.get("text", [])
@@ -215,10 +279,20 @@ def main():
             rendered_lines = []
             for key in sorted(lines.keys()):
                 rendered_lines.append(" ".join(text for _, text in sorted(lines[key], key=lambda item: item[0])))
+            rendered_lines, recovered_question_starts = normalize_question_lines(rendered_lines)
+            rendered_lines, recovered_choice_labels = normalize_choice_lines(rendered_lines)
 
             page_result["text"] = "\n".join(rendered_lines).strip()
             page_result["confidence"] = round(sum(confidences) / len(confidences), 2) if confidences else None
             page_result["status"] = "completed" if page_result["text"] else "failed"
+            if recovered_question_starts:
+                page_result["warnings"].append(
+                    f"Normalized punctuation for {recovered_question_starts} OCR question start(s). Admin must verify the recovered boundaries."
+                )
+            if recovered_choice_labels:
+                page_result["warnings"].append(
+                    f"Normalized {recovered_choice_labels} OCR choice labels from a sequential A-D/E line run. Admin must verify the recovered labels."
+                )
             if not page_result["text"]:
                 page_result["warnings"].append("Tesseract returned no text for this page.")
         except Exception as exc:
