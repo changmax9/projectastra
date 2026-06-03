@@ -18,7 +18,7 @@ function SaveDraftButton({ disabled }: { disabled?: boolean }) {
       disabled={pending || disabled}
       className="rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
     >
-      {pending ? "Saving..." : "Save to question drafts"}
+      {pending ? "Saving..." : "Save verified draft"}
     </button>
   );
 }
@@ -30,7 +30,7 @@ function RejectButton({ disabled }: { disabled?: boolean }) {
       disabled={pending || disabled}
       className="rounded-md border border-red-200 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60"
     >
-      {pending ? "Rejecting..." : "Reject draft"}
+      {pending ? "Rejecting..." : "Reject this draft"}
     </button>
   );
 }
@@ -102,11 +102,15 @@ function buildQuestionImagesJson(
 export function PdfDraftQuestionReview({
   draft,
   sourcePages,
-  candidateAssets = []
+  candidateAssets = [],
+  position,
+  totalDrafts
 }: {
   draft: PdfImportDraftQuestion;
   sourcePages?: PdfImportPage[];
   candidateAssets?: PdfImportDraftAsset[];
+  position?: number;
+  totalDrafts?: number;
 }) {
   const [state, action] = useFormState<ActionState, FormData>(adminSavePdfDraftQuestionAction, {});
   const [candidateSelections, setCandidateSelections] = useState<CandidateSelectionState>(() =>
@@ -163,6 +167,7 @@ export function PdfDraftQuestionReview({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex flex-wrap gap-2 text-xs text-slate-500">
+            {position && totalDrafts ? <span>Draft {position} of {totalDrafts}</span> : null}
             <span>Question {draft.question_number ?? "?"}</span>
             <span>Pages {draft.source_page_start}-{draft.source_page_end}</span>
             <span>{draft.type.toUpperCase()}</span>
@@ -205,6 +210,21 @@ export function PdfDraftQuestionReview({
             ))}
           </div>
         ) : null}
+      </div>
+
+      <div className="mt-4 grid gap-2 text-xs font-semibold text-slate-700 sm:grid-cols-2 lg:grid-cols-4">
+        <span className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+          Source pages: {sourcePages?.length || 0}
+        </span>
+        <span className={`rounded-md border px-3 py-2 ${draft.warnings.length > 0 ? "border-amber-200 bg-amber-50 text-amber-900" : "border-green-200 bg-green-50 text-green-800"}`}>
+          Warnings: {draft.warnings.length}
+        </span>
+        <span className={`rounded-md border px-3 py-2 ${candidateAssets.length > 0 ? "border-blue-200 bg-blue-50 text-blue-900" : "border-slate-200 bg-slate-50"}`}>
+          Visual candidates: {candidateAssets.length}
+        </span>
+        <span className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+          Save status: draft only
+        </span>
       </div>
 
       {sourcePages && sourcePages.length > 0 ? (
@@ -309,6 +329,12 @@ export function PdfDraftQuestionReview({
       ) : null}
 
       <form action={action} className="mt-5 space-y-4">
+        <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+          <p className="text-sm font-semibold text-ink">Verified draft fields</p>
+          <p className="mt-1 text-xs leading-5 text-slate-500">
+            Saving creates a draft question with needs-admin-review tags. It does not publish the question.
+          </p>
+        </div>
         <input type="hidden" name="draft_id" value={draft.id} />
         <input type="hidden" name="job_id" value={draft.job_id} />
         <input type="hidden" name="selection_type" value={selectionMeta.selectionType} />

@@ -26,6 +26,14 @@ function statusTone(status: PdfImportJobDetails["status"]) {
   return "border-amber-200 bg-amber-50 text-amber-900";
 }
 
+function workspaceActionLabel(job: PdfImportJobDetails, pendingCount: number) {
+  if (job.status === "processing") return "Analysis is running";
+  if (job.status === "failed") return "Fix the import issue, then start analysis again";
+  if (pendingCount > 0) return `Review ${pendingCount} pending draft${pendingCount === 1 ? "" : "s"}`;
+  if (job.draft_questions.length > 0) return "All drafts have been reviewed";
+  return "Start analysis from the upload list";
+}
+
 export function PdfImportWorkspace({ initialJob }: { initialJob: PdfImportJobDetails | null }) {
   const [job, setJob] = useState(initialJob);
   const [error, setError] = useState<string | null>(null);
@@ -69,9 +77,9 @@ export function PdfImportWorkspace({ initialJob }: { initialJob: PdfImportJobDet
   if (!job) {
     return (
       <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-lg font-semibold text-ink">Import workspace</h2>
+        <h2 className="text-lg font-semibold text-ink">No import selected</h2>
         <p className="mt-2 text-sm leading-6 text-slate-500">
-          Select an existing import or click Analyze PDF to generate reviewable draft questions on this page.
+          Use Start analysis on a PDF row, or open an existing review from the import column.
         </p>
       </section>
     );
@@ -80,12 +88,14 @@ export function PdfImportWorkspace({ initialJob }: { initialJob: PdfImportJobDet
   const pendingCount = job.draft_questions.filter((draft) => draft.review_status === "pending").length;
   const savedCount = job.draft_questions.filter((draft) => draft.review_status === "saved").length;
   const rejectedCount = job.draft_questions.filter((draft) => draft.review_status === "rejected").length;
+  const actionLabel = workspaceActionLabel(job, pendingCount);
 
   return (
     <section className="space-y-5 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h2 className="text-xl font-semibold text-ink">Import workspace</h2>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Selected import</p>
+          <h2 className="mt-1 text-xl font-semibold text-ink">Import workspace</h2>
           <p className="mt-1 text-sm leading-6 text-slate-500">
             {job.pdf_upload?.file_name || job.pdf_upload_id}
           </p>
@@ -97,6 +107,23 @@ export function PdfImportWorkspace({ initialJob }: { initialJob: PdfImportJobDet
           <Link href={`/admin/pdf-imports/${job.id}`} className="rounded-md border border-slate-300 px-3 py-1 text-slate-700 hover:bg-slate-50">
             Deep link
           </Link>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Next action</p>
+          <p className="mt-1 font-semibold text-ink">{actionLabel}</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {pendingCount > 0 ? (
+            <a href="#pdf-draft-review" className="rounded-md bg-slate-950 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800">
+              Jump to drafts
+            </a>
+          ) : null}
+          <a href="#pdf-page-audit" className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-white">
+            Page audit
+          </a>
         </div>
       </div>
 
@@ -145,7 +172,7 @@ export function PdfImportWorkspace({ initialJob }: { initialJob: PdfImportJobDet
         </div>
       ) : null}
 
-      <div className="rounded-md border border-slate-200 p-4">
+      <div id="pdf-page-audit" className="rounded-md border border-slate-200 p-4">
         <h3 className="font-semibold text-ink">Page audit</h3>
         <div className="mt-3 grid max-h-96 gap-3 overflow-auto md:grid-cols-2 xl:grid-cols-3">
           {job.pages.length === 0 ? (
@@ -168,13 +195,25 @@ export function PdfImportWorkspace({ initialJob }: { initialJob: PdfImportJobDet
         </div>
       ) : (
         <div className="space-y-4">
-          <h3 className="font-semibold text-ink">Generated draft questions</h3>
-          {job.draft_questions.map((draft) => {
+          <div id="pdf-draft-review" className="flex flex-wrap items-center justify-between gap-3">
+            <h3 className="font-semibold text-ink">Generated draft questions</h3>
+            <p className="text-sm text-slate-500">{pendingCount} pending · {savedCount} saved · {rejectedCount} rejected</p>
+          </div>
+          {job.draft_questions.map((draft, draftIndex) => {
             const sourcePages = job.pages.filter(
               (page) => page.page_number >= draft.source_page_start && page.page_number <= draft.source_page_end
             );
             const candidateAssets = job.draft_assets.filter((asset) => asset.draft_question_id === draft.id);
-            return <PdfDraftQuestionReview key={draft.id} draft={draft} sourcePages={sourcePages} candidateAssets={candidateAssets} />;
+            return (
+              <PdfDraftQuestionReview
+                key={draft.id}
+                draft={draft}
+                sourcePages={sourcePages}
+                candidateAssets={candidateAssets}
+                position={draftIndex + 1}
+                totalDrafts={job.draft_questions.length}
+              />
+            );
           })}
         </div>
       )}

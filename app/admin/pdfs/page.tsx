@@ -22,15 +22,31 @@ export default async function AdminPdfsPage({ searchParams }: { searchParams?: {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-semibold text-ink">PDF uploads</h1>
+        <h1 className="text-3xl font-semibold text-ink">PDF Imports</h1>
         <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
-          MVP saves PDFs and metadata. Do not write PDF content directly into the question bank. The intended flow is PDF upload → AI/OCR parse to JSON → admin preview/edit → question import → exam creation.
+          Upload packets, run OCR analysis, then verify each draft before it can enter the question bank.
         </p>
       </div>
+      <section className="grid gap-3 md:grid-cols-4">
+        {[
+          ["1", "Upload", "Add a source PDF and course metadata."],
+          ["2", "Analyze", "Generate review-only drafts from OCR/text."],
+          ["3", "Review", "Check wording, choices, answers, and source evidence."],
+          ["4", "Save draft", "Verified items become draft questions only."]
+        ].map(([step, label, detail]) => (
+          <div key={step} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-center gap-2">
+              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-950 text-xs font-semibold text-white">{step}</span>
+              <h2 className="font-semibold text-ink">{label}</h2>
+            </div>
+            <p className="mt-2 text-sm leading-5 text-slate-500">{detail}</p>
+          </div>
+        ))}
+      </section>
       <PdfUploader />
       <section className="rounded-lg border border-blue-100 bg-blue-50 p-5 text-sm leading-6 text-blue-900">
-        <h2 className="font-semibold">PDF import safety</h2>
-        <p className="mt-2">PDF 上传保存 → async text/OCR analysis → same-page draft review → 管理员预览和修改 → save as draft question. Imported questions are never published directly.</p>
+        <h2 className="font-semibold">Review-only import safety</h2>
+        <p className="mt-2">OCR output stays as draft/review-state content. Imported questions are never published directly.</p>
       </section>
       {showMissingSchemaWarning ? (
         <section className="rounded-lg border border-amber-200 bg-amber-50 p-5 text-sm leading-6 text-amber-900">
@@ -55,6 +71,7 @@ export default async function AdminPdfsPage({ searchParams }: { searchParams?: {
         empty="No PDFs uploaded yet."
         rows={pdfs.map((pdf) => {
           const latestJob = latestJobByPdf.get(pdf.id);
+          const isSelected = Boolean(latestJob && latestJob.id === selectedJobId);
           return [
             <a key="file" href={pdf.file_url} target="_blank" className="font-medium text-brand">{pdf.file_name}</a>,
             pdf.subject || "",
@@ -68,15 +85,15 @@ export default async function AdminPdfsPage({ searchParams }: { searchParams?: {
                   disabled={!importSchemaStatus.available}
                   className="rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
                 >
-                  Analyze PDF
+                  Start analysis
                 </button>
               </form>
               {latestJob ? (
                 <Link
                   href={`/admin/pdfs?job_id=${latestJob.id}`}
-                  className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  className={`rounded-md border px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 ${isSelected ? "border-brand bg-blue-50 text-brand" : "border-slate-300 text-slate-700"}`}
                 >
-                  Review {latestJob.draft_question_count}
+                  {isSelected ? "Selected" : `Review ${latestJob.draft_question_count}`}
                 </Link>
               ) : null}
             </div>,

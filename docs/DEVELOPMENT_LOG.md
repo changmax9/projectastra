@@ -1316,3 +1316,23 @@ npx tsc --noEmit
   - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules/typescript/bin/tsc -p tmp-pdf-import-fault-finding-20260521/tsconfig.probe.json` passed.
   - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe tmp-pdf-import-fault-finding-20260521/build/tmp-pdf-import-fault-finding-20260521/probe-pdf-import.js` passed and refreshed `tmp-pdf-import-fault-finding-20260521/probe-report.json`.
   - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe tmp-pdf-import-fault-finding-20260521/probe-real-pdf-summaries.cjs` passed and refreshed `tmp-pdf-import-fault-finding-20260521/real-pdf-summary-report.json`.
+
+### 2026-06-03 Admin PDF workflow clarity pass
+
+- Continued the admin PDF import workflow pass after pushing the OCR/visual-crop work. Ran `git status --short --branch` first, re-read this log, `TODO.md`, and `docs/PDF_IMPORT_LOCAL_CHANGES_SUMMARY.md`, preserved untracked handoff artifacts, did not stage/commit/push, did not change Supabase data, and did not save/reject/publish imported questions.
+- Attempted to use the Codex in-app browser with the Browser plugin as requested. The local browser bridge failed before attaching to the tab with `failed to write kernel assets: system cannot find the path`, even after resetting the Node REPL and verifying the plugin path. Browser automation was therefore blocked for this pass.
+- Started local Next dev on `http://127.0.0.1:3024` and used the supplied admin account context without recording credentials in docs. The rendered login form did not expose the supplied password. Because browser automation was blocked and PowerShell did not preserve the server-action login cookies reliably, the authenticated render smoke used the same local `ap_mock_profile_id` session cookie path that the app reads, with the admin profile id resolved read-only from Supabase.
+- Improved `/admin/pdfs` workflow clarity:
+  - Renamed the page heading to `PDF Imports` and added compact upload/analyze/review/save-draft stage cards.
+  - Renamed upload controls to `Upload source PDF`, clarified that uploads stay separate from the question bank, and changed metadata placeholder `Subject` to `AP Course`.
+  - Changed row action `Analyze PDF` to `Start analysis`, and changed the current review link to a selected-state label.
+  - Added a selected-import workspace header, next-action panel, jump links to draft review and page audit, and a visible pending/saved/rejected summary beside generated drafts.
+  - Added per-draft review chips for source pages, warnings, visual candidates, and draft-only save status.
+  - Changed draft actions to `Save verified draft` and `Reject this draft`, with explicit no-publish copy above editable draft fields.
+- Authenticated HTTP smoke for `/admin/pdfs` confirmed the rendered page contains `PDF Imports`, `Selected import`, `Next action`, `Jump to drafts`, `Save verified draft`, `Save status: draft only`, and no-publish copy, and does not expose the supplied password.
+- Commands run:
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules/typescript/bin/tsc --noEmit` passed.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe tests/run-import-tests.cjs` passed.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules/next/dist/bin/next lint` passed with no ESLint warnings or errors.
+  - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe scripts/predeploy-check.cjs` passed with expected local warnings only.
+  - `curl.exe -s --cookie ... http://127.0.0.1:3024/admin/pdfs` authenticated render smoke passed for the workflow landmarks above.
