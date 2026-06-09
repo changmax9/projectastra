@@ -10,7 +10,7 @@ function DeleteSubmitButton({ canSubmit }: { canSubmit: boolean }) {
     <button
       type="submit"
       disabled={!canSubmit || pending}
-      className="rounded-full border border-rose-200 bg-rose-50 px-5 py-2.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+      className="edu-button-danger px-5 py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
     >
       {pending ? "Deleting..." : "Permanently delete account"}
     </button>
@@ -23,10 +23,10 @@ export function DeleteAccountForm({ isAdmin }: { isAdmin: boolean }) {
   const canSubmit = useMemo(() => confirmation === "DELETE" && !isAdmin, [confirmation, isAdmin]);
 
   return (
-    <section className="rounded-[28px] border border-rose-200/80 bg-rose-50/80 p-6 shadow-[0_20px_60px_-35px_rgba(190,18,60,0.35)] backdrop-blur-xl">
+    <section className="rounded-2xl border border-rose-200 bg-rose-50 p-6 shadow-[0_14px_28px_-26px_rgba(190,18,60,0.45)]">
       <div>
         <p className="text-sm font-semibold uppercase tracking-wide text-rose-600">Danger Zone</p>
-        <h2 className="mt-2 text-xl font-semibold text-rose-950">Delete account</h2>
+        <h2 className="edu-heading mt-2 text-2xl text-rose-950">Delete account</h2>
         <div className="mt-3 space-y-1 text-sm leading-6 text-rose-800">
           <p>Deleting your account is permanent.</p>
           <p>Your profile and account access will be removed.</p>

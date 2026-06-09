@@ -16,20 +16,20 @@ function statusTone(status: PdfImportReviewQueue["items"][number]["status"]) {
 
 export function AdminPdfImportReviewQueue({ queue }: { queue: PdfImportReviewQueue }) {
   return (
-    <section className="overflow-hidden rounded-lg border border-amber-200 bg-white shadow-sm">
+    <section className="overflow-hidden rounded-2xl border border-amber-200 bg-white shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-4 border-b border-amber-100 bg-amber-50 px-5 py-4">
         <div className="flex gap-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-amber-100 text-amber-800">
             <FileSearch className="h-5 w-5" />
           </span>
           <div>
-            <h2 className="text-lg font-semibold text-ink">PDF drafts awaiting review</h2>
+            <h2 className="font-semibold text-slate-950">PDF drafts awaiting review</h2>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-amber-900">
               OCR imports stay here until an admin verifies and saves each draft. They do not appear in Questions or student exams yet.
             </p>
           </div>
         </div>
-        <Link href="/admin/pdfs" className="inline-flex items-center gap-2 rounded-md bg-slate-950 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800">
+        <Link href="/admin/pdfs" className="edu-button-primary inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold">
           Open PDF imports
           <ArrowRight className="h-4 w-4" />
         </Link>
@@ -64,7 +64,7 @@ export function AdminPdfImportReviewQueue({ queue }: { queue: PdfImportReviewQue
                 </p>
                 <Link
                   href={`/admin/pdfs?job_id=${job.id}`}
-                  className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                  className="edu-button-secondary inline-flex items-center gap-1 px-3 py-2 text-sm font-semibold"
                 >
                   Review drafts
                   <ArrowRight className="h-4 w-4" />

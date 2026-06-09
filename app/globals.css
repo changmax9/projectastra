@@ -14,8 +14,15 @@
 
 body {
   margin: 0;
-  background: linear-gradient(180deg, #f7faff 0%, #eef3f8 42%, #f6f8fb 100%);
-  color: #172033;
+  background:
+    linear-gradient(rgba(30, 58, 138, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(30, 58, 138, 0.035) 1px, transparent 1px),
+    radial-gradient(circle at 8% 0%, rgba(30, 64, 175, 0.10), transparent 30%),
+    radial-gradient(circle at 92% 0%, rgba(15, 118, 110, 0.08), transparent 28%),
+    linear-gradient(180deg, #f7f9fc 0%, #edf2f8 52%, #f8fafc 100%);
+  background-size: 28px 28px, 28px 28px, auto, auto, auto;
+  color: #111827;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   overflow-x: hidden;
 }
@@ -51,10 +58,167 @@ button {
 }
 
 @layer components {
+  .edu-page {
+    min-height: 100vh;
+    background:
+      linear-gradient(rgba(30, 58, 138, 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(30, 58, 138, 0.035) 1px, transparent 1px),
+      radial-gradient(circle at 10% 0%, rgba(30, 64, 175, 0.10), transparent 32%),
+      radial-gradient(circle at 88% 6%, rgba(15, 118, 110, 0.08), transparent 30%),
+      linear-gradient(180deg, #f7f9fc 0%, #edf2f8 50%, #f8fafc 100%);
+    background-size: 28px 28px, 28px 28px, auto, auto, auto;
+  }
+
+  .edu-shell {
+    margin-left: auto;
+    margin-right: auto;
+    width: 100%;
+    max-width: 80rem;
+  }
+
+  .edu-glass {
+    border: 1px solid #cbd7e6;
+    background: rgba(255, 255, 255, 0.94);
+    box-shadow: 0 14px 34px -30px rgba(15, 23, 42, 0.45);
+    backdrop-filter: blur(8px);
+  }
+
+  .edu-panel {
+    border: 1px solid #cbd7e6;
+    background: #fff;
+    box-shadow: 0 8px 22px -20px rgba(15, 23, 42, 0.35);
+  }
+
+  .edu-panel-header {
+    border-bottom: 1px solid #dbe4ef;
+    background: #f8fafc;
+    color: #334155;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .edu-card {
+    border: 1px solid #d7e0ec;
+    background: #fff;
+    box-shadow: 0 8px 18px -18px rgba(15, 23, 42, 0.35);
+  }
+
+  .edu-heading {
+    color: #0f172a;
+    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-weight: 760;
+    letter-spacing: -0.015em;
+  }
+
+  .edu-eyebrow {
+    color: #1e3a8a;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    font-size: 0.75rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .edu-kicker {
+    color: #475569;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+
+  .edu-meta {
+    color: #475569;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    font-size: 0.75rem;
+    font-weight: 650;
+  }
+
+  .edu-terminal-bar {
+    border: 1px solid #cbd7e6;
+    background: #0f172a;
+    color: #dbeafe;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+
+  .edu-button-primary {
+    border-radius: 0.75rem;
+    background: #0f172a;
+    color: #fff;
+    box-shadow: 0 10px 20px -18px rgba(15, 23, 42, 0.8);
+    transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+  }
+
+  .edu-button-primary:hover {
+    background: #1e3a8a;
+    box-shadow: 0 12px 24px -18px rgba(30, 58, 138, 0.65);
+  }
+
+  .edu-button-secondary {
+    border-radius: 0.75rem;
+    border: 1px solid #cbd5e1;
+    background: #fff;
+    color: #334155;
+    transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+  }
+
+  .edu-button-secondary:hover {
+    border-color: #93a4b8;
+    background: #fff;
+    color: #0f172a;
+  }
+
+  .edu-button-danger {
+    border-radius: 0.75rem;
+    border: 1px solid #fecdd3;
+    background: #fff1f2;
+    color: #be123c;
+    transition: background-color 160ms ease, border-color 160ms ease;
+  }
+
+  .edu-button-danger:hover {
+    border-color: #fda4af;
+    background: #ffe4e6;
+  }
+
+  .edu-field {
+    border-radius: 0.75rem;
+    border: 1px solid #cbd5e1;
+    background: #fff;
+    color: #172033;
+    outline: none;
+    transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+  }
+
+  .edu-field:focus {
+    border-color: #1d4ed8;
+    box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.14);
+  }
+
+  .edu-badge {
+    border-radius: 0.625rem;
+    border: 1px solid #cbd5e1;
+    background: #f8fafc;
+    color: #475569;
+    font-size: 0.75rem;
+    font-weight: 700;
+  }
+
+  .edu-divider {
+    border-top: 1px solid #dbe4ef;
+  }
+
   .app-surface {
-    border: 1px solid #dbe4ef;
-    background: rgba(255, 255, 255, 0.92);
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 14px 32px rgba(49, 95, 159, 0.08);
+    border: 1px solid #cbd7e6;
+    background: #fff;
+    box-shadow: 0 8px 22px -20px rgba(15, 23, 42, 0.35);
   }
 
   .app-field {
@@ -74,20 +238,20 @@ button {
   }
 
   .app-primary {
-    border-radius: 8px;
-    background: #315f9f;
+    border-radius: 0.75rem;
+    background: #0f172a;
     color: #fff;
     box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12), 0 8px 18px rgba(49, 95, 159, 0.18);
     transition: background-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
   }
 
   .app-primary:hover {
-    background: #214a82;
+    background: #1e3a8a;
     box-shadow: 0 2px 4px rgba(15, 23, 42, 0.14), 0 12px 22px rgba(49, 95, 159, 0.22);
   }
 
   .app-secondary {
-    border-radius: 8px;
+    border-radius: 0.75rem;
     border: 1px solid #c9d5e6;
     background: #fff;
     color: #25415f;
@@ -100,7 +264,7 @@ button {
   }
 
   .app-chip {
-    border-radius: 999px;
+    border-radius: 0.625rem;
     border: 1px solid #d4deec;
     background: #f6f9fd;
     color: #42556f;

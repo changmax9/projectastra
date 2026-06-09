@@ -42,10 +42,11 @@ export function BreakScreenClient({ submission }: { submission: Submission }) {
   };
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(99,102,241,0.16),transparent_32%),radial-gradient(circle_at_top_right,rgba(14,165,233,0.14),transparent_28%),#f7f8fb] px-4 py-10">
-      <section className="mx-auto max-w-2xl rounded-[28px] border border-white/60 bg-white/75 p-8 text-center shadow-[0_20px_60px_-30px_rgba(15,23,42,0.35)] backdrop-blur-xl">
-        <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">Break Time</p>
-        <h1 className="mt-4 text-6xl font-semibold tabular-nums text-ink">{formatBreakTime(remaining)}</h1>
+    <main className="edu-page px-4 py-10">
+      <section className="edu-panel mx-auto max-w-2xl rounded-2xl text-center">
+        <div className="edu-panel-header rounded-t-2xl px-5 py-3">Break Time</div>
+        <div className="p-8">
+        <h1 className="mt-2 font-mono text-7xl font-black tabular-nums text-slate-950">{formatBreakTime(remaining)}</h1>
         <p className="mt-6 leading-7 text-slate-600">
           You have completed the multiple-choice section. The free-response section will begin after the break.
           You may skip the break and continue now.
@@ -58,7 +59,7 @@ export function BreakScreenClient({ submission }: { submission: Submission }) {
             type="button"
             onClick={() => router.push("/dashboard")}
             disabled={isPending}
-            className="rounded-full border border-slate-200/80 bg-white/70 px-5 py-2.5 text-sm font-medium text-slate-700 backdrop-blur-xl transition hover:bg-white/90 disabled:opacity-60"
+            className="edu-button-secondary px-5 py-2.5 text-sm font-medium disabled:opacity-60"
           >
             Save & Exit
           </button>
@@ -66,12 +67,13 @@ export function BreakScreenClient({ submission }: { submission: Submission }) {
             type="button"
             onClick={skipBreak}
             disabled={isPending}
-            className="rounded-full bg-slate-950 px-5 py-2.5 text-sm font-medium text-white shadow-lg shadow-slate-900/15 transition hover:-translate-y-0.5 hover:shadow-xl disabled:opacity-60"
+            className="edu-button-primary px-5 py-2.5 text-sm font-medium disabled:opacity-60"
           >
             {isPending ? "Continuing..." : "Skip Break"}
           </button>
         </div>
         <p className="mt-4 text-xs text-slate-500">Continue when timer ends.</p>
+        </div>
       </section>
     </main>
   );

@@ -14,8 +14,8 @@ export default async function AdminHomePage() {
   return (
     <div className="space-y-6">
       <div>
-        <p className="text-sm font-semibold uppercase tracking-wide text-brand">Admin</p>
-        <h1 className="mt-2 text-3xl font-semibold text-ink">Platform overview</h1>
+        <p className="edu-kicker">Admin console</p>
+        <h1 className="edu-heading mt-2 text-3xl">Platform overview</h1>
       </div>
       <AdminPdfImportReviewQueue queue={stats.pdfImportReviewQueue} />
       <AdminStatsCards
@@ -23,32 +23,34 @@ export default async function AdminHomePage() {
         adminsCount={accountHealth.adminProfileCount}
         pdfDraftsPendingCount={stats.pdfImportReviewQueue.pending_draft_count}
       />
-      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="edu-panel rounded-2xl">
+        <div className="edu-panel-header rounded-t-2xl px-5 py-3">Account health</div>
+        <div className="p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-xl font-semibold text-ink">Account health</h2>
+            <h2 className="font-semibold text-slate-950">Authentication and profile rows</h2>
             <p className="mt-1 text-sm text-slate-500">
               {accountHealth.mode === "supabase" ? "Supabase Auth and profile rows" : "Local mock fallback accounts"}
             </p>
           </div>
-          <span className={`rounded-md px-3 py-1 text-xs font-semibold ${accountHealth.mode === "supabase" ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-800"}`}>
+          <span className={`rounded-full px-3 py-1 text-xs font-bold ${accountHealth.mode === "supabase" ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-800"}`}>
             {accountHealth.mode === "supabase" ? "Supabase connected" : "Mock fallback"}
           </span>
         </div>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-md border border-slate-200 p-3">
+          <div className="edu-card rounded-2xl p-3">
             <p className="text-xs uppercase tracking-wide text-slate-500">Admin profiles</p>
             <p className="mt-1 text-2xl font-semibold text-ink">{accountHealth.adminProfileCount}</p>
           </div>
-          <div className="rounded-md border border-slate-200 p-3">
+          <div className="edu-card rounded-2xl p-3">
             <p className="text-xs uppercase tracking-wide text-slate-500">Student profiles</p>
             <p className="mt-1 text-2xl font-semibold text-ink">{accountHealth.studentProfileCount}</p>
           </div>
-          <div className="rounded-md border border-slate-200 p-3">
+          <div className="edu-card rounded-2xl p-3">
             <p className="text-xs uppercase tracking-wide text-slate-500">Auth users</p>
             <p className="mt-1 text-2xl font-semibold text-ink">{accountHealth.authUserCount}</p>
           </div>
-          <div className="rounded-md border border-slate-200 p-3">
+          <div className="edu-card rounded-2xl p-3">
             <p className="text-xs uppercase tracking-wide text-slate-500">Seed admin env</p>
             <p className="mt-1 text-sm font-semibold text-ink">{accountHealth.seedAdminEmailConfigured ? "Configured" : "Missing"}</p>
           </div>
@@ -68,9 +70,10 @@ export default async function AdminHomePage() {
             </ul>
           </div>
         ) : null}
+        </div>
       </section>
       <section>
-        <h2 className="mb-3 text-xl font-semibold text-ink">Recent submissions</h2>
+        <h2 className="edu-kicker mb-3">Recent submissions</h2>
         <DataTable
           headers={["Student", "Exam", "Status", "Score", "Time", "Open"]}
           empty="No submissions yet."

@@ -29,12 +29,12 @@ export function AdminStatsCards({
       {cards.map((card) => {
         const Icon = card.icon;
         return (
-          <div key={card.label} className="rounded-[28px] border border-white/60 bg-white/70 p-5 shadow-[0_20px_60px_-30px_rgba(15,23,42,0.35)] backdrop-blur-xl">
+          <div key={card.label} className="edu-panel rounded-2xl p-4">
             <div className="flex items-center justify-between">
-              <p className="text-sm text-slate-500">{card.label}</p>
-              <Icon className="h-5 w-5 text-brand" />
+              <p className="edu-meta">{card.label}</p>
+              <Icon className="h-5 w-5 text-blue-800" />
             </div>
-            <p className="mt-3 text-3xl font-semibold text-ink">{card.value}</p>
+            <p className="mt-3 font-mono text-3xl font-black text-slate-950">{card.value}</p>
           </div>
         );
       })}

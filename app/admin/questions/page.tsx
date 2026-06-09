@@ -50,7 +50,8 @@ export default async function AdminQuestionsPage({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-semibold text-ink">Question bank</h1>
+        <p className="edu-kicker">Content operations</p>
+        <h1 className="edu-heading mt-2 text-3xl">Question bank</h1>
         <p className="mt-1 text-sm text-slate-500">Manage structured questions, review imported assets, and publish only cleaned items.</p>
         <div className="mt-4 flex flex-wrap gap-3">
           <Link
@@ -60,20 +61,20 @@ export default async function AdminQuestionsPage({
             Calculus AB needs review
           </Link>
           {searchParams.tag === "needs-admin-review" ? (
-            <span className="rounded-full border border-amber-200 bg-white/80 px-4 py-2 text-sm font-semibold text-amber-800 backdrop-blur-xl">
+            <span className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 font-mono text-xs font-bold uppercase tracking-wide text-amber-800">
               {needsReviewCount} visible needs-review questions
             </span>
           ) : null}
         </div>
       </div>
 
-      <form className="grid gap-3 rounded-[28px] border border-white/60 bg-white/70 p-4 shadow-[0_20px_60px_-30px_rgba(15,23,42,0.35)] backdrop-blur-xl md:grid-cols-3 lg:grid-cols-8">
-        <input name="search" defaultValue={searchParams.search || ""} placeholder="Search text" className="rounded-full border border-slate-200/80 bg-white/85 px-4 py-2.5 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-blue-100" />
-        <input name="examName" defaultValue={searchParams.examName || ""} placeholder="Exam name" className="rounded-full border border-slate-200/80 bg-white/85 px-4 py-2.5 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-blue-100" />
-        <input name="subject" defaultValue={searchParams.subject || ""} placeholder="Subject group" className="rounded-full border border-slate-200/80 bg-white/85 px-4 py-2.5 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-blue-100" />
-        <input name="course" defaultValue={searchParams.course || ""} placeholder="AP Course" className="rounded-full border border-slate-200/80 bg-white/85 px-4 py-2.5 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-blue-100" />
-        <input name="year" defaultValue={searchParams.year || ""} placeholder="Year" className="rounded-full border border-slate-200/80 bg-white/85 px-4 py-2.5 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-blue-100" />
-        <select name="section" defaultValue={searchParams.section || ""} className="rounded-full border border-slate-200/80 bg-white/85 px-4 py-2.5 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-blue-100">
+      <form className="edu-panel grid gap-3 rounded-2xl p-4 md:grid-cols-3 lg:grid-cols-8">
+        <input name="search" defaultValue={searchParams.search || ""} placeholder="Search text" className="edu-field px-4 py-2.5 text-sm" />
+        <input name="examName" defaultValue={searchParams.examName || ""} placeholder="Exam name" className="edu-field px-4 py-2.5 text-sm" />
+        <input name="subject" defaultValue={searchParams.subject || ""} placeholder="Subject group" className="edu-field px-4 py-2.5 text-sm" />
+        <input name="course" defaultValue={searchParams.course || ""} placeholder="AP Course" className="edu-field px-4 py-2.5 text-sm" />
+        <input name="year" defaultValue={searchParams.year || ""} placeholder="Year" className="edu-field px-4 py-2.5 text-sm" />
+        <select name="section" defaultValue={searchParams.section || ""} className="edu-field px-4 py-2.5 text-sm">
           <option value="">All section</option>
           <option value="MCQ">MCQ</option>
           <option value="FRQ">FRQ</option>
@@ -83,43 +84,43 @@ export default async function AdminQuestionsPage({
           <option value="FRQ_NON_CALCULATOR">FRQ Non-Calculator</option>
           <option value="Full Exam">Full Exam</option>
         </select>
-        <select name="examType" defaultValue={searchParams.examType || ""} className="rounded-full border border-slate-200/80 bg-white/85 px-4 py-2.5 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-blue-100">
+        <select name="examType" defaultValue={searchParams.examType || ""} className="edu-field px-4 py-2.5 text-sm">
           <option value="">All exam type</option>
           <option value="Practice Exam">Practice Exam</option>
           <option value="Released Exam">Released Exam</option>
           <option value="Unit Test">Unit Test</option>
           <option value="Custom Quiz">Custom Quiz</option>
         </select>
-        <input name="topic" defaultValue={searchParams.topic || ""} placeholder="Topic" className="rounded-full border border-slate-200/80 bg-white/85 px-4 py-2.5 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-blue-100" />
-        <select name="tag" defaultValue={searchParams.tag || ""} className="rounded-full border border-slate-200/80 bg-white/85 px-4 py-2.5 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-blue-100">
+        <input name="topic" defaultValue={searchParams.topic || ""} placeholder="Topic" className="edu-field px-4 py-2.5 text-sm" />
+        <select name="tag" defaultValue={searchParams.tag || ""} className="edu-field px-4 py-2.5 text-sm">
           <option value="">All tags</option>
           <option value="needs-admin-review">needs-admin-review</option>
           <option value="calculus-ab">calculus-ab</option>
           <option value="structured-pdf-import">structured-pdf-import</option>
         </select>
-        <select name="status" defaultValue={searchParams.status || ""} className="rounded-full border border-slate-200/80 bg-white/85 px-4 py-2.5 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-blue-100">
+        <select name="status" defaultValue={searchParams.status || ""} className="edu-field px-4 py-2.5 text-sm">
           <option value="">All status</option>
           <option value="draft">draft</option>
           <option value="reviewed">reviewed</option>
           <option value="published">published</option>
         </select>
-        <select name="difficulty" defaultValue={searchParams.difficulty || ""} className="rounded-full border border-slate-200/80 bg-white/85 px-4 py-2.5 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-blue-100">
+        <select name="difficulty" defaultValue={searchParams.difficulty || ""} className="edu-field px-4 py-2.5 text-sm">
           <option value="">All difficulty</option>
           <option value="easy">easy</option>
           <option value="medium">medium</option>
           <option value="hard">hard</option>
         </select>
-        <button className="rounded-full bg-slate-950 px-5 py-2.5 text-sm font-medium text-white shadow-lg shadow-slate-900/15 transition hover:-translate-y-0.5 hover:shadow-xl md:col-span-3 lg:col-span-1">Filter</button>
+        <button className="edu-button-primary px-5 py-2.5 text-sm font-medium md:col-span-3 lg:col-span-1">Filter</button>
       </form>
 
-      <details className="rounded-[28px] border border-white/60 bg-white/70 p-5 shadow-[0_20px_60px_-30px_rgba(15,23,42,0.35)] backdrop-blur-xl">
-        <summary className="cursor-pointer text-lg font-semibold text-ink">Create full question</summary>
+      <details className="edu-panel rounded-2xl p-5">
+        <summary className="cursor-pointer font-semibold text-slate-950">Create full question</summary>
         <div className="mt-4">
           <QuestionForm />
         </div>
       </details>
 
-      <form action={adminCreateQuestionFromMinimalAction} className="grid gap-3 rounded-[28px] border border-white/60 bg-white/70 p-4 shadow-[0_20px_60px_-30px_rgba(15,23,42,0.35)] backdrop-blur-xl md:grid-cols-[1fr_1fr_1fr_1fr_100px_120px]">
+      <form action={adminCreateQuestionFromMinimalAction} className="edu-panel grid gap-3 rounded-2xl p-4 md:grid-cols-[1fr_1fr_1fr_1fr_100px_120px]">
         <input name="subject" defaultValue="Physics" placeholder="Subject group" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
         <input name="course" defaultValue="AP Physics 1" placeholder="AP Course" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
         <input name="year" placeholder="Year" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
@@ -159,18 +160,18 @@ export default async function AdminQuestionsPage({
           </form>
         ])}
       />
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-[28px] border border-white/60 bg-white/70 px-4 py-3 text-sm text-slate-600 shadow-[0_20px_60px_-30px_rgba(15,23,42,0.35)] backdrop-blur-xl">
+      <div className="edu-panel flex flex-wrap items-center justify-between gap-3 rounded-2xl px-4 py-3 text-sm text-slate-600">
         <span>
           Showing {questions.length} of {questionPage.total} questions · Page {questionPage.page} of {questionPage.pageCount}
         </span>
         <div className="flex gap-2">
           {questionPage.page > 1 ? (
-            <Link href={pageHref(questionPage.page - 1)} className="rounded-full border border-slate-200/80 bg-white/70 px-4 py-2 font-medium text-slate-700 transition hover:bg-white/90">
+            <Link href={pageHref(questionPage.page - 1)} className="edu-button-secondary px-4 py-2 font-medium">
               Previous
             </Link>
           ) : null}
           {questionPage.page < questionPage.pageCount ? (
-            <Link href={pageHref(questionPage.page + 1)} className="rounded-full border border-slate-200/80 bg-white/70 px-4 py-2 font-medium text-slate-700 transition hover:bg-white/90">
+            <Link href={pageHref(questionPage.page + 1)} className="edu-button-secondary px-4 py-2 font-medium">
               Next
             </Link>
           ) : null}

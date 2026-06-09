@@ -9,7 +9,7 @@ function ResendButton() {
     <button
       type="submit"
       disabled={pending}
-      className="mt-4 rounded-full border border-slate-200/80 bg-white/70 px-5 py-2.5 text-sm font-medium text-slate-700 backdrop-blur-xl transition hover:bg-white/90 disabled:opacity-60"
+      className="edu-button-secondary mt-4 px-5 py-2.5 text-sm font-medium disabled:opacity-60"
     >
       {pending ? "Sending..." : "Resend verification email"}
     </button>

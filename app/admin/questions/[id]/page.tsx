@@ -16,13 +16,14 @@ export default async function AdminQuestionDetailPage({ params }: { params: { id
   return (
     <div className="space-y-6">
       <div>
-        <Link href="/admin/questions" className="mb-4 inline-flex items-center gap-2 rounded-full border border-slate-200/80 bg-white/70 px-4 py-2 text-sm font-medium text-slate-700 backdrop-blur-xl transition hover:bg-white/90">
+        <Link href="/admin/questions" className="edu-button-secondary mb-4 inline-flex items-center gap-2 px-4 py-2 text-sm font-medium">
           <ArrowLeft className="h-4 w-4" />
           Back to question bank
         </Link>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="text-3xl font-semibold text-ink">Question detail</h1>
+            <p className="edu-kicker">Structured content</p>
+            <h1 className="edu-heading mt-2 text-3xl">Question detail</h1>
             <p className="mt-1 text-sm text-slate-500">
               {question.subject} · {question.course} · {question.year || "No year"} · {question.section} · {question.topic}
             </p>
@@ -41,7 +42,7 @@ export default async function AdminQuestionDetailPage({ params }: { params: { id
       </div>
 
       <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-lg font-semibold text-ink">Student preview</h2>
+        <h2 className="font-semibold text-slate-950">Student preview</h2>
         <div className="mt-4">
           <QuestionRenderer question={question} />
         </div>
@@ -66,8 +67,8 @@ export default async function AdminQuestionDetailPage({ params }: { params: { id
         ) : null}
       </section>
 
-      <section className="rounded-[28px] border border-white/60 bg-white/70 p-5 shadow-[0_20px_60px_-30px_rgba(15,23,42,0.35)] backdrop-blur-xl">
-        <h2 className="text-lg font-semibold text-ink">Images</h2>
+      <section className="edu-panel rounded-2xl p-5">
+        <h2 className="font-semibold text-slate-950">Images</h2>
         {question.question_images.length === 0 && question.choices.every((choice) => !choice.image_url) ? (
           <p className="mt-2 text-sm text-slate-500">No visual assets attached.</p>
         ) : (
@@ -89,7 +90,7 @@ export default async function AdminQuestionDetailPage({ params }: { params: { id
       </section>
 
       <section>
-        <h2 className="mb-3 text-lg font-semibold text-ink">Edit structured content</h2>
+        <h2 className="edu-kicker mb-3">Edit structured content</h2>
         <QuestionForm question={question} />
       </section>
     </div>

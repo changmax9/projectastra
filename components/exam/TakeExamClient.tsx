@@ -344,25 +344,25 @@ export function TakeExamClient({
 
   if (!currentQuestion) {
     return (
-      <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(99,102,241,0.16),transparent_32%),radial-gradient(circle_at_top_right,rgba(14,165,233,0.14),transparent_28%),#f7f8fb]">
-        <div className="border-b border-white/60 bg-white/70 shadow-[0_12px_40px_-30px_rgba(15,23,42,0.45)] backdrop-blur-xl">
+      <div className="edu-page">
+        <div className="border-b border-slate-300 bg-white/95 backdrop-blur">
           <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
             <div>
-              <p className="text-xs uppercase tracking-wide text-slate-500">{exam.subject}</p>
-              <h1 className="text-lg font-semibold text-ink">{exam.title}</h1>
+              <p className="edu-meta">{exam.subject} / {currentSection.title}</p>
+              <h1 className="text-base font-semibold text-slate-950">{exam.title}</h1>
             </div>
             <button
               type="button"
               onClick={() => router.push("/dashboard")}
-              className="rounded-full border border-slate-200/80 bg-white/70 px-5 py-2.5 text-sm font-medium text-slate-700 backdrop-blur-xl transition hover:bg-white/90"
+              className="edu-button-secondary px-5 py-2.5 text-sm font-medium"
             >
               Back to dashboard
             </button>
           </div>
         </div>
         <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
-          <div className="rounded-[28px] border border-white/60 bg-white/80 p-6 shadow-[0_20px_60px_-30px_rgba(15,23,42,0.35)] backdrop-blur-xl">
-            <h2 className="text-xl font-semibold text-ink">Question not found for this section.</h2>
+          <div className="edu-panel rounded-2xl p-6">
+            <h2 className="edu-heading text-xl">Question not found for this section.</h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
               The current section did not return any playable questions. Try refreshing the page or resume from the dashboard.
             </p>
@@ -370,14 +370,14 @@ export function TakeExamClient({
               <button
                 type="button"
                 onClick={() => router.refresh()}
-                className="rounded-full bg-slate-950 px-5 py-2.5 text-sm font-medium text-white shadow-lg shadow-slate-900/15 transition hover:-translate-y-0.5 hover:shadow-xl"
+                className="edu-button-primary px-5 py-2.5 text-sm font-medium"
               >
                 Retry
               </button>
               <button
                 type="button"
                 onClick={() => router.push("/dashboard")}
-                className="rounded-full border border-slate-200/80 bg-white/70 px-5 py-2.5 text-sm font-medium text-slate-700 backdrop-blur-xl transition hover:bg-white/90"
+                className="edu-button-secondary px-5 py-2.5 text-sm font-medium"
               >
                 Back to dashboard
               </button>
@@ -389,15 +389,15 @@ export function TakeExamClient({
   }
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(99,102,241,0.16),transparent_32%),radial-gradient(circle_at_top_right,rgba(14,165,233,0.14),transparent_28%),#f7f8fb]">
-      <div className="sticky top-0 z-20 border-b border-white/60 bg-white/70 shadow-[0_12px_40px_-30px_rgba(15,23,42,0.45)] backdrop-blur-xl">
+    <div className="edu-page">
+      <div className="sticky top-0 z-20 border-b border-slate-300 bg-white/95 backdrop-blur">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
           <div>
-            <p className="text-xs uppercase tracking-wide text-slate-500">{exam.subject}</p>
-            <h1 className="text-lg font-semibold text-ink">{exam.title}</h1>
+            <p className="edu-meta">{exam.subject} / {currentSection.title}</p>
+            <h1 className="text-base font-semibold text-slate-950">{exam.title}</h1>
           </div>
           <div className="flex items-center gap-3">
-            <span className="inline-flex items-center gap-1 rounded-full border border-slate-200/80 bg-white/70 px-3 py-2 text-xs font-medium text-slate-500 backdrop-blur-xl">
+            <span className="edu-badge inline-flex items-center gap-1 px-3 py-2 font-mono">
               <Save className="h-4 w-4" />
               {saveStatus}
             </span>
@@ -411,7 +411,7 @@ export function TakeExamClient({
               type="button"
               onClick={() => setDialog("exit")}
               disabled={isPending}
-              className="inline-flex items-center gap-2 rounded-full border border-slate-200/80 bg-white/70 px-5 py-2.5 text-sm font-medium text-slate-700 backdrop-blur-xl transition hover:bg-white/90 disabled:opacity-60"
+              className="edu-button-secondary inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium disabled:opacity-60"
             >
               <Save className="h-4 w-4" />
               Save & Exit
@@ -420,7 +420,7 @@ export function TakeExamClient({
               type="button"
               onClick={() => setDialog("submit")}
               disabled={isPending}
-              className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-rose-50 px-5 py-2.5 text-sm font-medium text-rose-700 transition hover:bg-rose-100 disabled:opacity-60"
+              className="edu-button-danger inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium disabled:opacity-60"
             >
               <Send className="h-4 w-4" />
               {isSectionedExam ? "End Section" : "Submit"}
@@ -438,29 +438,29 @@ export function TakeExamClient({
             onSelect={(index) => setCurrentIndex(Math.min(Math.max(0, index), Math.max(0, questions.length - 1)))}
           />
         </aside>
-        <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
-          <div className="mb-5 rounded-3xl border border-blue-100 bg-blue-50 px-4 py-3">
+        <section className="rounded-2xl border border-slate-300 bg-white p-5 shadow-sm sm:p-7">
+          <div className="mb-5 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Current section</p>
-                <h2 className="mt-1 font-semibold text-ink">{currentSection.title}</h2>
-                <p className="mt-1 text-sm text-slate-600">
+                <p className="edu-kicker">Current section</p>
+                <h2 className="mt-1 text-lg font-semibold text-slate-950">{currentSection.title}</h2>
+                <p className="edu-meta mt-1">
                   Question {currentSectionPosition} of {currentSection.questionCount} in this section · overall questions {currentSectionRange}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2 text-xs font-semibold">
-                <span className="rounded-full border border-blue-100 bg-white px-3 py-1 text-blue-800 shadow-sm">
+                <span className="rounded-lg border border-blue-200 bg-white px-3 py-1 text-blue-800">
                   {currentSection.timeLimitMinutes} min section
                 </span>
-                <span className="rounded-full border border-blue-100 bg-white px-3 py-1 text-blue-800 shadow-sm">
+                <span className="rounded-lg border border-blue-200 bg-white px-3 py-1 text-blue-800">
                   {currentSection.calculatorAllowed ? "Calculator allowed" : "No calculator"}
                 </span>
               </div>
             </div>
           </div>
-          <div className="mb-8 flex flex-wrap items-center justify-between gap-3 border-b-4 border-dashed border-ink pb-4">
+          <div className="mb-8 flex flex-wrap items-center justify-between gap-3 border-b-2 border-slate-900 pb-4">
             <div className="flex items-center gap-4">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-ink text-2xl font-bold text-white shadow-lg shadow-slate-900/10">
+              <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-blue-950 font-mono text-2xl font-bold text-white">
                 {clampedCurrentIndex + 1}
               </div>
               <button
@@ -470,7 +470,7 @@ export function TakeExamClient({
                 }
                 className={cn(
                   "inline-flex items-center gap-2 text-lg font-medium",
-                  currentResponse.flagged ? "text-amber-700" : "text-ink hover:text-brand"
+                  currentResponse.flagged ? "text-amber-700" : "text-ink hover:text-blue-800"
                 )}
               >
                 <Bookmark className={cn("h-8 w-8", currentResponse.flagged ? "fill-amber-300" : "")} />
@@ -479,7 +479,7 @@ export function TakeExamClient({
             </div>
             <button
               type="button"
-              className="rounded-2xl border-2 border-ink px-3 py-1 text-lg font-bold text-ink"
+              className="rounded-lg border-2 border-slate-900 px-3 py-1 font-mono text-lg font-bold text-slate-900"
               aria-label={`${currentQuestion.type.toUpperCase()}, ${currentQuestion.points} point${currentQuestion.points === 1 ? "" : "s"}`}
             >
               {currentQuestion.type === "mcq" ? "ABC" : "FRQ"}
@@ -514,7 +514,7 @@ export function TakeExamClient({
               type="button"
               disabled={clampedCurrentIndex === 0}
               onClick={() => setCurrentIndex((value) => Math.max(0, value - 1))}
-              className="rounded-full border border-slate-200/80 bg-white px-5 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-40"
+              className="edu-button-secondary px-5 py-2.5 text-sm font-medium disabled:opacity-40"
             >
               Previous
             </button>
@@ -522,7 +522,7 @@ export function TakeExamClient({
               type="button"
               disabled={clampedCurrentIndex === questions.length - 1}
               onClick={() => setCurrentIndex((value) => Math.min(questions.length - 1, value + 1))}
-              className="rounded-full border border-slate-200/80 bg-white px-5 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-40"
+              className="edu-button-secondary px-5 py-2.5 text-sm font-medium disabled:opacity-40"
             >
               Next
             </button>
@@ -597,8 +597,8 @@ function ExamConfirmDialog({
         if (event.target === event.currentTarget) onCancel();
       }}
     >
-      <div className="w-full max-w-md rounded-[28px] border border-white/60 bg-white/85 p-6 shadow-[0_30px_80px_-30px_rgba(15,23,42,0.55)] backdrop-blur-xl">
-        <h2 id="exam-dialog-title" className="text-xl font-semibold text-ink">
+      <div className="edu-panel w-full max-w-md rounded-2xl p-6">
+        <h2 id="exam-dialog-title" className="edu-heading text-xl">
           {title}
         </h2>
         <p className="mt-3 leading-6 text-slate-600">{description}</p>
@@ -607,7 +607,7 @@ function ExamConfirmDialog({
             type="button"
             onClick={onCancel}
             disabled={pending}
-            className="rounded-full border border-slate-200/80 bg-white/70 px-5 py-2.5 text-sm font-medium text-slate-700 backdrop-blur-xl transition hover:bg-white/90 disabled:opacity-60"
+            className="edu-button-secondary px-5 py-2.5 text-sm font-medium disabled:opacity-60"
           >
             Cancel
           </button>

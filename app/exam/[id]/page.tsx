@@ -38,38 +38,44 @@ export default async function ExamStartPage({
   return (
     <>
       <AppHeader />
-      <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(99,102,241,0.16),transparent_32%),radial-gradient(circle_at_top_right,rgba(14,165,233,0.14),transparent_28%),#f7f8fb] px-4 py-10 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-4xl rounded-[28px] border border-white/60 bg-white/70 p-6 shadow-[0_20px_60px_-30px_rgba(15,23,42,0.35)] backdrop-blur-xl sm:p-8">
-          <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">{exam.subject}</p>
-          <h1 className="mt-3 text-3xl font-semibold text-ink">{exam.title}</h1>
-          <p className="mt-3 leading-7 text-slate-600">{exam.description}</p>
+      <main className="edu-page px-4 py-10 sm:px-6 lg:px-8">
+        <div className="edu-shell">
+        <div className="edu-terminal-bar rounded-xl px-4 py-3">
+          EXAM/START · {exam.course} · {exam.year || "NO-YEAR"} · {exam.exam_type}
+        </div>
+        <div className="edu-panel mt-4 rounded-2xl">
+          <div className="edu-panel-header rounded-t-2xl px-5 py-3">Pre-exam briefing</div>
+          <div className="p-6 sm:p-8">
+          <p className="edu-kicker">{exam.subject}</p>
+          <h1 className="edu-heading mt-3 text-3xl">{exam.title}</h1>
+          <p className="mt-3 max-w-3xl leading-7 text-slate-600">{exam.description}</p>
 
           <div className="mt-6 grid gap-4 sm:grid-cols-3">
-            <div className="rounded-3xl border border-white/70 bg-white/80 p-4 shadow-sm">
-              <Clock className="h-5 w-5 text-brand" />
+            <div className="edu-card rounded-xl p-4">
+              <Clock className="h-5 w-5 text-blue-800" />
               <p className="mt-2 text-sm text-slate-500">Time limit</p>
               <p className="font-semibold text-ink">{exam.time_limit_minutes} minutes</p>
             </div>
-            <div className="rounded-3xl border border-white/70 bg-white/80 p-4 shadow-sm">
-              <FileQuestion className="h-5 w-5 text-brand" />
+            <div className="edu-card rounded-xl p-4">
+              <FileQuestion className="h-5 w-5 text-blue-800" />
               <p className="mt-2 text-sm text-slate-500">Questions</p>
               <p className="font-semibold text-ink">{exam.exam_questions.length}</p>
             </div>
-            <div className="rounded-3xl border border-white/70 bg-white/80 p-4 shadow-sm">
-              <CheckCircle2 className="h-5 w-5 text-brand" />
+            <div className="edu-card rounded-xl p-4">
+              <CheckCircle2 className="h-5 w-5 text-blue-800" />
               <p className="mt-2 text-sm text-slate-500">Scoring</p>
               <p className="font-semibold text-ink">MCQ auto, FRQ pending</p>
             </div>
           </div>
 
-          <div className="mt-6 rounded-3xl border border-blue-100 bg-blue-50/80 p-4 text-sm leading-6 text-blue-900">
+          <div className="mt-6 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-900">
             Your work is autosaved. You can flag questions for review and submit when ready. Submitted attempts cannot be edited.
           </div>
 
           {hasSections ? (
-            <div className="mt-6 rounded-3xl border border-white/70 bg-white/70 shadow-sm">
+            <div className="mt-6 rounded-xl border border-slate-200 bg-white">
               <div className="border-b border-slate-100 px-4 py-3">
-                <h2 className="font-semibold text-ink">Exam flow</h2>
+                <h2 className="edu-heading text-xl">Exam flow</h2>
                 <p className="mt-1 text-sm text-slate-500">
                   Sections advance automatically inside one exam attempt.
                 </p>
@@ -106,10 +112,12 @@ export default async function ExamStartPage({
 
           <form action={startExamAction} className="mt-6">
             <input type="hidden" name="exam_id" value={exam.id} />
-            <button className="rounded-full bg-slate-950 px-6 py-3 font-semibold text-white shadow-lg shadow-slate-900/15 transition hover:-translate-y-0.5 hover:shadow-xl">
+            <button className="edu-button-primary px-6 py-3 font-semibold">
               {inProgress ? "Resume Exam" : "Start Exam"}
             </button>
           </form>
+          </div>
+        </div>
         </div>
       </main>
     </>

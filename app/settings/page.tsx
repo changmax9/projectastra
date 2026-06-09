@@ -53,9 +53,9 @@ function InfoCard({
   helper?: string;
 }) {
   return (
-    <div className="rounded-[28px] border border-white/60 bg-white/70 p-5 shadow-[0_20px_60px_-30px_rgba(15,23,42,0.35)] backdrop-blur-xl">
+    <div className="edu-panel rounded-2xl p-5">
       <div className="flex items-start gap-3">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-white shadow-lg shadow-slate-900/10">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-950 text-white">
           {icon}
         </span>
         <div className="min-w-0">
@@ -76,11 +76,11 @@ export default async function SettingsPage() {
   return (
     <>
       <AppHeader />
-      <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(99,102,241,0.16),transparent_32%),radial-gradient(circle_at_top_right,rgba(14,165,233,0.14),transparent_28%),#f7f8fb] px-4 py-8 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-5xl space-y-6">
+      <main className="edu-page px-4 py-8 sm:px-6 lg:px-8">
+        <div className="edu-shell max-w-5xl space-y-6">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">Account</p>
-          <h1 className="mt-2 text-3xl font-semibold text-ink">Settings</h1>
+          <p className="edu-kicker">Account control</p>
+          <h1 className="edu-heading mt-2 text-3xl">Settings</h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
             Manage your profile details. Role and verification controls are protected server-side.
           </p>
@@ -110,14 +110,14 @@ export default async function SettingsPage() {
           </div>
 
           <aside className="space-y-4">
-            <div className="rounded-[28px] border border-white/60 bg-white/70 p-5 shadow-[0_20px_60px_-30px_rgba(15,23,42,0.35)] backdrop-blur-xl">
-              <h2 className="font-semibold text-ink">Account status</h2>
+            <div className="edu-panel rounded-2xl p-5">
+              <h2 className="font-semibold text-slate-950">Account status</h2>
               <p className="mt-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">
                 {verification.accountStatus}
               </p>
             </div>
-            <div className="rounded-[28px] border border-white/60 bg-white/70 p-5 text-sm leading-6 text-slate-600 shadow-[0_20px_60px_-30px_rgba(15,23,42,0.35)] backdrop-blur-xl">
-              <h2 className="font-semibold text-ink">Email verification</h2>
+            <div className="edu-panel rounded-2xl p-5 text-sm leading-6 text-slate-600">
+              <h2 className="font-semibold text-slate-950">Email verification</h2>
               <p className="mt-2">
                 Email verification status is read from Supabase Auth when available.
               </p>

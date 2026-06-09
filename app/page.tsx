@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, BarChart3, BookOpen, ClipboardList } from "lucide-react";
+import { ArrowRight, BarChart3, BookOpen, CheckCircle2, ClipboardList, Save, Timer } from "lucide-react";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { getCurrentProfile } from "@/lib/auth";
 
@@ -12,63 +12,92 @@ export default async function HomePage() {
   return (
     <>
       <AppHeader />
-      <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(99,102,241,0.16),transparent_32%),radial-gradient(circle_at_top_right,rgba(14,165,233,0.14),transparent_28%),#f7f8fb]">
-        <section className="mx-auto grid max-w-7xl gap-10 px-4 py-16 sm:px-6 lg:grid-cols-[1.1fr_0.9fr] lg:px-8 lg:py-24">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">AP-style practice platform</p>
-            <h1 className="mt-4 max-w-3xl text-4xl font-semibold leading-tight text-ink sm:text-6xl">
-              AP Mock Exam Platform
-            </h1>
-            <p className="mt-5 max-w-2xl text-lg leading-8 text-slate-600">
-              Take timed AP-style mock exams, review explanations, track performance, and read structured review guides with math rendering.
-            </p>
-            <div className="mt-8 flex flex-wrap gap-3">
-              <Link href={startHref} className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-5 py-3 font-semibold text-white shadow-lg shadow-slate-900/15 transition hover:-translate-y-0.5 hover:shadow-xl">
-                Start practicing
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-              {profile ? (
-                <Link href="/review" className="rounded-full border border-slate-200/80 bg-white/70 px-5 py-3 font-semibold text-slate-700 backdrop-blur-xl transition hover:bg-white/90">
-                  Review guides
-                </Link>
-              ) : (
-                <Link href="/login" className="rounded-full border border-slate-200/80 bg-white/70 px-5 py-3 font-semibold text-slate-700 backdrop-blur-xl transition hover:bg-white/90">
-                  Log in
-                </Link>
-              )}
-            </div>
+      <main className="edu-page">
+        <section className="edu-shell px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
+          <div className="edu-terminal-bar rounded-xl px-4 py-3">
+            ASTRA/AP-TERMINAL · timed sections online · autosave enabled · structured math/image rendering
           </div>
-          <div className="rounded-[28px] border border-white/60 bg-white/70 p-5 shadow-[0_20px_60px_-30px_rgba(15,23,42,0.35)] backdrop-blur-xl">
-            <div className="grid gap-4">
+
+          <div className="mt-6 grid gap-5 lg:grid-cols-[1.35fr_0.65fr]">
+            <div className="edu-panel rounded-2xl">
+              <div className="edu-panel-header rounded-t-2xl px-5 py-3">Command center</div>
+              <div className="p-5 sm:p-7">
+                <p className="edu-kicker">AP practice workspace</p>
+                <h1 className="edu-heading mt-3 max-w-3xl text-3xl leading-tight sm:text-4xl">
+                  Start, resume, and review AP-style practice from one focused terminal.
+                </h1>
+                <p className="mt-4 max-w-2xl text-base leading-7 text-slate-600">
+                  A structured testing interface for timed AP sections, clean math rendering, necessary figures, and section-by-section results.
+                </p>
+                <div className="mt-7 flex flex-wrap gap-3">
+                  <Link href={startHref} className="edu-button-primary inline-flex items-center gap-2 px-5 py-3 font-semibold">
+                    {profile ? "Open dashboard" : "Create student account"}
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                  {profile ? (
+                    <Link href="/review" className="edu-button-secondary px-5 py-3 font-semibold">
+                      Review guides
+                    </Link>
+                  ) : (
+                    <Link href="/login" className="edu-button-secondary px-5 py-3 font-semibold">
+                      Log in
+                    </Link>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="edu-panel rounded-2xl">
+              <div className="edu-panel-header rounded-t-2xl px-5 py-3">System modules</div>
+              <div className="grid gap-0 divide-y divide-slate-200">
               {[
                 {
                   icon: ClipboardList,
                   title: "Mock Exams",
-                  body: "Timed exams with MCQ, FRQ, question images, answer autosave, flagging, and submission scoring."
+                  body: "Section timers, MCQ/FRQ flow, flagging, and answer persistence."
                 },
                 {
                   icon: BookOpen,
                   title: "Review Guides",
-                  body: "Markdown study guides with tables, callouts, LaTeX, and linked practice questions."
+                  body: "Structured Markdown/LaTeX study material linked to practice topics."
                 },
                 {
                   icon: BarChart3,
                   title: "Performance Tracking",
-                  body: "Students see history and explanations; admins can inspect submissions and answer-level data."
+                  body: "Score reports, weak-topic summaries, and admin submission review."
                 }
               ].map((feature) => {
                 const Icon = feature.icon;
                 return (
-                  <div key={feature.title} className="rounded-3xl border border-white/70 bg-white/75 p-4 shadow-sm backdrop-blur">
-                    <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-white shadow-lg shadow-slate-900/10">
-                      <Icon className="h-5 w-5" />
+                  <div key={feature.title} className="grid grid-cols-[40px_1fr] gap-3 p-4">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-blue-900">
+                      <Icon className="h-4 w-4" />
                     </span>
-                    <h2 className="mt-3 font-semibold text-ink">{feature.title}</h2>
-                    <p className="mt-1 text-sm leading-6 text-slate-600">{feature.body}</p>
+                    <div>
+                      <h2 className="font-semibold text-slate-950">{feature.title}</h2>
+                      <p className="mt-1 text-sm leading-6 text-slate-600">{feature.body}</p>
+                    </div>
                   </div>
                 );
               })}
+              </div>
             </div>
+          </div>
+
+          <div className="mt-5 grid gap-3 text-sm sm:grid-cols-3">
+            {[
+              { icon: Timer, label: "AP-style timed sections" },
+              { icon: Save, label: "Autosave + resume" },
+              { icon: CheckCircle2, label: "Structured text, math, and figures" }
+            ].map((item) => {
+              const Icon = item.icon;
+              return (
+                <div key={item.label} className="edu-card flex items-center gap-3 rounded-xl px-4 py-3">
+                  <Icon className="h-4 w-4 text-blue-900" />
+                  <span className="edu-meta">{item.label}</span>
+                </div>
+              );
+            })}
           </div>
         </section>
       </main>

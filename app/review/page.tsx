@@ -18,14 +18,15 @@ export default async function ReviewIndexPage({
   return (
     <>
       <AppHeader />
-      <main className="mx-auto w-screen max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <main className="edu-page w-screen px-4 py-8 sm:px-6 lg:px-8">
+        <div className="edu-shell">
         <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
-            <p className="inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-brand">
+            <p className="edu-kicker inline-flex items-center gap-2">
               <BookOpen className="h-4 w-4" />
               Review Guides
             </p>
-            <h1 className="mt-2 text-3xl font-semibold text-ink">Study by AP unit</h1>
+            <h1 className="edu-heading mt-2 text-3xl">Study by AP unit</h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
               {guides.length} published guide{guides.length === 1 ? "" : "s"} for quick review and FRQ practice.
             </p>
@@ -39,20 +40,20 @@ export default async function ReviewIndexPage({
           </div>
         </div>
 
-        <form className="app-surface mb-5 grid min-w-0 gap-3 rounded-lg p-4 md:grid-cols-[1fr_170px_170px_140px_112px]">
+        <form className="edu-panel mb-5 grid min-w-0 gap-3 rounded-2xl p-4 md:grid-cols-[1fr_170px_170px_140px_112px]">
           <label className="relative min-w-0">
             <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-            <input name="search" defaultValue={searchParams.search || ""} placeholder="Search guides" className="app-field w-full py-2 pl-9 pr-3 text-sm" />
+            <input name="search" defaultValue={searchParams.search || ""} placeholder="Search guides" className="edu-field w-full py-2 pl-9 pr-3 text-sm" />
           </label>
-          <input name="subject" defaultValue={searchParams.subject || ""} placeholder="Subject" className="app-field w-full min-w-0 px-3 py-2 text-sm" />
-          <input name="topic" defaultValue={searchParams.topic || ""} placeholder="Topic" className="app-field w-full min-w-0 px-3 py-2 text-sm" />
-          <select name="difficulty" defaultValue={searchParams.difficulty || ""} className="app-field w-full min-w-0 px-3 py-2 text-sm">
+          <input name="subject" defaultValue={searchParams.subject || ""} placeholder="Subject" className="edu-field w-full min-w-0 px-3 py-2 text-sm" />
+          <input name="topic" defaultValue={searchParams.topic || ""} placeholder="Topic" className="edu-field w-full min-w-0 px-3 py-2 text-sm" />
+          <select name="difficulty" defaultValue={searchParams.difficulty || ""} className="edu-field w-full min-w-0 px-3 py-2 text-sm">
             <option value="">All difficulty</option>
             <option value="easy">easy</option>
             <option value="medium">medium</option>
             <option value="hard">hard</option>
           </select>
-          <button className="app-primary inline-flex w-full min-w-0 items-center justify-center gap-2 px-4 py-2 text-sm font-semibold">
+          <button className="edu-button-primary inline-flex w-full min-w-0 items-center justify-center gap-2 px-4 py-2 text-sm font-semibold">
             <Filter className="h-4 w-4" />
             Filter
           </button>
@@ -80,6 +81,7 @@ export default async function ReviewIndexPage({
               No published review guides match this filter.
             </p>
           ) : null}
+        </div>
         </div>
       </main>
     </>

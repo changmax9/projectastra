@@ -84,21 +84,23 @@ export function AvailableExamsBrowser({
   const subjectNames = Object.keys(grouped).sort();
 
   return (
-    <section className="rounded-[28px] border border-white/60 bg-white/70 p-5 shadow-[0_20px_60px_-30px_rgba(15,23,42,0.35)] backdrop-blur-xl">
+    <section className="edu-panel rounded-2xl">
+      <div className="edu-panel-header rounded-t-2xl px-4 py-3">Exam catalog</div>
+      <div className="p-4">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-semibold text-ink">Available exams</h2>
+          <h2 className="edu-heading text-2xl">Available exams</h2>
           <p className="mt-1 text-sm text-slate-500">Browse by subject, AP course, and exam set.</p>
         </div>
-        <span className="rounded-full border border-slate-200/80 bg-white/70 px-3 py-1 text-sm font-medium text-slate-600 backdrop-blur-xl">{filtered.length} published</span>
+        <span className="edu-badge px-3 py-1">{filtered.length} published</span>
       </div>
 
       <form className="mb-5 grid gap-3 md:grid-cols-3 lg:grid-cols-4">
-        <input name="search" defaultValue={searchParams.search || ""} placeholder="Search Calculus, 2023, Energy..." className="rounded-full border border-slate-200/80 bg-white/80 px-4 py-2.5 text-sm outline-none transition focus:border-brand focus:ring-2 focus:ring-blue-100" />
-        <input name="subject" defaultValue={searchParams.subject || ""} placeholder="Subject group" className="rounded-full border border-slate-200/80 bg-white/80 px-4 py-2.5 text-sm outline-none transition focus:border-brand focus:ring-2 focus:ring-blue-100" />
-        <input name="course" defaultValue={searchParams.course || ""} placeholder="AP Course" className="rounded-full border border-slate-200/80 bg-white/80 px-4 py-2.5 text-sm outline-none transition focus:border-brand focus:ring-2 focus:ring-blue-100" />
-        <input name="year" defaultValue={searchParams.year || ""} placeholder="Year" className="rounded-full border border-slate-200/80 bg-white/80 px-4 py-2.5 text-sm outline-none transition focus:border-brand focus:ring-2 focus:ring-blue-100" />
-        <select name="section" defaultValue={searchParams.section || ""} className="rounded-full border border-slate-200/80 bg-white/80 px-4 py-2.5 text-sm outline-none transition focus:border-brand focus:ring-2 focus:ring-blue-100">
+        <input name="search" defaultValue={searchParams.search || ""} placeholder="Search Calculus, 2023, Energy..." className="edu-field px-4 py-2.5 text-sm" />
+        <input name="subject" defaultValue={searchParams.subject || ""} placeholder="Subject group" className="edu-field px-4 py-2.5 text-sm" />
+        <input name="course" defaultValue={searchParams.course || ""} placeholder="AP Course" className="edu-field px-4 py-2.5 text-sm" />
+        <input name="year" defaultValue={searchParams.year || ""} placeholder="Year" className="edu-field px-4 py-2.5 text-sm" />
+        <select name="section" defaultValue={searchParams.section || ""} className="edu-field px-4 py-2.5 text-sm">
           <option value="">All sections</option>
           <option value="MCQ">MCQ</option>
           <option value="FRQ">FRQ</option>
@@ -108,40 +110,40 @@ export function AvailableExamsBrowser({
           <option value="FRQ_NON_CALCULATOR">FRQ Non-Calculator</option>
           <option value="Full Exam">Full Exam</option>
         </select>
-        <select name="examType" defaultValue={searchParams.examType || ""} className="rounded-full border border-slate-200/80 bg-white/80 px-4 py-2.5 text-sm outline-none transition focus:border-brand focus:ring-2 focus:ring-blue-100">
+        <select name="examType" defaultValue={searchParams.examType || ""} className="edu-field px-4 py-2.5 text-sm">
           <option value="">All exam types</option>
           <option value="Practice Exam">Practice Exam</option>
           <option value="Released Exam">Released Exam</option>
           <option value="Unit Test">Unit Test</option>
           <option value="Custom Quiz">Custom Quiz</option>
         </select>
-        <input name="topic" defaultValue={searchParams.topic || ""} placeholder="Topic" className="rounded-full border border-slate-200/80 bg-white/80 px-4 py-2.5 text-sm outline-none transition focus:border-brand focus:ring-2 focus:ring-blue-100" />
-        <select name="difficulty" defaultValue={searchParams.difficulty || ""} className="rounded-full border border-slate-200/80 bg-white/80 px-4 py-2.5 text-sm outline-none transition focus:border-brand focus:ring-2 focus:ring-blue-100">
+        <input name="topic" defaultValue={searchParams.topic || ""} placeholder="Topic" className="edu-field px-4 py-2.5 text-sm" />
+        <select name="difficulty" defaultValue={searchParams.difficulty || ""} className="edu-field px-4 py-2.5 text-sm">
           <option value="">Any difficulty</option>
           <option value="easy">easy</option>
           <option value="medium">medium</option>
           <option value="hard">hard</option>
         </select>
-        <button className="rounded-full bg-slate-950 px-5 py-2.5 text-sm font-medium text-white shadow-lg shadow-slate-900/15 transition hover:-translate-y-0.5 hover:shadow-xl md:col-span-3 lg:col-span-1">Filter</button>
+        <button className="edu-button-primary px-5 py-2.5 text-sm font-medium md:col-span-3 lg:col-span-1">Filter</button>
       </form>
 
       <div className="space-y-6">
         {subjectNames.map((subject) => (
           <div key={subject}>
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">{subject}</h3>
+            <h3 className="edu-eyebrow">{subject}</h3>
             <div className="mt-3 space-y-4">
               {Object.keys(grouped[subject]).sort().map((course) => (
-                <div key={course} className="rounded-[28px] border border-white/70 bg-white/55 p-4 shadow-sm backdrop-blur">
-                  <h4 className="font-semibold text-ink">{course}</h4>
+                <div key={course} className="rounded-xl border border-slate-200 bg-slate-50/80 p-4">
+                  <h4 className="edu-heading text-xl">{course}</h4>
                   <div className="mt-3 grid gap-3 md:grid-cols-2">
                     {grouped[subject][course].map((exam) => {
                       const inProgress = inProgressForSection(submissions, exam.id, null);
                       const href = inProgress ? `/exam/${exam.id}/take?submission=${inProgress.id}` : `/exam/${exam.id}`;
                       return (
-                        <div key={exam.id} className="rounded-[28px] border border-white/80 bg-white/80 p-5 shadow-[0_18px_45px_-32px_rgba(15,23,42,0.45)] transition hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_24px_60px_-34px_rgba(15,23,42,0.45)]">
+                        <div key={exam.id} className="edu-card rounded-xl p-5 transition hover:border-blue-300">
                           <div className="flex items-start justify-between gap-3">
                             <div>
-                              <Link href={href} className="font-semibold text-ink hover:text-brand">{exam.title}</Link>
+                              <Link href={href} className="edu-heading text-lg hover:text-blue-800">{exam.title}</Link>
                               <p className="mt-1 text-sm text-slate-500">
                                 {exam.course} · {exam.year || "No year"} · {exam.section} · {exam.exam_type}
                               </p>
@@ -158,7 +160,7 @@ export function AvailableExamsBrowser({
                               {exam.time_limit_minutes} min
                             </span>
                             <span>{sectionCount(exam)} section{sectionCount(exam) === 1 ? "" : "s"}</span>
-                            <Link href={href} className="ml-auto rounded-full bg-slate-950 px-4 py-2 text-xs font-semibold text-white shadow-lg shadow-slate-900/10 transition hover:-translate-y-0.5">
+                            <Link href={href} className="edu-button-primary ml-auto px-4 py-2 text-xs font-semibold">
                               {inProgress ? "Resume Exam" : "Start Exam"}
                             </Link>
                           </div>
@@ -172,10 +174,11 @@ export function AvailableExamsBrowser({
           </div>
         ))}
         {subjectNames.length === 0 ? (
-          <p className="rounded-3xl border border-dashed border-slate-300 bg-white/70 p-6 text-center text-slate-500">
+          <p className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center text-slate-500">
             No published exams match these filters.
           </p>
         ) : null}
+      </div>
       </div>
     </section>
   );

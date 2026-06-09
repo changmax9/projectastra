@@ -36,24 +36,27 @@ export default async function DashboardPage({
   return (
     <>
       <AppHeader />
-      <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(99,102,241,0.16),transparent_32%),radial-gradient(circle_at_top_right,rgba(14,165,233,0.14),transparent_28%),#f7f8fb] px-4 py-8 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-7xl">
+      <main className="edu-page px-4 py-8 sm:px-6 lg:px-8">
+        <div className="edu-shell">
         <div className="mb-8">
-          <p className="text-sm text-slate-500">Welcome back</p>
-          <h1 className="text-3xl font-semibold text-ink">{profile.full_name || profile.email}</h1>
+          <p className="edu-kicker">Student workspace</p>
+          <h1 className="edu-heading mt-2 text-3xl">{profile.full_name || profile.email}</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+            Continue timed practice, review completed sections, and keep your AP preparation organized by subject.
+          </p>
         </div>
 
         {profile.role === "admin" ? (
-          <section className="mb-6 rounded-[28px] border border-white/60 bg-white/70 p-5 shadow-[0_20px_60px_-30px_rgba(15,23,42,0.35)] backdrop-blur-xl">
-            <p className="text-sm font-semibold uppercase tracking-wide text-blue-700">Admin tools</p>
-            <div className="mt-3 flex flex-wrap gap-3">
-              <Link href="/admin/questions" className="rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-slate-900/15 transition hover:-translate-y-0.5 hover:shadow-xl">
+          <section className="edu-panel mb-6 rounded-2xl">
+            <div className="edu-panel-header rounded-t-2xl px-4 py-3">Admin tools</div>
+            <div className="flex flex-wrap gap-3 p-4">
+              <Link href="/admin/questions" className="edu-button-primary px-4 py-2 text-sm font-semibold">
                 Question Bank
               </Link>
-              <Link href="/admin/exams" className="rounded-full border border-slate-200/80 bg-white/70 px-4 py-2 text-sm font-semibold text-slate-700 backdrop-blur-xl transition hover:bg-white/90">
+              <Link href="/admin/exams" className="edu-button-secondary px-4 py-2 text-sm font-semibold">
                 Manage Exams
               </Link>
-              <Link href="/admin/import" className="rounded-full border border-slate-200/80 bg-white/70 px-4 py-2 text-sm font-semibold text-slate-700 backdrop-blur-xl transition hover:bg-white/90">
+              <Link href="/admin/import" className="edu-button-secondary px-4 py-2 text-sm font-semibold">
                 JSON Import
               </Link>
             </div>
@@ -64,9 +67,9 @@ export default async function DashboardPage({
           <section className="space-y-5">
             <AvailableExamsBrowser exams={data.examDetails} submissions={data.submissions} searchParams={searchParams} />
 
-            <div className="rounded-[28px] border border-white/60 bg-white/70 p-5 shadow-[0_20px_60px_-30px_rgba(15,23,42,0.35)] backdrop-blur-xl">
-              <h2 className="text-xl font-semibold text-ink">History</h2>
-              <div className="mt-4 space-y-3">
+            <div className="edu-panel rounded-2xl">
+              <div className="edu-panel-header rounded-t-2xl px-4 py-3">Attempt history</div>
+              <div className="space-y-3 p-4">
                 {data.submissions.map((submission) => {
                   const resumable = isResumableSubmission(submission.status);
                   const href = resumable
@@ -76,7 +79,7 @@ export default async function DashboardPage({
                   const partLabel = submissionPartLabel(submission);
                   const currentSectionLabel = submissionCurrentSectionLabel(submission);
                   return (
-                    <Link key={submission.id} href={href} className="flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-white/70 bg-white/80 p-4 shadow-sm transition hover:-translate-y-0.5 hover:bg-white">
+                    <Link key={submission.id} href={href} className="edu-card flex flex-wrap items-center justify-between gap-3 rounded-xl p-4 transition hover:border-blue-300">
                       <div>
                         <p className="font-medium text-ink">{submission.exam?.title || "Exam"}</p>
                         {resumable && currentSectionLabel ? (
@@ -93,13 +96,13 @@ export default async function DashboardPage({
                       <div className="flex items-center gap-3">
                         <span
                           className={cn(
-                            "rounded-full border px-2.5 py-1 text-xs font-medium",
+                            "rounded-full border px-2.5 py-1 text-xs font-bold",
                             resumable ? "border-amber-200 bg-amber-50 text-amber-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"
                           )}
                         >
                           {label}
                         </span>
-                        <span className="rounded-full bg-slate-950 px-3 py-2 text-sm font-semibold text-white shadow-lg shadow-slate-900/10">
+                        <span className="edu-button-primary px-3 py-2 text-xs font-semibold">
                           {resumable ? "Resume" : "Review Results"}
                         </span>
                       </div>
@@ -112,10 +115,10 @@ export default async function DashboardPage({
           </section>
 
           <aside className="space-y-5">
-            <div className="rounded-[28px] border border-white/60 bg-white/70 p-5 shadow-[0_20px_60px_-30px_rgba(15,23,42,0.35)] backdrop-blur-xl">
+            <div className="edu-panel rounded-2xl p-5">
               <div className="flex items-center gap-2">
-                <Trophy className="h-5 w-5 text-brand" />
-                <h2 className="font-semibold text-ink">Latest score</h2>
+                <Trophy className="h-5 w-5 text-blue-800" />
+                <h2 className="font-semibold text-slate-950">Latest score</h2>
               </div>
               {data.latestSubmission ? (
                 <div className="mt-4">
@@ -127,14 +130,14 @@ export default async function DashboardPage({
               )}
             </div>
 
-            <div className="rounded-[28px] border border-white/60 bg-white/70 p-5 shadow-[0_20px_60px_-30px_rgba(15,23,42,0.35)] backdrop-blur-xl">
+            <div className="edu-panel rounded-2xl p-5">
               <div className="mb-4 flex items-center gap-2">
-                <BookOpen className="h-5 w-5 text-brand" />
-                <h2 className="font-semibold text-ink">Recommended guides</h2>
+                <BookOpen className="h-5 w-5 text-blue-800" />
+                <h2 className="font-semibold text-slate-950">Recommended guides</h2>
               </div>
               <div className="space-y-3">
                 {data.guides.map((guide) => (
-                  <Link key={guide.id} href={`/review/${guide.slug}`} className="block rounded-3xl border border-white/70 bg-white/80 p-3 shadow-sm transition hover:bg-white">
+                  <Link key={guide.id} href={`/review/${guide.slug}`} className="edu-card block rounded-xl p-3 transition hover:border-blue-300">
                     <p className="font-medium text-ink">{guide.title}</p>
                     <p className="text-sm text-slate-500">{guide.estimated_reading_time_minutes} min · {guide.topic}</p>
                   </Link>

@@ -22,7 +22,8 @@ export default async function AdminPdfsPage({ searchParams }: { searchParams?: {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-semibold text-ink">PDF Imports</h1>
+        <p className="edu-kicker">Import pipeline</p>
+        <h1 className="edu-heading mt-2 text-3xl">PDF Imports</h1>
         <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
           Upload packets, run OCR analysis, then verify each draft before it can enter the question bank.
         </p>
@@ -34,10 +35,10 @@ export default async function AdminPdfsPage({ searchParams }: { searchParams?: {
           ["3", "Review", "Check wording, choices, answers, and source evidence."],
           ["4", "Save draft", "Verified items become draft questions only."]
         ].map(([step, label, detail]) => (
-          <div key={step} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <div key={step} className="edu-card rounded-xl p-4">
             <div className="flex items-center gap-2">
-              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-950 text-xs font-semibold text-white">{step}</span>
-              <h2 className="font-semibold text-ink">{label}</h2>
+              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-950 text-xs font-semibold text-white">{step}</span>
+              <h2 className="edu-heading text-lg">{label}</h2>
             </div>
             <p className="mt-2 text-sm leading-5 text-slate-500">{detail}</p>
           </div>
@@ -83,7 +84,7 @@ export default async function AdminPdfsPage({ searchParams }: { searchParams?: {
                 <input type="hidden" name="pdf_id" value={pdf.id} />
                 <button
                   disabled={!importSchemaStatus.available}
-                  className="rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                  className="rounded-full bg-blue-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-slate-300"
                 >
                   Start analysis
                 </button>
@@ -91,7 +92,7 @@ export default async function AdminPdfsPage({ searchParams }: { searchParams?: {
               {latestJob ? (
                 <Link
                   href={`/admin/pdfs?job_id=${latestJob.id}`}
-                  className={`rounded-md border px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 ${isSelected ? "border-brand bg-blue-50 text-brand" : "border-slate-300 text-slate-700"}`}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 ${isSelected ? "border-blue-300 bg-blue-50 text-blue-800" : "border-slate-300 text-slate-700"}`}
                 >
                   {isSelected ? "Selected" : `Review ${latestJob.draft_question_count}`}
                 </Link>
@@ -102,7 +103,7 @@ export default async function AdminPdfsPage({ searchParams }: { searchParams?: {
               <input name="subject" defaultValue={pdf.subject || ""} placeholder="AP Course" className="rounded-md border border-slate-300 px-2 py-1 text-xs" />
               <input name="unit" defaultValue={pdf.unit || ""} placeholder="Unit" className="rounded-md border border-slate-300 px-2 py-1 text-xs" />
               <input name="topic" defaultValue={pdf.topic || ""} placeholder="Topic" className="rounded-md border border-slate-300 px-2 py-1 text-xs" />
-              <button className="rounded-md bg-brand px-2 py-1 text-xs font-semibold text-white">Save</button>
+              <button className="rounded-full bg-blue-900 px-2 py-1 text-xs font-semibold text-white">Save</button>
             </form>
           ];
         })}

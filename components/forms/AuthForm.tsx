@@ -9,7 +9,7 @@ function SubmitButton({ label }: { label: string }) {
   return (
     <button
       disabled={pending}
-      className="w-full rounded-full bg-slate-950 px-5 py-3 font-semibold text-white shadow-lg shadow-slate-900/15 transition hover:-translate-y-0.5 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-60"
+      className="edu-button-primary w-full px-5 py-3 font-semibold disabled:cursor-not-allowed disabled:opacity-60"
     >
       {pending ? "Working..." : label}
     </button>
@@ -23,9 +23,11 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
   );
 
   return (
-    <form action={formAction} className="space-y-4 rounded-[28px] border border-white/60 bg-white/75 p-6 shadow-[0_20px_60px_-30px_rgba(15,23,42,0.35)] backdrop-blur-xl">
+    <form action={formAction} className="edu-panel rounded-2xl">
+      <div className="edu-panel-header rounded-t-2xl px-5 py-3">{mode === "login" ? "Account access" : "Student registration"}</div>
+      <div className="space-y-4 p-6">
       <div>
-        <h1 className="text-2xl font-semibold text-ink">{mode === "login" ? "Log in" : "Create account"}</h1>
+        <h1 className="edu-heading text-2xl">{mode === "login" ? "Log in" : "Create account"}</h1>
         <p className="mt-1 text-sm text-slate-500">
           {mode === "login"
             ? "Use your student or admin account to continue."
@@ -37,7 +39,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
           Full name
           <input
             name="full_name"
-            className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-brand focus:ring-2 focus:ring-blue-100"
+            className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-blue-700 focus:ring-2 focus:ring-blue-100"
             placeholder="Ada Lovelace"
           />
         </label>
@@ -48,7 +50,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
           required
           type="email"
           name="email"
-          className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-brand focus:ring-2 focus:ring-blue-100"
+          className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-blue-700 focus:ring-2 focus:ring-blue-100"
           placeholder="you@example.com"
         />
       </label>
@@ -59,7 +61,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
           minLength={6}
           type="password"
           name="password"
-          className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-brand focus:ring-2 focus:ring-blue-100"
+          className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-blue-700 focus:ring-2 focus:ring-blue-100"
           placeholder="••••••••"
         />
       </label>
@@ -87,6 +89,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
           </>
         )}
       </p>
+      </div>
     </form>
   );
 }

@@ -76,8 +76,8 @@ export function PdfImportWorkspace({ initialJob }: { initialJob: PdfImportJobDet
 
   if (!job) {
     return (
-      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-lg font-semibold text-ink">No import selected</h2>
+      <section className="edu-panel rounded-2xl p-5">
+        <h2 className="font-semibold text-slate-950">No import selected</h2>
         <p className="mt-2 text-sm leading-6 text-slate-500">
           Use Start analysis on a PDF row, or open an existing review from the import column.
         </p>
@@ -91,11 +91,11 @@ export function PdfImportWorkspace({ initialJob }: { initialJob: PdfImportJobDet
   const actionLabel = workspaceActionLabel(job, pendingCount);
 
   return (
-    <section className="space-y-5 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+    <section className="edu-panel space-y-5 rounded-2xl p-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Selected import</p>
-          <h2 className="mt-1 text-xl font-semibold text-ink">Import workspace</h2>
+          <p className="edu-kicker">Selected import</p>
+          <h2 className="edu-heading mt-1 text-2xl">Import workspace</h2>
           <p className="mt-1 text-sm leading-6 text-slate-500">
             {job.pdf_upload?.file_name || job.pdf_upload_id}
           </p>
@@ -117,7 +117,7 @@ export function PdfImportWorkspace({ initialJob }: { initialJob: PdfImportJobDet
         </div>
         <div className="flex flex-wrap gap-2">
           {pendingCount > 0 ? (
-            <a href="#pdf-draft-review" className="rounded-md bg-slate-950 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800">
+            <a href="#pdf-draft-review" className="edu-button-primary px-3 py-2 text-sm font-semibold">
               Jump to drafts
             </a>
           ) : null}
@@ -128,19 +128,19 @@ export function PdfImportWorkspace({ initialJob }: { initialJob: PdfImportJobDet
       </div>
 
       <div className="grid gap-3 md:grid-cols-4">
-        <div className="rounded-md border border-slate-200 p-3">
+        <div className="edu-card rounded-xl p-3">
           <p className="text-xs uppercase tracking-wide text-slate-500">Processed pages</p>
           <p className="mt-1 text-2xl font-semibold text-ink">{progress?.processedPages || 0}</p>
         </div>
-        <div className="rounded-md border border-slate-200 p-3">
+        <div className="edu-card rounded-xl p-3">
           <p className="text-xs uppercase tracking-wide text-slate-500">OCR complete</p>
           <p className="mt-1 text-2xl font-semibold text-ink">{progress?.ocrCompleted || 0}</p>
         </div>
-        <div className="rounded-md border border-slate-200 p-3">
+        <div className="edu-card rounded-xl p-3">
           <p className="text-xs uppercase tracking-wide text-slate-500">OCR pending</p>
           <p className="mt-1 text-2xl font-semibold text-ink">{progress?.ocrPending || 0}</p>
         </div>
-        <div className="rounded-md border border-slate-200 p-3">
+        <div className="edu-card rounded-xl p-3">
           <p className="text-xs uppercase tracking-wide text-slate-500">Review state</p>
           <p className="mt-1 text-sm font-semibold text-ink">{pendingCount} pending · {savedCount} saved · {rejectedCount} rejected</p>
         </div>

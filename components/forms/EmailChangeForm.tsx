@@ -9,7 +9,7 @@ function ChangeEmailButton() {
     <button
       type="submit"
       disabled={pending}
-      className="rounded-full bg-slate-950 px-5 py-2.5 text-sm font-medium text-white shadow-lg shadow-slate-900/15 transition hover:-translate-y-0.5 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-60"
+      className="edu-button-primary px-5 py-2.5 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
     >
       {pending ? "Sending..." : "Send change confirmation"}
     </button>
@@ -26,9 +26,11 @@ export function EmailChangeForm({
   const [state, formAction] = useFormState<ActionState, FormData>(updateEmailAction, {});
 
   return (
-    <form action={formAction} className="space-y-4 rounded-[28px] border border-white/60 bg-white/70 p-6 shadow-[0_20px_60px_-30px_rgba(15,23,42,0.35)] backdrop-blur-xl">
+    <form action={formAction} className="edu-panel rounded-2xl">
+      <div className="edu-panel-header rounded-t-2xl px-5 py-3">Email change</div>
+      <div className="space-y-4 p-6">
       <div>
-        <h2 className="text-xl font-semibold text-ink">Change email</h2>
+        <h2 className="font-semibold text-slate-950">Change email</h2>
         <p className="mt-1 text-sm leading-6 text-slate-500">
           Your current email stays active until Supabase confirms the change.
         </p>
@@ -51,7 +53,7 @@ export function EmailChangeForm({
           required
           type="email"
           name="new_email"
-          className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-brand focus:ring-2 focus:ring-blue-100"
+          className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-blue-700 focus:ring-2 focus:ring-blue-100"
           placeholder="new-email@example.com"
         />
       </label>
@@ -67,6 +69,7 @@ export function EmailChangeForm({
 
       <div className="flex justify-end">
         <ChangeEmailButton />
+      </div>
       </div>
     </form>
   );

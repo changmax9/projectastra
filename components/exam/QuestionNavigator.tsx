@@ -15,7 +15,7 @@ export function QuestionNavigator({
   onSelect: (index: number) => void;
 }) {
   return (
-    <div className="grid grid-cols-6 gap-2 rounded-[28px] border border-white/60 bg-white/70 p-3 shadow-[0_20px_60px_-30px_rgba(15,23,42,0.35)] backdrop-blur-xl sm:grid-cols-8 lg:grid-cols-1">
+    <div className="edu-panel grid grid-cols-6 gap-2 rounded-2xl p-3 sm:grid-cols-8 lg:grid-cols-1">
       {Array.from({ length: count }, (_, index) => {
         const active = index === currentIndex;
         const isAnswered = answered.has(index);
@@ -26,9 +26,9 @@ export function QuestionNavigator({
             type="button"
             onClick={() => onSelect(index)}
             className={cn(
-              "relative flex h-10 items-center justify-center rounded-full border text-sm font-semibold transition",
+              "relative flex h-10 items-center justify-center rounded-lg border font-mono text-sm font-bold transition",
               active
-                ? "border-slate-950 bg-slate-950 text-white shadow-lg shadow-slate-900/10"
+                ? "border-blue-950 bg-blue-950 text-white shadow-lg shadow-blue-950/10"
                 : isAnswered
                   ? "border-green-200 bg-green-50 text-success"
                   : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"

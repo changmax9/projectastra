@@ -32,9 +32,9 @@ export const ChoiceList = memo(function ChoiceList({
   const eliminated = new Set(eliminatedChoiceIds);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {multiSelect ? (
-        <p className="rounded-full border border-blue-100 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-800">
+        <p className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 font-mono text-xs font-bold uppercase tracking-wide text-blue-900">
           Select {requiredSelections === 2 ? "TWO" : requiredSelections} answers.
         </p>
       ) : null}
@@ -46,10 +46,10 @@ export const ChoiceList = memo(function ChoiceList({
           <div
             key={choice.id}
             className={cn(
-              "group rounded-3xl border-2 transition",
+              "group rounded-xl border transition",
               isSelected
-                ? "border-brand bg-blue-50 shadow-sm"
-                : "border-slate-300 bg-white hover:border-slate-500 hover:bg-slate-50",
+                ? "border-blue-800 bg-blue-50"
+                : "border-slate-300 bg-white hover:border-blue-300 hover:bg-slate-50",
               isEliminated && !isSelected ? "opacity-55" : ""
             )}
           >
@@ -67,15 +67,15 @@ export const ChoiceList = memo(function ChoiceList({
                 onChange(ordered.join(","));
               }}
               className={cn(
-                "flex min-h-20 w-full items-start gap-5 rounded-3xl px-5 py-4 text-left focus:outline-none focus:ring-2 focus:ring-brand/40",
+                "flex min-h-16 w-full items-start gap-4 rounded-xl px-4 py-3 text-left focus:outline-none focus:ring-2 focus:ring-blue-700/35",
                 isEliminated ? "line-through decoration-slate-500 decoration-2" : ""
               )}
             >
               <span
                 className={cn(
-                  "mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-4 text-lg font-bold",
+                  "mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border-2 font-mono text-lg font-bold",
                   isSelected
-                    ? "border-brand bg-brand text-white"
+                    ? "border-blue-800 bg-blue-900 text-white"
                     : isEliminated
                       ? "border-slate-300 bg-slate-100 text-slate-500"
                       : "border-slate-400 bg-white text-slate-800"
@@ -85,7 +85,7 @@ export const ChoiceList = memo(function ChoiceList({
               </span>
               <div className="min-w-0 flex-1 pt-1">
                 {showText ? (
-                  <MathMarkdown content={choice.text} className="exam-prose block font-serif text-xl leading-8 text-ink" />
+                  <MathMarkdown content={choice.text} className="exam-prose block font-serif text-xl leading-8 text-slate-950" />
                 ) : null}
                 {choice.image_url ? (
                   <QuestionImageAsset
@@ -108,7 +108,7 @@ export const ChoiceList = memo(function ChoiceList({
                     onToggleEliminated(choice.id);
                   }}
                   className={cn(
-                    "rounded-full border px-3 py-1.5 text-xs font-medium transition",
+                    "rounded-lg border px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wide transition",
                     isEliminated
                       ? "border-slate-300 bg-slate-100 text-slate-700 hover:bg-white"
                       : "border-slate-200 bg-white/80 text-slate-500 hover:border-slate-300 hover:text-slate-700"

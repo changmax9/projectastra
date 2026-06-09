@@ -9,7 +9,7 @@ function SaveButton() {
     <button
       type="submit"
       disabled={pending}
-      className="rounded-full bg-slate-950 px-5 py-2.5 text-sm font-medium text-white shadow-lg shadow-slate-900/15 transition hover:-translate-y-0.5 hover:shadow-xl disabled:opacity-60"
+      className="edu-button-primary px-5 py-2.5 text-sm font-medium disabled:opacity-60"
     >
       {pending ? "Saving..." : "Save changes"}
     </button>
@@ -24,9 +24,11 @@ export function AccountSettingsForm({
   const [state, formAction] = useFormState<ActionState, FormData>(updateAccountSettingsAction, {});
 
   return (
-    <form action={formAction} className="space-y-5 rounded-[28px] border border-white/60 bg-white/70 p-6 shadow-[0_20px_60px_-30px_rgba(15,23,42,0.35)] backdrop-blur-xl">
+    <form action={formAction} className="edu-panel rounded-2xl">
+      <div className="edu-panel-header rounded-t-2xl px-5 py-3">Profile details</div>
+      <div className="space-y-5 p-6">
       <div>
-        <h2 className="text-xl font-semibold text-ink">Profile details</h2>
+        <h2 className="font-semibold text-slate-950">Display profile</h2>
         <p className="mt-1 text-sm text-slate-500">Update the public details attached to your account.</p>
       </div>
 
@@ -35,7 +37,7 @@ export function AccountSettingsForm({
         <input
           name="full_name"
           defaultValue={fullName}
-          className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-brand focus:ring-2 focus:ring-blue-100"
+          className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-blue-700 focus:ring-2 focus:ring-blue-100"
           placeholder="Your name"
         />
       </label>
@@ -49,6 +51,7 @@ export function AccountSettingsForm({
 
       <div className="flex justify-end">
         <SaveButton />
+      </div>
       </div>
     </form>
   );

@@ -17,7 +17,8 @@ export default async function ReviewGuidePage({ params }: { params: { slug: stri
   return (
     <>
       <AppHeader />
-      <main className="mx-auto w-screen max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <main className="edu-page w-screen px-4 py-8 sm:px-6 lg:px-8">
+        <div className="edu-shell">
         <div className="grid gap-8 lg:grid-cols-[230px_1fr]">
           <aside className="hidden lg:block">
             <div className="sticky top-24">
@@ -25,12 +26,14 @@ export default async function ReviewGuidePage({ params }: { params: { slug: stri
             </div>
           </aside>
           <article className="min-w-0">
-            <div className="app-surface mb-6 rounded-lg p-6">
-              <p className="inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-brand">
+            <div className="edu-panel mb-6 rounded-2xl">
+              <div className="edu-panel-header rounded-t-2xl px-5 py-3">Review guide</div>
+              <div className="p-6">
+              <p className="edu-kicker inline-flex items-center gap-2">
                 <BookOpen className="h-4 w-4" />
                 {guide.subject}
               </p>
-              <h1 className="mt-2 text-4xl font-semibold leading-tight text-ink">{guide.title}</h1>
+              <h1 className="edu-heading mt-2 text-3xl leading-tight">{guide.title}</h1>
               <p className="mt-3 max-w-3xl leading-7 text-slate-600">{guide.description}</p>
               <div className="mt-5 flex flex-wrap gap-2 text-sm text-slate-600">
                 <span className="app-chip inline-flex items-center gap-1 px-3 py-1.5">
@@ -44,19 +47,20 @@ export default async function ReviewGuidePage({ params }: { params: { slug: stri
                   {guide.estimated_reading_time_minutes} min
                 </span>
               </div>
+              </div>
             </div>
 
-            <div className="app-surface rounded-lg p-6 sm:p-8">
+            <div className="edu-card rounded-2xl p-6 sm:p-8">
               <ReviewGuideRenderer content={guide.content_markdown} suppressTitle />
             </div>
 
             <section className="mt-8">
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-2xl font-semibold text-ink">Related practice questions</h2>
+                  <h2 className="edu-heading text-2xl">Related practice questions</h2>
                   <p className="text-sm text-slate-500">Questions linked by the admin from the question bank.</p>
                 </div>
-                <Link href={`/review?topic=${encodeURIComponent(guide.topic)}`} className="app-primary inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold">
+                <Link href={`/review?topic=${encodeURIComponent(guide.topic)}`} className="edu-button-primary inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold">
                   More guides
                   <ArrowRight className="h-4 w-4" />
                 </Link>
@@ -64,6 +68,7 @@ export default async function ReviewGuidePage({ params }: { params: { slug: stri
               <RelatedQuestions questions={guide.related_questions} />
             </section>
           </article>
+        </div>
         </div>
       </main>
     </>
