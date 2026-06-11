@@ -4,6 +4,20 @@
 
 更新时间：2026-05-08
 
+## 2026-06-11: Large scanned packet OCR triage
+
+- Diagnosed a 718-page image-only AP Physics mixed packet where the previous first-12-page OCR limit could never reach question pages.
+- Added bounded document-wide OCR triage before full OCR when image-only pages exceed `PDF_OCR_MAX_PAGES`.
+- Triage samples evenly across the packet, favors question starts, choices, prompt verbs, and exam-section signals, and strongly penalizes scoring guidelines, distribution-of-points pages, contents, and course-description material.
+- Full OCR now targets the strongest question-page neighborhoods and warns that skipped pages still require later batches.
+- Added `PDF_OCR_TRIAGE_SAMPLE_PAGES` and `PDF_OCR_TRIAGE_TIMEOUT_MS` configuration.
+- Sample verification on `物理2简答题 选择题.pdf`: 718 image-only pages, 24-page triage sample, 12 pages sent to full OCR, 25 review drafts from actual question pages, zero accepted scoring-guideline pages, and maximum draft page span of 1 after preventing cross-gap merges.
+- Passed `node tests/run-import-tests.cjs`, `node node_modules/typescript/bin/tsc --noEmit`, `node node_modules/next/dist/bin/next lint`, `node scripts/predeploy-check.cjs`, and `git diff --check` (using the bundled Node executable because `node` was not on this PowerShell session's `PATH`).
+- Ran an isolated raw-Tesseract-versus-vision comparison on 12 previously unused sample pages. Vision classified all 12 pages correctly; raw OCR recovered readable prompt prose but no selected question page was structurally complete without layout/visual context.
+- Preserved untouched Tesseract output separately as `tesseract-local-raw`, tightened triage exclusions for performance-data and answer-list pages, and documented the experiment in `docs/sample-physics2-ocr-vs-vision-report.md`.
+- Pulled GitHub UI commits `512cfad` and `6dc0db4`, moved the local Tesseract runtime and OCR evaluation artifacts to `D:\Codex`, configured `.env.local` with D-drive OCR paths, added `npm run check:ocr`, and exposed untouched OCR model output in the admin PDF page audit.
+- Verified the website analyzer against the 718-page sample using only D-drive OCR paths: provider `tesseract-local`, 4 triaged OCR pages, 5 review drafts, raw Tesseract audit blocks on all 4 OCR pages, and generated page images stored under the D-drive project. `npm run check:ocr`, tests, TypeScript, lint, predeploy, and production `next build` passed.
+
 ---
 
 ## 1. 项目简介

@@ -228,6 +228,7 @@ def main():
             "page_number": page_number,
             "status": "failed",
             "text": "",
+            "raw_text": "",
             "confidence": None,
             "image_url": None,
             "warnings": [],
@@ -279,6 +280,7 @@ def main():
             rendered_lines = []
             for key in sorted(lines.keys()):
                 rendered_lines.append(" ".join(text for _, text in sorted(lines[key], key=lambda item: item[0])))
+            page_result["raw_text"] = "\n".join(rendered_lines).strip()
             rendered_lines, recovered_question_starts = normalize_question_lines(rendered_lines)
             rendered_lines, recovered_choice_labels = normalize_choice_lines(rendered_lines)
 

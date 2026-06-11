@@ -6,6 +6,13 @@ import { useRouter } from "next/navigation";
 import { PdfDraftQuestionReview } from "@/components/admin/PdfDraftQuestionReview";
 import type { PdfImportJobDetails } from "@/lib/types";
 
+function rawOcrTextForPage(page: PdfImportJobDetails["pages"][number]) {
+  const rawOcrBlock = page.raw_blocks.find(
+    (block) => block.kind === "ocr_raw_text" && block.source === "tesseract-local-raw"
+  );
+  return typeof rawOcrBlock?.text === "string" ? rawOcrBlock.text : "";
+}
+
 function progressForJob(job: PdfImportJobDetails) {
   const ocrPending = job.pages.filter((page) => page.ocr_status === "pending").length;
   const ocrCompleted = job.pages.filter((page) => page.ocr_status === "completed" || page.ocr_status === "not_needed").length;
@@ -177,15 +184,25 @@ export function PdfImportWorkspace({ initialJob }: { initialJob: PdfImportJobDet
         <div className="mt-3 grid max-h-96 gap-3 overflow-auto md:grid-cols-2 xl:grid-cols-3">
           {job.pages.length === 0 ? (
             <p className="text-sm text-slate-500">No page records yet.</p>
-          ) : job.pages.map((page) => (
-            <div key={page.id} className="rounded-md border border-slate-200 p-3 text-xs text-slate-600">
-              <div className="flex flex-wrap justify-between gap-2">
-                <span className="font-semibold text-ink">Page {page.page_number}</span>
-                <span>{page.extraction_method} · {page.ocr_status}</span>
+          ) : job.pages.map((page) => {
+            const rawOcrText = rawOcrTextForPage(page);
+            return (
+              <div key={page.id} className="rounded-md border border-slate-200 p-3 text-xs text-slate-600">
+                <div className="flex flex-wrap justify-between gap-2">
+                  <span className="font-semibold text-ink">Page {page.page_number}</span>
+                  <span>{page.extraction_method} · {page.ocr_status}</span>
+                </div>
+                <p className="mt-2 line-clamp-4 whitespace-pre-wrap leading-5">{page.text_extracted || page.ocr_text || page.warnings[0] || "No accepted text."}</p>
+                {rawOcrText ? (
+                  <details className="mt-3 border-t border-slate-200 pt-2">
+                    <summary className="cursor-pointer font-semibold text-slate-700">Raw OCR model output</summary>
+                    <p className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap font-mono leading-5 text-slate-500">{rawOcrText}</p>
+                    <p className="mt-2 text-[11px] text-slate-400">Untouched Tesseract output shown separately from Astra normalization.</p>
+                  </details>
+                ) : null}
               </div>
-              <p className="mt-2 line-clamp-4 whitespace-pre-wrap leading-5">{page.text_extracted || page.ocr_text || page.warnings[0] || "No accepted text."}</p>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 

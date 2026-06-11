@@ -214,6 +214,17 @@ PDF_OCR_PSM=6
 
 `PDF_OCR_PSM` defaults to Tesseract single-block segmentation (`6`). For difficult scanned packets, the supported overrides are `3`, `4`, and `11`.
 
+For the local Windows OCR setup used by Astra, keep the runtime on `D:`:
+
+```env
+PDF_OCR_PYTHON=D:\Anaconda\python.exe
+PDF_TEXT_PYTHON=D:\Anaconda\python.exe
+PDF_OCR_PYTHONPATH=D:\Codex\tools\pdf-ocr-python
+TESSERACT_CMD=D:\Codex\tools\tesseract-ocr\tesseract.exe
+```
+
+Run `npm run check:ocr` before testing PDF imports. The page audit shows untouched Tesseract output separately from Astra's normalized text.
+
 Typical macOS setup:
 
 ```bash

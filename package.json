@@ -13,6 +13,7 @@
     "seed:supabase": "node scripts/seed-supabase-from-mock.cjs --apply",
     "check:supabase": "node scripts/check-supabase-data.cjs",
     "check:supabase:pdf-import": "node scripts/check-supabase-pdf-import-schema.cjs",
+    "check:ocr": "node scripts/check-local-ocr-runtime.cjs",
     "backup:supabase": "node scripts/export-supabase-to-backup.cjs",
     "restore:supabase:dry": "node scripts/restore-supabase-from-backup.cjs --dry-run",
     "build:ap-psych-guides": "node scripts/build-ap-psych-review-guides.cjs",

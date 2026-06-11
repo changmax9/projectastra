@@ -15,11 +15,14 @@ import type {
   QuestionChoice
 } from "@/lib/types";
 
-export const PARSER_VERSION = "pdf-import-mvp-2026-06-02";
+export const PARSER_VERSION = "pdf-import-mvp-2026-06-11";
 const CHOICE_MARKER_RE = /(?:^|\s)(?:\(([A-E])\)|([A-E])[\).])\s+/g;
 const FRQ_PART_RE = /(?:^|\s)\(((?:[a-g])|(?:i{1,3}|iv|v))\)\s+/gi;
 const DEFAULT_OCR_MAX_PAGES = 12;
 const DEFAULT_OCR_PSM = 6;
+const DEFAULT_OCR_TRIAGE_SAMPLE_PAGES = 48;
+const DEFAULT_OCR_TRIAGE_DPI = 105;
+const DEFAULT_OCR_TRIAGE_TIMEOUT_MS = 120_000;
 const DEFAULT_RENDER_MAX_PAGES = 24;
 const DEFAULT_OCR_TIMEOUT_MS = 30_000;
 const DEFAULT_TEXT_TIMEOUT_MS = 15_000;
@@ -88,6 +91,7 @@ interface LocalOcrPageResult {
   page_number: number;
   status: PdfImportPage["ocr_status"];
   text: string;
+  raw_text?: string;
   confidence: number | null;
   image_url: string | null;
   warnings: string[];
@@ -156,7 +160,7 @@ function findTesseractCommand() {
   if (process.env.TESSERACT_CMD) {
     return commandExists(process.env.TESSERACT_CMD) ? process.env.TESSERACT_CMD : null;
   }
-  return ["C:\\Program Files\\Tesseract-OCR\\tesseract.exe", "tesseract"].find(commandExists) || null;
+  return ["D:\\Codex\\tools\\tesseract-ocr\\tesseract.exe", "tesseract"].find(commandExists) || null;
 }
 
 function findTextPythonCommand() {
@@ -190,6 +194,32 @@ function parseOcrPsm() {
     };
   }
   return { value: parsed, warning: null as string | null };
+}
+
+function parseOcrTriageSamplePages() {
+  const raw = process.env.PDF_OCR_TRIAGE_SAMPLE_PAGES;
+  if (raw === undefined || raw.trim() === "") return { value: DEFAULT_OCR_TRIAGE_SAMPLE_PAGES, warning: null as string | null };
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return {
+      value: DEFAULT_OCR_TRIAGE_SAMPLE_PAGES,
+      warning: `Invalid PDF_OCR_TRIAGE_SAMPLE_PAGES value "${raw}". Using the default of ${DEFAULT_OCR_TRIAGE_SAMPLE_PAGES} sampled pages.`
+    };
+  }
+  return { value: Math.floor(parsed), warning: null as string | null };
+}
+
+function parseOcrTriageTimeoutMs() {
+  const raw = process.env.PDF_OCR_TRIAGE_TIMEOUT_MS;
+  if (raw === undefined || raw.trim() === "") return { value: DEFAULT_OCR_TRIAGE_TIMEOUT_MS, warning: null as string | null };
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return {
+      value: DEFAULT_OCR_TRIAGE_TIMEOUT_MS,
+      warning: `Invalid PDF_OCR_TRIAGE_TIMEOUT_MS value "${raw}". Using the default timeout of ${DEFAULT_OCR_TRIAGE_TIMEOUT_MS} ms.`
+    };
+  }
+  return { value: Math.floor(parsed), warning: null as string | null };
 }
 
 function parseOcrTimeoutMs() {
@@ -375,12 +405,19 @@ async function runLocalTesseractOcr(pdf: PdfUpload, pageNumbers: number[]) {
   const { value: maxPages, warning: maxPagesWarning } = parseOcrMaxPages();
   const { value: psm, warning: psmWarning } = parseOcrPsm();
   const { value: timeoutMs, warning: timeoutWarning } = parseOcrTimeoutMs();
-  const selectedPages = maxPages > 0 ? pageNumbers.slice(0, maxPages) : pageNumbers;
+  const triage = maxPages > 0 && pageNumbers.length > maxPages
+    ? await runLocalOcrTriage(pdf, pageNumbers, maxPages, pythonPath, tesseractCmd)
+    : { selectedPages: pageNumbers, warnings: [] as string[] };
+  const selectedPages = maxPages > 0 ? triage.selectedPages.slice(0, maxPages) : pageNumbers;
   const skippedPageNumbers = new Set(pageNumbers.filter((pageNumber) => !selectedPages.includes(pageNumber)));
-  const warnings =
+  const warnings = [
+    ...triage.warnings,
+    ...(
     maxPages > 0 && pageNumbers.length > selectedPages.length
-      ? [`OCR limited to first ${selectedPages.length} of ${pageNumbers.length} requested pages. Set PDF_OCR_MAX_PAGES=0 to process all pages.`]
-      : [];
+      ? [`Full OCR limited to ${selectedPages.length} of ${pageNumbers.length} requested pages. Set PDF_OCR_MAX_PAGES=0 to process all pages.`]
+      : []
+    )
+  ];
   if (maxPagesWarning) warnings.unshift(maxPagesWarning);
   if (psmWarning) warnings.unshift(psmWarning);
   if (timeoutWarning) warnings.unshift(timeoutWarning);
@@ -1233,12 +1270,21 @@ function splitQuestionBlocks(pages: PageWithoutStorage[], sectionByPage: Map<num
     const start = (match.index || 0) + match[0].length;
     const end = starts[index + 1]?.index ?? joined.length;
     const chunk = joined.slice(start, end);
-    const chunkMarkers = [...chunk.matchAll(pageMarkerRe)];
+    const allChunkMarkers = [...chunk.matchAll(pageMarkerRe)];
+    let previousPageNumber = startMarker.pageNumber;
+    const firstGapMarker = allChunkMarkers.find((item) => {
+      const pageNumber = Number(item[1]);
+      const hasGap = pageNumber > previousPageNumber + 1;
+      previousPageNumber = pageNumber;
+      return hasGap;
+    });
+    const effectiveChunk = firstGapMarker?.index === undefined ? chunk : chunk.slice(0, firstGapMarker.index);
+    const chunkMarkers = [...effectiveChunk.matchAll(pageMarkerRe)];
     const chunkPageMarkers = chunkMarkers
       .filter((item, markerIndex) => {
         const followingStart = (item.index || 0) + item[0].length;
-        const followingEnd = chunkMarkers[markerIndex + 1]?.index ?? chunk.length;
-        return cleanText(chunk.slice(followingStart, followingEnd)).length > 0;
+        const followingEnd = chunkMarkers[markerIndex + 1]?.index ?? effectiveChunk.length;
+        return cleanText(effectiveChunk.slice(followingStart, followingEnd)).length > 0;
       })
       .map((item) => Number(item[1]));
     const pageNumbers = Array.from(new Set([startMarker.pageNumber, ...chunkPageMarkers].filter(Number.isFinite))).sort((a, b) => a - b);
@@ -1246,7 +1292,7 @@ function splitQuestionBlocks(pages: PageWithoutStorage[], sectionByPage: Map<num
       questionNumber: Number(match[1]),
       pageStart: Math.min(...pageNumbers),
       pageEnd: Math.max(...pageNumbers),
-      text: cleanText(chunk.replace(pageMarkerRe, "")),
+      text: cleanText(effectiveChunk.replace(pageMarkerRe, "")),
       pageNumbers,
       section: startMarker.section
     };
@@ -1516,6 +1562,124 @@ function usableVisualBlock(record: JsonRecord) {
   };
 }
 
+function evenlySpacedPageNumbers(pageNumbers: number[], maxSamples: number) {
+  const unique = Array.from(new Set(pageNumbers)).sort((a, b) => a - b);
+  if (maxSamples <= 0) return [];
+  if (unique.length <= maxSamples) return unique;
+  const selected = new Set<number>();
+  for (let index = 0; index < maxSamples; index += 1) {
+    const sourceIndex = Math.round((index * (unique.length - 1)) / Math.max(1, maxSamples - 1));
+    selected.add(unique[sourceIndex]);
+  }
+  return Array.from(selected).sort((a, b) => a - b);
+}
+
+function questionPageTriageScore(text: string) {
+  const cleaned = cleanText(text);
+  if (!cleaned) return -100;
+  const strongNegative =
+    /\b(?:scoring\s+guidelines?|distribution\s+of\s+points|points?\s+total|sample\s+responses?|course\s+and\s+exam\s+description|content\s+outline|table\s+of\s+contents|return\s+to\s+table\s+of\s+contents|question\s+descriptors\s+and\s+performance\s+data|answers?\s+to\s+multiple-choice\s+questions?)\b/i.test(cleaned) ||
+    (/\bLearning\s+Objectives\b/i.test(cleaned) && /\bEssential\s+Knowledge\b/i.test(cleaned) && /\b%\s*Correct\b/i.test(cleaned));
+  const scoringLines = cleaned.match(/\bFor\s+(?:indicating|selecting|calculating|correct|using|describing|mentioning)\b/gi) || [];
+  if (strongNegative || scoringLines.length >= 3) return -30 - scoringLines.length;
+
+  const questionStarts = cleaned.match(/(?:^|\n)\s*(?:Question\s+)?\d{1,3}[\).,]\s+/gim) || [];
+  const choiceLabels = cleaned.match(/(?:^|\n)\s*(?:\(?[A-E]\)?[\).]?|[©®])\s+\S/gim) || [];
+  const promptVerbs = cleaned.match(/\b(?:which|what|why|how|calculate|derive|explain|describe|determine|identify|select|justify|sketch|predict)\b/gi) || [];
+  const frqParts = cleaned.match(/(?:^|\n)\s*\(?[a-g]\)?[\).,]\s+/gim) || [];
+  let score = questionStarts.length * 4 + Math.min(choiceLabels.length, 12) * 1.5 + Math.min(promptVerbs.length, 8) + Math.min(frqParts.length, 8);
+  if (/\b(?:free-response\s+questions?|multiple[- ]choice\s+questions?|section\s+i{1,2})\b/i.test(cleaned)) score += 5;
+  if (/\bGO\s+ON\s+TO\s+THE\s+NEXT\s+PAGE\b/i.test(cleaned)) score += 2;
+  if (/\b(?:answer\s+key|solutions?|explanations?)\b/i.test(cleaned)) score -= 8;
+  return score;
+}
+
+function selectTriagedOcrPages(pageNumbers: number[], scoredSamples: Array<{ pageNumber: number; score: number }>, maxPages: number) {
+  const allowed = new Set(pageNumbers);
+  const selected: number[] = [];
+  const add = (pageNumber: number) => {
+    if (allowed.has(pageNumber) && !selected.includes(pageNumber) && selected.length < maxPages) selected.push(pageNumber);
+  };
+  for (const sample of scoredSamples.filter((item) => item.score >= 4).sort((a, b) => b.score - a.score || a.pageNumber - b.pageNumber)) {
+    add(sample.pageNumber);
+    add(sample.pageNumber - 1);
+    add(sample.pageNumber + 1);
+    add(sample.pageNumber - 2);
+    add(sample.pageNumber + 2);
+    if (selected.length >= maxPages) break;
+  }
+  return selected.sort((a, b) => a - b);
+}
+
+async function runLocalOcrTriage(
+  pdf: PdfUpload,
+  pageNumbers: number[],
+  maxPages: number,
+  pythonPath: string,
+  tesseractCmd: string
+) {
+  const { value: sampleLimit, warning: sampleWarning } = parseOcrTriageSamplePages();
+  const { value: timeoutMs, warning: timeoutWarning } = parseOcrTriageTimeoutMs();
+  const sampledPages = evenlySpacedPageNumbers(pageNumbers, sampleLimit);
+  const warnings = [sampleWarning, timeoutWarning].filter((warning): warning is string => Boolean(warning));
+  if (sampledPages.length === 0) return { selectedPages: pageNumbers.slice(0, maxPages), warnings };
+
+  const pdfPath = await materializePdfForWorker(pdf);
+  const outputKey = `${safePathSegment(pdf.id)}-triage-${Date.now().toString(36)}`;
+  const outputDir = path.join(process.cwd(), ".pdf-ocr-temp", outputKey);
+  await mkdir(outputDir, { recursive: true });
+  const env = {
+    ...process.env,
+    PYTHONPATH: [process.env.PDF_OCR_PYTHONPATH, "D:\\Codex\\tools\\pdf-ocr-python", process.env.PYTHONPATH]
+      .filter(Boolean)
+      .join(path.delimiter)
+  };
+
+  try {
+    const { stdout } = await execFileAsync(
+      pythonPath,
+      [
+        path.join(process.cwd(), "scripts", "pdf-ocr-worker.py"),
+        "--pdf",
+        pdfPath,
+        "--pages",
+        sampledPages.join(","),
+        "--out-dir",
+        outputDir,
+        "--public-prefix",
+        "/pdf-ocr-triage",
+        "--tesseract-cmd",
+        tesseractCmd,
+        "--dpi",
+        String(DEFAULT_OCR_TRIAGE_DPI),
+        "--psm",
+        "3"
+      ],
+      { env, maxBuffer: 20 * 1024 * 1024, timeout: timeoutMs }
+    );
+    const jsonStart = stdout.lastIndexOf('{"ok"');
+    const parsed = JSON.parse(jsonStart >= 0 ? stdout.slice(jsonStart) : stdout) as { ok: boolean; error?: string; pages?: LocalOcrPageResult[] };
+    if (!parsed.ok) throw new Error(parsed.error || "OCR triage worker failed.");
+    const scoredSamples = (parsed.pages || []).map((page) => ({
+      pageNumber: page.page_number,
+      score: questionPageTriageScore(page.text)
+    }));
+    const selectedPages = selectTriagedOcrPages(pageNumbers, scoredSamples, maxPages);
+    if (selectedPages.length === 0) {
+      warnings.push(`Document-wide OCR triage sampled ${sampledPages.length} page(s) but found no strong question-page candidates; falling back to the first ${maxPages} page(s).`);
+      return { selectedPages: pageNumbers.slice(0, maxPages), warnings };
+    }
+    warnings.push(
+      `Document-wide OCR triage sampled ${sampledPages.length} of ${pageNumbers.length} image-only page(s) and selected ${selectedPages.length} likely question/neighbor page(s) for full OCR.`
+    );
+    warnings.push("This is a bounded triage pass; unprocessed pages still require later OCR batches before the document can be considered fully extracted.");
+    return { selectedPages, warnings };
+  } catch (error) {
+    warnings.push(`Document-wide OCR triage failed; falling back to the first ${maxPages} page(s). ${workerFailureMessage(error, "OCR triage failed.")}`);
+    return { selectedPages: pageNumbers.slice(0, maxPages), warnings };
+  }
+}
+
 function visualAssetTypeForDraft(draft: DraftQuestionWithoutStorage): "diagram" | "table" | "unknown" {
   const text = [draft.question_text, ...draft.choices.map((choice) => choice.text), draft.scoring_notes, draft.explanation].join(" ");
   const hasTable = /table/i.test(text);
@@ -1751,6 +1915,9 @@ export async function analyzePdfUpload(pdf: PdfUpload): Promise<PdfImportAnalysi
       });
     } else {
       const ocr = localOcr.results.get(pageNumber);
+      const auditRawBlocks = ocr?.raw_text
+        ? [...rawBlocks, { kind: "ocr_raw_text", source: "tesseract-local-raw", text: ocr.raw_text }]
+        : rawBlocks;
       if (ocr && ocr.status === "completed") {
         const ocrText = cleanText(ocr.text);
         const ocrQuality = textQuality(ocrText);
@@ -1769,7 +1936,7 @@ export async function analyzePdfUpload(pdf: PdfUpload): Promise<PdfImportAnalysi
               ...(structuredPage?.warnings || []),
               ...ocr.warnings
             ],
-            raw_blocks: rawBlocks
+            raw_blocks: auditRawBlocks
           });
           continue;
         }
@@ -1787,7 +1954,7 @@ export async function analyzePdfUpload(pdf: PdfUpload): Promise<PdfImportAnalysi
             ...(structuredPage?.warnings || []),
             ...ocr.warnings
           ],
-          raw_blocks: rawBlocks
+          raw_blocks: auditRawBlocks
         });
         continue;
       }
@@ -1821,7 +1988,7 @@ export async function analyzePdfUpload(pdf: PdfUpload): Promise<PdfImportAnalysi
         warnings: text
           ? [`Embedded text ignored: ${quality.reason}.`, ...(structuredPage?.warnings || []), ...(ocr?.warnings.length ? ocr.warnings : unavailable.warnings)]
           : [...(structuredPage?.warnings || []), ...(ocr?.warnings.length ? ocr.warnings : unavailable.warnings)],
-        raw_blocks: rawBlocks
+        raw_blocks: auditRawBlocks
       });
     }
   }

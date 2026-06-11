@@ -441,6 +441,13 @@ assert.match(pdfImportSource, /function isImageOrBinaryStream/, "PDF import skip
 assert.match(pdfImportSource, /function hasPdfTextOperators/, "PDF import only parses streams that look like PDF text content");
 assert.match(pdfImportSource, /Invalid PDF_OCR_MAX_PAGES value/, "PDF import warns on invalid OCR page limit values");
 assert.match(pdfImportSource, /Invalid PDF_OCR_PSM value/, "PDF import warns on invalid OCR page segmentation mode values");
+assert.match(pdfImportSource, /function runLocalOcrTriage/, "PDF import can triage large image-only packets before full OCR");
+assert.match(pdfImportSource, /function questionPageTriageScore/, "PDF import scores likely question pages during bounded OCR triage");
+assert.match(pdfImportSource, /Document-wide OCR triage sampled/, "PDF import reports document-wide OCR triage decisions");
+assert.match(pdfImportSource, /scoring\\s\+guidelines/, "PDF OCR triage penalizes scoring-guideline material");
+assert.match(pdfImportSource, /question\\s\+descriptors\\s\+and\\s\+performance\\s\+data/, "PDF OCR triage penalizes performance-data tables");
+assert.match(pdfImportSource, /answers\?\\s\+to\\s\+multiple-choice\\s\+questions/, "PDF OCR triage penalizes answer-list pages");
+assert.match(pdfImportSource, /tesseract-local-raw/, "PDF import preserves untouched Tesseract output separately for audit");
 assert.match(pdfImportSource, /PDF_OCR_TIMEOUT_MS/, "PDF import has a configurable OCR worker timeout");
 assert.match(pdfImportSource, /Local OCR worker timed out/, "PDF import reports OCR worker timeouts clearly");
 assert.match(pdfImportSource, /Configured TESSERACT_CMD was not found/, "PDF import fails closed for invalid explicit Tesseract config");
@@ -456,7 +463,8 @@ assert.match(pdfImportSource, /function applyExplicitExplanationEntries/, "PDF i
 assert.match(pdfImportSource, /Explanation matched from explicit explanation\/rationale page/, "PDF import cites source pages when attaching explanations");
 assert.match(pdfImportSource, /Conflicting explicit explanation entries/, "PDF import refuses conflicting explanation entries");
 assert.match(pdfImportSource, /function buildSegmentationSections/, "PDF import builds section-aware segmentation context");
-assert.match(pdfImportSource, /followingEnd = chunkMarkers\[markerIndex \+ 1\]\?\.index \?\? chunk\.length/, "PDF import excludes trailing next-page markers that have no question text");
+assert.match(pdfImportSource, /firstGapMarker/, "PDF import prevents sparse OCR page clusters from merging across unprocessed page gaps");
+assert.match(pdfImportSource, /followingEnd = chunkMarkers\[markerIndex \+ 1\]\?\.index \?\? effectiveChunk\.length/, "PDF import excludes trailing next-page markers that have no question text");
 assert.match(pdfImportSource, /isTableOfContentsLikeText/, "PDF import filters table-of-contents pages before question segmentation");
 assert.match(pdfImportSource, /isScoringSectionStart/, "PDF import filters answer and scoring sections before question segmentation");
 assert.match(pdfImportSource, /filterDuplicateMcqDrafts/, "PDF import filters broader duplicate MCQ candidates caused by instruction-page starts");
@@ -543,6 +551,8 @@ assert.match(pdfWorkspaceSource, /api\/admin\/pdf-imports\/\$\{jobId\}\/process/
 assert.match(pdfWorkspaceSource, /Generated draft questions/, "PDF import workspace renders generated draft questions inline");
 assert.match(pdfWorkspaceSource, /PdfDraftQuestionReview/, "PDF import workspace reuses the admin draft review cards");
 assert.match(pdfWorkspaceSource, /candidateAssets/, "PDF import workspace passes draft visual candidates into review cards");
+assert.match(pdfWorkspaceSource, /Raw OCR model output/, "PDF import workspace exposes untouched OCR model output separately");
+assert.match(pdfWorkspaceSource, /tesseract-local-raw/, "PDF import workspace identifies the raw Tesseract audit block");
 
 const pdfProcessRouteSource = source("app/api/admin/pdf-imports/[jobId]/process/route.ts");
 assert.match(pdfProcessRouteSource, /requireAdmin/, "PDF import process route is admin protected");
@@ -556,6 +566,7 @@ assert.match(pdfOcrWorker, /pytesseract/, "PDF OCR worker uses Tesseract");
 assert.match(pdfOcrWorker, /get_pixmap/, "PDF OCR worker renders PDF pages before OCR");
 assert.match(pdfOcrWorker, /render-only/, "PDF OCR worker supports render-only source-page previews");
 assert.match(pdfOcrWorker, /rendered_lines/, "PDF OCR worker preserves line breaks for segmentation");
+assert.match(pdfOcrWorker, /page_result\["raw_text"\]/, "PDF OCR worker returns untouched Tesseract text before deterministic normalization");
 assert.match(pdfOcrWorker, /choices=\[3, 4, 6, 11\], default=6/, "PDF OCR worker keeps the proven single-block default with bounded segmentation overrides");
 assert.match(pdfOcrWorker, /normalize_choice_lines/, "PDF OCR worker conservatively normalizes complete sequential OCR choice-label runs");
 assert.match(pdfOcrWorker, /normalize_question_lines/, "PDF OCR worker conservatively restores dropped punctuation on question-like OCR starts");
