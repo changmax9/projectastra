@@ -34,7 +34,7 @@ export const ChoiceList = memo(function ChoiceList({
   return (
     <div className="space-y-3">
       {multiSelect ? (
-        <p className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 font-mono text-xs font-bold uppercase tracking-wide text-blue-900">
+        <p className="rounded-2xl border border-sky-100 bg-sky-50/80 px-4 py-2 font-mono text-xs font-black uppercase tracking-wide text-astra-blue">
           Select {requiredSelections === 2 ? "TWO" : requiredSelections} answers.
         </p>
       ) : null}
@@ -46,10 +46,10 @@ export const ChoiceList = memo(function ChoiceList({
           <div
             key={choice.id}
             className={cn(
-              "group rounded-xl border transition",
+              "group rounded-[1.5rem] border transition",
               isSelected
-                ? "border-blue-800 bg-blue-50"
-                : "border-slate-300 bg-white hover:border-blue-300 hover:bg-slate-50",
+                ? "border-astra-blue bg-blue-50/85 shadow-[0_16px_44px_-36px_rgba(37,99,235,0.65)]"
+                : "border-slate-200 bg-white hover:border-astra-blue/35 hover:bg-sky-50/40",
               isEliminated && !isSelected ? "opacity-55" : ""
             )}
           >
@@ -67,7 +67,7 @@ export const ChoiceList = memo(function ChoiceList({
                 onChange(ordered.join(","));
               }}
               className={cn(
-                "flex min-h-16 w-full items-start gap-4 rounded-xl px-4 py-3 text-left focus:outline-none focus:ring-2 focus:ring-blue-700/35",
+                "flex min-h-16 w-full items-start gap-4 rounded-[1.5rem] px-4 py-3 text-left focus:outline-none focus:ring-2 focus:ring-astra-cyan/35",
                 isEliminated ? "line-through decoration-slate-500 decoration-2" : ""
               )}
             >
@@ -75,10 +75,10 @@ export const ChoiceList = memo(function ChoiceList({
                 className={cn(
                   "mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border-2 font-mono text-lg font-bold",
                   isSelected
-                    ? "border-blue-800 bg-blue-900 text-white"
+                    ? "border-astra-navy bg-astra-navy text-white"
                     : isEliminated
                       ? "border-slate-300 bg-slate-100 text-slate-500"
-                      : "border-slate-400 bg-white text-slate-800"
+                      : "border-astra-navy/35 bg-white text-astra-navy"
                 )}
               >
                 {choice.id}
@@ -108,7 +108,7 @@ export const ChoiceList = memo(function ChoiceList({
                     onToggleEliminated(choice.id);
                   }}
                   className={cn(
-                    "rounded-lg border px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wide transition",
+                    "rounded-full border px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wide transition",
                     isEliminated
                       ? "border-slate-300 bg-slate-100 text-slate-700 hover:bg-white"
                       : "border-slate-200 bg-white/80 text-slate-500 hover:border-slate-300 hover:text-slate-700"

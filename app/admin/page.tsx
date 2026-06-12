@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { AdminPdfImportReviewQueue } from "@/components/admin/AdminPdfImportReviewQueue";
+import { AdminPanelShell } from "@/components/admin/AdminPanelShell";
 import { AdminStatsCards } from "@/components/admin/AdminStatsCards";
 import { DataTable } from "@/components/admin/DataTable";
+import { PageHeader } from "@/components/ui-custom/PageHeader";
+import { StatusBadge } from "@/components/ui-custom/StatusBadge";
 import { getAdminStats } from "@/lib/data";
 import { formatFriendlyDuration, submissionPartLabel, submissionScoreLabel, submissionStatusLabel } from "@/lib/utils";
 
@@ -12,20 +15,19 @@ export default async function AdminHomePage() {
   const accountHealth = stats.accountHealth;
 
   return (
-    <div className="space-y-6">
-      <div>
-        <p className="edu-kicker">Admin console</p>
-        <h1 className="edu-heading mt-2 text-3xl">Platform overview</h1>
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        eyebrow="Admin console"
+        title="Platform overview"
+        description="Monitor accounts, question-bank health, PDF imports, and recent exam activity."
+      />
       <AdminPdfImportReviewQueue queue={stats.pdfImportReviewQueue} />
       <AdminStatsCards
         {...stats}
         adminsCount={accountHealth.adminProfileCount}
         pdfDraftsPendingCount={stats.pdfImportReviewQueue.pending_draft_count}
       />
-      <section className="edu-panel rounded-2xl">
-        <div className="edu-panel-header rounded-t-2xl px-5 py-3">Account health</div>
-        <div className="p-5">
+      <AdminPanelShell title="Account health" description={accountHealth.mode === "supabase" ? "Supabase Auth and profile rows" : "Local mock fallback accounts"}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="font-semibold text-slate-950">Authentication and profile rows</h2>
@@ -38,19 +40,19 @@ export default async function AdminHomePage() {
           </span>
         </div>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="edu-card rounded-2xl p-3">
+          <div className="rounded-[1.25rem] border border-white/70 bg-white/78 p-3 shadow-inner">
             <p className="text-xs uppercase tracking-wide text-slate-500">Admin profiles</p>
             <p className="mt-1 text-2xl font-semibold text-ink">{accountHealth.adminProfileCount}</p>
           </div>
-          <div className="edu-card rounded-2xl p-3">
+          <div className="rounded-[1.25rem] border border-white/70 bg-white/78 p-3 shadow-inner">
             <p className="text-xs uppercase tracking-wide text-slate-500">Student profiles</p>
             <p className="mt-1 text-2xl font-semibold text-ink">{accountHealth.studentProfileCount}</p>
           </div>
-          <div className="edu-card rounded-2xl p-3">
+          <div className="rounded-[1.25rem] border border-white/70 bg-white/78 p-3 shadow-inner">
             <p className="text-xs uppercase tracking-wide text-slate-500">Auth users</p>
             <p className="mt-1 text-2xl font-semibold text-ink">{accountHealth.authUserCount}</p>
           </div>
-          <div className="edu-card rounded-2xl p-3">
+          <div className="rounded-[1.25rem] border border-white/70 bg-white/78 p-3 shadow-inner">
             <p className="text-xs uppercase tracking-wide text-slate-500">Seed admin env</p>
             <p className="mt-1 text-sm font-semibold text-ink">{accountHealth.seedAdminEmailConfigured ? "Configured" : "Missing"}</p>
           </div>
@@ -70,8 +72,7 @@ export default async function AdminHomePage() {
             </ul>
           </div>
         ) : null}
-        </div>
-      </section>
+      </AdminPanelShell>
       <section>
         <h2 className="edu-kicker mb-3">Recent submissions</h2>
         <DataTable
@@ -80,7 +81,7 @@ export default async function AdminHomePage() {
           rows={stats.recentSubmissions.map((submission) => [
             submission.student?.email || submission.student_id,
             `${submission.exam?.title || submission.exam_id}${submissionPartLabel(submission) ? ` · ${submissionPartLabel(submission)}` : ""}`,
-            <span key="status">{submissionStatusLabel(submission.status)}</span>,
+            <StatusBadge key="status" status={submission.status}>{submissionStatusLabel(submission.status)}</StatusBadge>,
             submissionScoreLabel(submission),
             formatFriendlyDuration(submission.time_spent_seconds),
             <Link key="open" href={`/admin/submissions/${submission.id}`} className="font-medium text-brand">View</Link>

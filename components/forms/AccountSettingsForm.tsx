@@ -2,17 +2,22 @@
 
 import { useFormState, useFormStatus } from "react-dom";
 import { updateAccountSettingsAction, type ActionState } from "@/app/actions";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 function SaveButton() {
   const { pending } = useFormStatus();
   return (
-    <button
+    <Button
       type="submit"
       disabled={pending}
-      className="edu-button-primary px-5 py-2.5 text-sm font-medium disabled:opacity-60"
+      className="rounded-full bg-astra-navy text-white hover:bg-astra-blue"
     >
       {pending ? "Saving..." : "Save changes"}
-    </button>
+    </Button>
   );
 }
 
@@ -24,35 +29,35 @@ export function AccountSettingsForm({
   const [state, formAction] = useFormState<ActionState, FormData>(updateAccountSettingsAction, {});
 
   return (
-    <form action={formAction} className="edu-panel rounded-2xl">
-      <div className="edu-panel-header rounded-t-2xl px-5 py-3">Profile details</div>
-      <div className="space-y-5 p-6">
-      <div>
-        <h2 className="font-semibold text-slate-950">Display profile</h2>
-        <p className="mt-1 text-sm text-slate-500">Update the public details attached to your account.</p>
-      </div>
+    <Card className="glass-panel rounded-[1.75rem]">
+      <div className="rounded-t-[1.75rem] border-b border-white/55 bg-white/28 px-5 py-3 font-mono text-xs font-black uppercase tracking-[0.18em] text-astra-blue">Profile details</div>
+      <form action={formAction}>
+        <CardHeader>
+          <CardTitle className="text-base">Display profile</CardTitle>
+          <CardDescription>Update the public details attached to your account.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="space-y-2">
+            <Label htmlFor="full_name">Display name</Label>
+            <Input id="full_name" name="full_name" defaultValue={fullName} placeholder="Your name" className="rounded-full border-white/70 bg-white/82" />
+          </div>
 
-      <label className="block text-sm font-medium text-slate-700">
-        Display name
-        <input
-          name="full_name"
-          defaultValue={fullName}
-          className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-blue-700 focus:ring-2 focus:ring-blue-100"
-          placeholder="Your name"
-        />
-      </label>
+          {state.error ? (
+            <Alert variant="destructive">
+              <AlertDescription>{state.error}</AlertDescription>
+            </Alert>
+          ) : null}
+          {state.message ? (
+            <Alert className="border-emerald-200 bg-emerald-50 text-emerald-800">
+              <AlertDescription>{state.message}</AlertDescription>
+            </Alert>
+          ) : null}
 
-      {state.error ? (
-        <div className="rounded-3xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{state.error}</div>
-      ) : null}
-      {state.message ? (
-        <div className="rounded-3xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{state.message}</div>
-      ) : null}
-
-      <div className="flex justify-end">
-        <SaveButton />
-      </div>
-      </div>
-    </form>
+          <div className="flex justify-end">
+            <SaveButton />
+          </div>
+        </CardContent>
+      </form>
+    </Card>
   );
 }

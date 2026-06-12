@@ -42,16 +42,16 @@ export function BreakScreenClient({ submission }: { submission: Submission }) {
   };
 
   return (
-    <main className="edu-page px-4 py-10">
-      <section className="edu-panel mx-auto max-w-2xl rounded-2xl text-center">
-        <div className="edu-panel-header rounded-t-2xl px-5 py-3">Break Time</div>
+    <main className="glass-shell flex min-h-screen items-center px-4 py-10">
+      <section className="glass-panel mx-auto max-w-2xl rounded-[2.25rem] text-center">
+        <div className="border-b border-white/55 bg-white/24 px-5 py-4 text-xs font-black uppercase tracking-[0.18em] text-astra-blue">Break Time</div>
         <div className="p-8">
-        <h1 className="mt-2 font-mono text-7xl font-black tabular-nums text-slate-950">{formatBreakTime(remaining)}</h1>
-        <p className="mt-6 leading-7 text-slate-600">
+        <h1 className="mt-2 font-mono text-7xl font-black tabular-nums text-astra-navy">{formatBreakTime(remaining)}</h1>
+        <p className="mt-6 leading-7 text-astra-slate">
           You have completed the multiple-choice section. The free-response section will begin after the break.
           You may skip the break and continue now.
         </p>
-        <div className="mt-5 rounded-3xl border border-amber-100 bg-amber-50/90 p-4 text-left text-sm leading-6 text-amber-900">
+        <div className="mt-5 rounded-2xl border border-astra-gold/35 bg-amber-50 p-4 text-left text-sm leading-6 text-amber-900">
           Note: The real AP exam does not allow students to skip the scheduled break. This option is only for practice.
         </div>
         <div className="mt-7 flex flex-col-reverse justify-center gap-3 sm:flex-row">

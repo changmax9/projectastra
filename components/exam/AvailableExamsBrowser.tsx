@@ -1,5 +1,10 @@
-import Link from "next/link";
-import { Clock, FileQuestion } from "lucide-react";
+import { Search } from "lucide-react";
+import { ExamCard } from "@/components/exam/ExamCard";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { EmptyState } from "@/components/ui-custom/StateBlock";
 import type { ExamWithQuestions, Submission } from "@/lib/types";
 import { isResumableSubmission, normalizeText } from "@/lib/utils";
 
@@ -84,23 +89,27 @@ export function AvailableExamsBrowser({
   const subjectNames = Object.keys(grouped).sort();
 
   return (
-    <section className="edu-panel rounded-2xl">
-      <div className="edu-panel-header rounded-t-2xl px-4 py-3">Exam catalog</div>
-      <div className="p-4">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+    <Card className="glass-panel rounded-[2rem]">
+      <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 border-b border-white/55 bg-white/24 p-5">
         <div>
-          <h2 className="edu-heading text-2xl">Available exams</h2>
-          <p className="mt-1 text-sm text-slate-500">Browse by subject, AP course, and exam set.</p>
+          <CardTitle className="text-2xl font-black text-astra-navy">Exam catalog</CardTitle>
+          <CardDescription>Filter by subject, AP course, and exam metadata.</CardDescription>
         </div>
-        <span className="edu-badge px-3 py-1">{filtered.length} published</span>
-      </div>
+        <Badge variant="outline" className="border-astra-blue/20 bg-blue-50 text-astra-blue">
+          {filtered.length} published
+        </Badge>
+      </CardHeader>
+      <CardContent className="p-5">
 
-      <form className="mb-5 grid gap-3 md:grid-cols-3 lg:grid-cols-4">
-        <input name="search" defaultValue={searchParams.search || ""} placeholder="Search Calculus, 2023, Energy..." className="edu-field px-4 py-2.5 text-sm" />
-        <input name="subject" defaultValue={searchParams.subject || ""} placeholder="Subject group" className="edu-field px-4 py-2.5 text-sm" />
-        <input name="course" defaultValue={searchParams.course || ""} placeholder="AP Course" className="edu-field px-4 py-2.5 text-sm" />
-        <input name="year" defaultValue={searchParams.year || ""} placeholder="Year" className="edu-field px-4 py-2.5 text-sm" />
-        <select name="section" defaultValue={searchParams.section || ""} className="edu-field px-4 py-2.5 text-sm">
+      <form className="mb-6 grid gap-3 rounded-[1.5rem] border border-white/65 bg-white/54 p-4 shadow-inner backdrop-blur-xl md:grid-cols-3 lg:grid-cols-4">
+        <label className="relative md:col-span-3 lg:col-span-2">
+          <Search className="pointer-events-none absolute left-3 top-3 size-4 text-slate-400" />
+          <Input name="search" defaultValue={searchParams.search || ""} placeholder="Search Calculus, 2023, Energy..." className="rounded-full border-white/70 bg-white/80 pl-9" />
+        </label>
+        <Input name="subject" defaultValue={searchParams.subject || ""} placeholder="Subject group" className="rounded-full border-white/70 bg-white/80" />
+        <Input name="course" defaultValue={searchParams.course || ""} placeholder="AP Course" className="rounded-full border-white/70 bg-white/80" />
+        <Input name="year" defaultValue={searchParams.year || ""} placeholder="Year" className="rounded-full border-white/70 bg-white/80" />
+        <select name="section" defaultValue={searchParams.section || ""} className="edu-field rounded-full px-4 py-2.5 text-sm">
           <option value="">All sections</option>
           <option value="MCQ">MCQ</option>
           <option value="FRQ">FRQ</option>
@@ -110,76 +119,72 @@ export function AvailableExamsBrowser({
           <option value="FRQ_NON_CALCULATOR">FRQ Non-Calculator</option>
           <option value="Full Exam">Full Exam</option>
         </select>
-        <select name="examType" defaultValue={searchParams.examType || ""} className="edu-field px-4 py-2.5 text-sm">
+        <select name="examType" defaultValue={searchParams.examType || ""} className="edu-field rounded-full px-4 py-2.5 text-sm">
           <option value="">All exam types</option>
           <option value="Practice Exam">Practice Exam</option>
           <option value="Released Exam">Released Exam</option>
           <option value="Unit Test">Unit Test</option>
           <option value="Custom Quiz">Custom Quiz</option>
         </select>
-        <input name="topic" defaultValue={searchParams.topic || ""} placeholder="Topic" className="edu-field px-4 py-2.5 text-sm" />
-        <select name="difficulty" defaultValue={searchParams.difficulty || ""} className="edu-field px-4 py-2.5 text-sm">
+        <Input name="topic" defaultValue={searchParams.topic || ""} placeholder="Topic" className="rounded-full border-white/70 bg-white/80" />
+        <select name="difficulty" defaultValue={searchParams.difficulty || ""} className="edu-field rounded-full px-4 py-2.5 text-sm">
           <option value="">Any difficulty</option>
           <option value="easy">easy</option>
           <option value="medium">medium</option>
           <option value="hard">hard</option>
         </select>
-        <button className="edu-button-primary px-5 py-2.5 text-sm font-medium md:col-span-3 lg:col-span-1">Filter</button>
+        <Button className="rounded-full bg-astra-navy text-white hover:bg-astra-blue md:col-span-3 lg:col-span-1">Filter exams</Button>
       </form>
 
-      <div className="space-y-6">
+      <div className="flex flex-col gap-8">
         {subjectNames.map((subject) => (
           <div key={subject}>
-            <h3 className="edu-eyebrow">{subject}</h3>
-            <div className="mt-3 space-y-4">
+            <div className="mb-4 flex items-center gap-3">
+              <h3 className="font-mono text-sm font-black uppercase tracking-[0.18em] text-astra-blue">{subject}</h3>
+              <div className="h-px flex-1 bg-astra-gold/30" />
+            </div>
+            <div className="flex flex-col gap-5">
               {Object.keys(grouped[subject]).sort().map((course) => (
-                <div key={course} className="rounded-xl border border-slate-200 bg-slate-50/80 p-4">
-                  <h4 className="edu-heading text-xl">{course}</h4>
-                  <div className="mt-3 grid gap-3 md:grid-cols-2">
+                <section key={course} className="rounded-[2rem] border border-white/60 bg-white/38 p-4 shadow-inner backdrop-blur-xl">
+                  <div className="flex flex-wrap items-end justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.16em] text-astra-slate">AP Course</p>
+                      <h4 className="mt-1 text-2xl font-black tracking-tight text-astra-navy">{course}</h4>
+                    </div>
+                    <Badge variant="outline" className="border-astra-navy/10 bg-white text-astra-slate">
+                      {grouped[subject][course].length} exam set{grouped[subject][course].length === 1 ? "" : "s"}
+                    </Badge>
+                  </div>
+                  <div className="mt-4 grid gap-4 xl:grid-cols-2">
                     {grouped[subject][course].map((exam) => {
                       const inProgress = inProgressForSection(submissions, exam.id, null);
                       const href = inProgress ? `/exam/${exam.id}/take?submission=${inProgress.id}` : `/exam/${exam.id}`;
                       return (
-                        <div key={exam.id} className="edu-card rounded-xl p-5 transition hover:border-blue-300">
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <Link href={href} className="edu-heading text-lg hover:text-blue-800">{exam.title}</Link>
-                              <p className="mt-1 text-sm text-slate-500">
-                                {exam.course} · {exam.year || "No year"} · {exam.section} · {exam.exam_type}
-                              </p>
-                            </div>
-                          </div>
-                          <p className="mt-3 line-clamp-2 text-sm leading-6 text-slate-600">{exam.description}</p>
-                          <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-slate-500">
-                            <span className="inline-flex items-center gap-1">
-                              <FileQuestion className="h-4 w-4" />
-                              {exam.exam_questions.length} questions
-                            </span>
-                            <span className="inline-flex items-center gap-1">
-                              <Clock className="h-4 w-4" />
-                              {exam.time_limit_minutes} min
-                            </span>
-                            <span>{sectionCount(exam)} section{sectionCount(exam) === 1 ? "" : "s"}</span>
-                            <Link href={href} className="edu-button-primary ml-auto px-4 py-2 text-xs font-semibold">
-                              {inProgress ? "Resume Exam" : "Start Exam"}
-                            </Link>
-                          </div>
-                        </div>
+                        <ExamCard
+                          key={exam.id}
+                          title={exam.title}
+                          course={exam.course}
+                          year={exam.year}
+                          description={exam.description}
+                          questionCount={exam.exam_questions.length}
+                          timeMinutes={exam.time_limit_minutes}
+                          sectionCount={sectionCount(exam)}
+                          href={href}
+                          inProgress={Boolean(inProgress)}
+                        />
                       );
                     })}
                   </div>
-                </div>
+                </section>
               ))}
             </div>
           </div>
         ))}
         {subjectNames.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center text-slate-500">
-            No published exams match these filters.
-          </p>
+          <EmptyState title="No exams match these filters" description="Clear one or more filters to return to the full published exam catalog." />
         ) : null}
       </div>
-      </div>
-    </section>
+      </CardContent>
+    </Card>
   );
 }

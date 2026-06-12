@@ -2,56 +2,89 @@ import Link from "next/link";
 import { BookOpen, Gauge, GraduationCap, LogOut, Settings, Shield } from "lucide-react";
 import { getCurrentProfile } from "@/lib/auth";
 import { signOutAction } from "@/app/actions";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+
+function initials(email: string, name?: string | null) {
+  if (name) {
+    return name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join("");
+  }
+  return email.slice(0, 2).toUpperCase();
+}
 
 export async function AppHeader() {
   const profile = await getCurrentProfile();
 
   return (
-    <header className="sticky top-0 z-30 border-b border-slate-300 bg-white/95 backdrop-blur">
-      <div className="edu-shell flex items-center justify-between px-4 py-2.5 sm:px-6 lg:px-8">
-        <Link href="/" className="flex items-center gap-3 font-semibold text-ink">
-          <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 bg-slate-50">
-            <GraduationCap className="h-5 w-5 text-blue-800" />
+    <header className="sticky top-0 z-30 px-3 py-3 sm:px-5">
+      <div className="glass-panel mx-auto flex max-w-7xl items-center justify-between gap-4 rounded-full px-3 py-2 text-astra-navy sm:px-4">
+        <Link href="/" className="flex min-w-0 items-center gap-3">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-full border border-white/70 bg-astra-navy text-white shadow-inner">
+            <GraduationCap className="size-5 text-astra-gold" />
           </span>
-          <span className="font-mono text-sm font-black uppercase tracking-[0.16em] text-slate-950">Astra AP</span>
+          <span className="min-w-0">
+            <span className="block font-mono text-sm font-black uppercase tracking-[0.18em]">Astra Glass</span>
+            <span className="hidden text-xs text-slate-600 sm:block">AP exam command center</span>
+          </span>
         </Link>
-        <nav className="flex items-center gap-2 text-sm">
+
+        <nav className="flex min-w-0 items-center gap-2">
           {profile ? (
             <>
-              <Link className="hidden items-center gap-1 rounded-lg px-3 py-2 font-mono text-xs font-bold uppercase tracking-wide text-slate-700 transition hover:bg-slate-100 sm:flex" href="/dashboard">
-                <Gauge className="h-4 w-4" />
-                Dashboard
-              </Link>
-              <Link className="hidden items-center gap-1 rounded-lg px-3 py-2 font-mono text-xs font-bold uppercase tracking-wide text-slate-700 transition hover:bg-slate-100 sm:flex" href="/review">
-                <BookOpen className="h-4 w-4" />
-                Review
-              </Link>
-              <Link className="hidden items-center gap-1 rounded-lg px-3 py-2 font-mono text-xs font-bold uppercase tracking-wide text-slate-700 transition hover:bg-slate-100 md:flex" href="/settings">
-                <Settings className="h-4 w-4" />
-                Settings
-              </Link>
-              {profile.role === "admin" ? (
-                <Link className="inline-flex items-center gap-1 rounded-lg border border-blue-900 bg-blue-950 px-3 py-2 font-mono text-xs font-bold uppercase tracking-wide text-white" href="/admin/questions">
-                  <Shield className="h-4 w-4" />
-                  Admin
+              <Button asChild variant="ghost" size="sm" className="hidden rounded-full text-astra-slate hover:bg-white/70 hover:text-astra-navy sm:inline-flex">
+                <Link href="/dashboard">
+                  <Gauge data-icon="inline-start" />
+                  Dashboard
                 </Link>
+              </Button>
+              <Button asChild variant="ghost" size="sm" className="hidden rounded-full text-astra-slate hover:bg-white/70 hover:text-astra-navy sm:inline-flex">
+                <Link href="/review">
+                  <BookOpen data-icon="inline-start" />
+                  Review
+                </Link>
+              </Button>
+              <Button asChild variant="ghost" size="sm" className="hidden rounded-full text-astra-slate hover:bg-white/70 hover:text-astra-navy md:inline-flex">
+                <Link href="/settings">
+                  <Settings data-icon="inline-start" />
+                  Settings
+                </Link>
+              </Button>
+              {profile.role === "admin" ? (
+                <Button asChild size="sm" className="rounded-full bg-astra-navy text-white shadow-[0_14px_28px_-22px_rgba(6,18,37,0.9)] hover:bg-astra-blue">
+                  <Link href="/admin/questions">
+                    <Shield data-icon="inline-start" />
+                    Admin
+                  </Link>
+                </Button>
               ) : null}
-              <span className="hidden font-mono text-xs text-slate-500 md:inline">{profile.email}</span>
+              <div className="hidden items-center gap-2 rounded-full border border-white/70 bg-white/58 py-1 pl-1 pr-3 shadow-inner lg:flex">
+                <Avatar className="size-7">
+                  <AvatarFallback className="bg-astra-navy text-xs font-black text-white">
+                    {initials(profile.email, profile.full_name)}
+                  </AvatarFallback>
+                </Avatar>
+                <span className="max-w-[190px] truncate text-xs text-slate-600">{profile.email}</span>
+              </div>
               <form action={signOutAction}>
-                <button className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-xs font-bold uppercase tracking-wide text-slate-700 transition hover:bg-slate-100">
-                  <LogOut className="h-4 w-4" />
+                <Button variant="outline" size="sm" className="rounded-full border-white/70 bg-white/58 text-astra-slate hover:bg-white/85 hover:text-astra-navy">
+                  <LogOut data-icon="inline-start" />
                   Sign out
-                </button>
+                </Button>
               </form>
             </>
           ) : (
             <>
-              <Link className="rounded-lg px-3 py-2 font-mono text-xs font-bold uppercase tracking-wide text-slate-700 transition hover:bg-slate-100" href="/login">
-                Log in
-              </Link>
-              <Link className="rounded-lg bg-slate-950 px-4 py-2 font-mono text-xs font-bold uppercase tracking-wide text-white transition hover:bg-blue-950" href="/register">
-                Register
-              </Link>
+              <Button asChild variant="ghost" size="sm" className="rounded-full text-astra-slate hover:bg-white/70 hover:text-astra-navy">
+                <Link href="/login">Log in</Link>
+              </Button>
+              <Button asChild size="sm" className="rounded-full bg-astra-navy text-white shadow-[0_14px_28px_-22px_rgba(6,18,37,0.9)] hover:bg-astra-blue">
+                <Link href="/register">Register</Link>
+              </Button>
             </>
           )}
         </nav>

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 export function DataTable({
   headers,
@@ -10,38 +11,38 @@ export function DataTable({
   empty: string;
 }) {
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_10px_24px_-22px_rgba(15,23,42,0.4)]">
+    <div className="admin-surface overflow-hidden rounded-[1.5rem]">
       <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-slate-200 text-sm">
-          <thead className="bg-blue-50/80 text-left text-xs uppercase tracking-wide text-blue-900">
-            <tr>
+        <Table>
+          <TableHeader className="bg-[rgba(6,18,37,0.92)] text-xs uppercase tracking-wide text-white">
+            <TableRow>
               {headers.map((header) => (
-                <th key={header} className="px-4 py-3 font-semibold">
+                <TableHead key={header} className="px-4 py-3 font-black text-white">
                   {header}
-                </th>
+                </TableHead>
               ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {rows.length === 0 ? (
-              <tr>
-                <td className="px-4 py-8 text-center text-slate-500" colSpan={headers.length}>
+              <TableRow>
+                <TableCell className="px-4 py-8 text-center text-slate-500" colSpan={headers.length}>
                   {empty}
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ) : (
               rows.map((row, rowIndex) => (
-                <tr key={rowIndex} className="align-top transition hover:bg-slate-50/80">
+                <TableRow key={rowIndex} className="align-top transition hover:bg-sky-50/70">
                   {row.map((cell, cellIndex) => (
-                    <td key={cellIndex} className="px-4 py-3">
+                    <TableCell key={cellIndex} className="px-4 py-3">
                       {cell}
-                    </td>
+                    </TableCell>
                   ))}
-                </tr>
+                </TableRow>
               ))
             )}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
     </div>
   );

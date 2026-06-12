@@ -1,7 +1,12 @@
 import Link from "next/link";
 import { BookOpen, Filter, Search } from "lucide-react";
 import { AppHeader } from "@/components/layout/AppHeader";
+import { AcademicPageShell } from "@/components/layout/AcademicPageShell";
 import { ReviewGuideCard } from "@/components/review/ReviewGuideCard";
+import { PageHeader } from "@/components/ui-custom/PageHeader";
+import { EmptyState } from "@/components/ui-custom/StateBlock";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { listPublishedReviewGuides } from "@/lib/data";
 
 export const dynamic = "force-dynamic";
@@ -18,54 +23,48 @@ export default async function ReviewIndexPage({
   return (
     <>
       <AppHeader />
-      <main className="edu-page w-screen px-4 py-8 sm:px-6 lg:px-8">
-        <div className="edu-shell">
-        <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-          <div>
-            <p className="edu-kicker inline-flex items-center gap-2">
-              <BookOpen className="h-4 w-4" />
-              Review Guides
-            </p>
-            <h1 className="edu-heading mt-2 text-3xl">Study by AP unit</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-              {guides.length} published guide{guides.length === 1 ? "" : "s"} for quick review and FRQ practice.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
+      <AcademicPageShell className="flex flex-col gap-7">
+        <PageHeader
+          eyebrow={<span className="inline-flex items-center gap-2"><BookOpen className="size-4" /> Review Guides</span>}
+          title="Study by AP unit"
+          description={`${guides.length} published guide${guides.length === 1 ? "" : "s"} for quick review and FRQ practice.`}
+          actions={
+            <div className="flex flex-wrap gap-2">
             {subjects.slice(0, 4).map((subject) => (
-              <Link key={subject} href={`/review?subject=${encodeURIComponent(subject)}`} className="app-chip px-3 py-1.5 text-sm font-semibold">
+              <Link key={subject} href={`/review?subject=${encodeURIComponent(subject)}`} className="rounded-full border border-white/70 bg-white/64 px-3 py-1.5 text-sm font-semibold text-astra-slate shadow-inner backdrop-blur-xl">
                 {subject}
               </Link>
             ))}
-          </div>
-        </div>
+            </div>
+          }
+        />
 
-        <form className="edu-panel mb-5 grid min-w-0 gap-3 rounded-2xl p-4 md:grid-cols-[1fr_170px_170px_140px_112px]">
+        <form className="glass-panel grid min-w-0 gap-3 rounded-[1.75rem] p-4 md:grid-cols-[1fr_170px_170px_140px_120px]">
           <label className="relative min-w-0">
-            <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-            <input name="search" defaultValue={searchParams.search || ""} placeholder="Search guides" className="edu-field w-full py-2 pl-9 pr-3 text-sm" />
+            <Search className="pointer-events-none absolute left-3 top-3 size-4 text-slate-400" />
+            <Input name="search" defaultValue={searchParams.search || ""} placeholder="Search guides" className="rounded-full border-white/70 bg-white/82 pl-9" />
           </label>
-          <input name="subject" defaultValue={searchParams.subject || ""} placeholder="Subject" className="edu-field w-full min-w-0 px-3 py-2 text-sm" />
-          <input name="topic" defaultValue={searchParams.topic || ""} placeholder="Topic" className="edu-field w-full min-w-0 px-3 py-2 text-sm" />
-          <select name="difficulty" defaultValue={searchParams.difficulty || ""} className="edu-field w-full min-w-0 px-3 py-2 text-sm">
+          <Input name="subject" defaultValue={searchParams.subject || ""} placeholder="Subject" className="rounded-full border-white/70 bg-white/82" />
+          <Input name="topic" defaultValue={searchParams.topic || ""} placeholder="Topic" className="rounded-full border-white/70 bg-white/82" />
+          <select name="difficulty" defaultValue={searchParams.difficulty || ""} className="edu-field w-full min-w-0 rounded-full px-3 py-2 text-sm">
             <option value="">All difficulty</option>
             <option value="easy">easy</option>
             <option value="medium">medium</option>
             <option value="hard">hard</option>
           </select>
-          <button className="edu-button-primary inline-flex w-full min-w-0 items-center justify-center gap-2 px-4 py-2 text-sm font-semibold">
-            <Filter className="h-4 w-4" />
+          <Button className="rounded-full bg-astra-navy text-white hover:bg-astra-blue">
+            <Filter data-icon="inline-start" />
             Filter
-          </button>
+          </Button>
         </form>
 
         {units.length > 1 ? (
           <div className="mb-6 grid gap-2 sm:flex sm:flex-wrap">
-            <Link href="/review" className="app-secondary min-w-0 max-w-full px-3 py-1.5 text-sm font-semibold">
+            <Link href="/review" className="rounded-full border border-white/70 bg-white/64 px-3 py-1.5 text-sm font-semibold text-astra-slate shadow-inner backdrop-blur-xl">
               All units
             </Link>
             {units.slice(0, 10).map((unit) => (
-              <Link key={unit} href={`/review?unit=${encodeURIComponent(unit)}`} className="app-secondary min-w-0 max-w-full px-3 py-1.5 text-sm font-semibold">
+              <Link key={unit} href={`/review?unit=${encodeURIComponent(unit)}`} className="rounded-full border border-white/70 bg-white/64 px-3 py-1.5 text-sm font-semibold text-astra-slate shadow-inner backdrop-blur-xl">
                 <span className="block truncate">{unit}</span>
               </Link>
             ))}
@@ -77,13 +76,12 @@ export default async function ReviewIndexPage({
             <ReviewGuideCard key={guide.id} guide={guide} />
           ))}
           {guides.length === 0 ? (
-            <p className="rounded-lg border border-dashed border-slate-300 p-8 text-center text-slate-500 md:col-span-2 xl:col-span-3">
-              No published review guides match this filter.
-            </p>
+            <div className="md:col-span-2 xl:col-span-3">
+              <EmptyState title="No review guides match this filter" description="Clear the filters or choose another AP unit to continue browsing." />
+            </div>
           ) : null}
         </div>
-        </div>
-      </main>
+      </AcademicPageShell>
     </>
   );
 }

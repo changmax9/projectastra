@@ -1,5 +1,7 @@
 import { AppHeader } from "@/components/layout/AppHeader";
+import { AcademicPageShell } from "@/components/layout/AcademicPageShell";
 import { AvailableExamsBrowser } from "@/components/exam/AvailableExamsBrowser";
+import { PageHeader } from "@/components/ui-custom/PageHeader";
 import { requireProfile } from "@/lib/auth";
 import { getStudentDashboard } from "@/lib/data";
 
@@ -25,11 +27,14 @@ export default async function AvailableExamsPage({
   return (
     <>
       <AppHeader />
-      <main className="edu-page px-4 py-8 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-7xl">
-          <AvailableExamsBrowser exams={data.examDetails} submissions={data.submissions} searchParams={searchParams} />
-        </div>
-      </main>
+      <AcademicPageShell className="flex flex-col gap-8">
+        <PageHeader
+          eyebrow="Exam catalog"
+          title="Available exams"
+          description="Browse published AP practice exams by subject, course, section, and topic. Each exam starts as one attempt and advances through its internal sections."
+        />
+        <AvailableExamsBrowser exams={data.examDetails} submissions={data.submissions} searchParams={searchParams} />
+      </AcademicPageShell>
     </>
   );
 }

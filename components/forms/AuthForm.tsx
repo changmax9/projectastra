@@ -3,16 +3,23 @@
 import Link from "next/link";
 import { useFormState, useFormStatus } from "react-dom";
 import { registerAction, signInAction, type ActionState } from "@/app/actions";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { FormPanel } from "@/components/ui-custom/FormPanel";
 
 function SubmitButton({ label }: { label: string }) {
   const { pending } = useFormStatus();
   return (
-    <button
+    <Button
+      type="submit"
       disabled={pending}
-      className="edu-button-primary w-full px-5 py-3 font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+      className="w-full rounded-full bg-astra-navy text-white shadow-[0_18px_36px_-26px_rgba(6,18,37,0.9)] hover:bg-astra-blue"
+      size="lg"
     >
       {pending ? "Working..." : label}
-    </button>
+    </Button>
   );
 }
 
@@ -21,75 +28,61 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
     mode === "login" ? signInAction : registerAction,
     {}
   );
+  const description =
+    mode === "login"
+      ? "Use your student or admin account to continue."
+      : "Create a student account, then confirm your email before signing in.";
 
   return (
-    <form action={formAction} className="edu-panel rounded-2xl">
-      <div className="edu-panel-header rounded-t-2xl px-5 py-3">{mode === "login" ? "Account access" : "Student registration"}</div>
-      <div className="space-y-4 p-6">
-      <div>
-        <h1 className="edu-heading text-2xl">{mode === "login" ? "Log in" : "Create account"}</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          {mode === "login"
-            ? "Use your student or admin account to continue."
-            : "Create a student account, then confirm your email before signing in."}
+    <FormPanel
+      title={<span className="text-2xl font-black tracking-tight">{mode === "login" ? "Log in" : "Create account"}</span>}
+      description={description}
+      className="border-astra-gold/25"
+    >
+      <form action={formAction} className="flex flex-col gap-4">
+        {mode === "register" ? (
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="full_name">Full name</Label>
+            <Input id="full_name" name="full_name" placeholder="Ada Lovelace" />
+          </div>
+        ) : null}
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="email">Email</Label>
+          <Input id="email" required type="email" name="email" placeholder="you@example.com" />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="password">Password</Label>
+          <Input id="password" required minLength={6} type="password" name="password" placeholder="••••••••" />
+        </div>
+        {state.error ? (
+          <Alert variant="destructive">
+            <AlertDescription>{state.error}</AlertDescription>
+          </Alert>
+        ) : null}
+        {state.message ? (
+          <Alert className="border-emerald-200 bg-emerald-50 text-emerald-800">
+            <AlertDescription>{state.message}</AlertDescription>
+          </Alert>
+        ) : null}
+        <SubmitButton label={mode === "login" ? "Log in" : "Register"} />
+        <p className="text-center text-sm text-slate-500">
+          {mode === "login" ? (
+            <>
+              New here?{" "}
+              <Link className="font-medium text-brand" href="/register">
+                Create an account
+              </Link>
+            </>
+          ) : (
+            <>
+              Already have an account?{" "}
+              <Link className="font-medium text-brand" href="/login">
+                Log in
+              </Link>
+            </>
+          )}
         </p>
-      </div>
-      {mode === "register" ? (
-        <label className="block text-sm font-medium text-slate-700">
-          Full name
-          <input
-            name="full_name"
-            className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-blue-700 focus:ring-2 focus:ring-blue-100"
-            placeholder="Ada Lovelace"
-          />
-        </label>
-      ) : null}
-      <label className="block text-sm font-medium text-slate-700">
-        Email
-        <input
-          required
-          type="email"
-          name="email"
-          className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-blue-700 focus:ring-2 focus:ring-blue-100"
-          placeholder="you@example.com"
-        />
-      </label>
-      <label className="block text-sm font-medium text-slate-700">
-        Password
-        <input
-          required
-          minLength={6}
-          type="password"
-          name="password"
-          className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-blue-700 focus:ring-2 focus:ring-blue-100"
-          placeholder="••••••••"
-        />
-      </label>
-      {state.error ? (
-        <div className="rounded-3xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{state.error}</div>
-      ) : null}
-      {state.message ? (
-        <div className="rounded-3xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{state.message}</div>
-      ) : null}
-      <SubmitButton label={mode === "login" ? "Log in" : "Register"} />
-      <p className="text-center text-sm text-slate-500">
-        {mode === "login" ? (
-          <>
-            New here?{" "}
-            <Link className="font-medium text-brand" href="/register">
-              Create an account
-            </Link>
-          </>
-        ) : (
-          <>
-            Already have an account?{" "}
-            <Link className="font-medium text-brand" href="/login">
-              Log in
-            </Link>
-          </>
-        )}
-      </p>
-      </div>
-    </form>
+      </form>
+    </FormPanel>
   );
 }

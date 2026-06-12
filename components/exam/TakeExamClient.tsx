@@ -344,9 +344,9 @@ export function TakeExamClient({
 
   if (!currentQuestion) {
     return (
-      <div className="edu-page">
-        <div className="border-b border-slate-300 bg-white/95 backdrop-blur">
-          <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
+      <div className="glass-shell">
+        <div className="px-3 py-3 sm:px-5">
+          <div className="glass-panel mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 rounded-full px-4 py-3">
             <div>
               <p className="edu-meta">{exam.subject} / {currentSection.title}</p>
               <h1 className="text-base font-semibold text-slate-950">{exam.title}</h1>
@@ -361,7 +361,7 @@ export function TakeExamClient({
           </div>
         </div>
         <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
-          <div className="edu-panel rounded-2xl p-6">
+          <div className="glass-panel rounded-[1.75rem] p-6">
             <h2 className="edu-heading text-xl">Question not found for this section.</h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
               The current section did not return any playable questions. Try refreshing the page or resume from the dashboard.
@@ -389,15 +389,15 @@ export function TakeExamClient({
   }
 
   return (
-    <div className="edu-page">
-      <div className="sticky top-0 z-20 border-b border-slate-300 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
+    <div className="glass-shell">
+      <div className="sticky top-0 z-20 px-3 py-3 sm:px-5">
+        <div className="glass-panel mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 rounded-[1.75rem] px-4 py-3">
           <div>
-            <p className="edu-meta">{exam.subject} / {currentSection.title}</p>
-            <h1 className="text-base font-semibold text-slate-950">{exam.title}</h1>
+            <p className="font-mono text-xs font-black uppercase tracking-[0.16em] text-astra-gold">{exam.subject} / {currentSection.title}</p>
+            <h1 className="text-base font-semibold text-astra-navy">{exam.title}</h1>
           </div>
           <div className="flex items-center gap-3">
-            <span className="edu-badge inline-flex items-center gap-1 px-3 py-2 font-mono">
+            <span className="inline-flex items-center gap-1 rounded-full border border-white/70 bg-white/70 px-3 py-2 font-mono text-xs font-black uppercase tracking-[0.12em] text-astra-slate shadow-inner">
               <Save className="h-4 w-4" />
               {saveStatus}
             </span>
@@ -420,7 +420,7 @@ export function TakeExamClient({
               type="button"
               onClick={() => setDialog("submit")}
               disabled={isPending}
-              className="edu-button-danger inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium disabled:opacity-60"
+              className="edu-button-danger inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-medium disabled:opacity-60"
             >
               <Send className="h-4 w-4" />
               {isSectionedExam ? "End Section" : "Submit"}
@@ -438,12 +438,12 @@ export function TakeExamClient({
             onSelect={(index) => setCurrentIndex(Math.min(Math.max(0, index), Math.max(0, questions.length - 1)))}
           />
         </aside>
-        <section className="rounded-2xl border border-slate-300 bg-white p-5 shadow-sm sm:p-7">
-          <div className="mb-5 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
+        <section className="exam-paper rounded-[2rem] p-5 sm:p-7">
+          <div className="mb-5 rounded-[1.5rem] border border-sky-100 bg-sky-50/70 px-4 py-3">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="edu-kicker">Current section</p>
-                <h2 className="mt-1 text-lg font-semibold text-slate-950">{currentSection.title}</h2>
+                <h2 className="mt-1 text-lg font-semibold text-astra-navy">{currentSection.title}</h2>
                 <p className="edu-meta mt-1">
                   Question {currentSectionPosition} of {currentSection.questionCount} in this section · overall questions {currentSectionRange}
                 </p>
@@ -460,7 +460,7 @@ export function TakeExamClient({
           </div>
           <div className="mb-8 flex flex-wrap items-center justify-between gap-3 border-b-2 border-slate-900 pb-4">
             <div className="flex items-center gap-4">
-              <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-blue-950 font-mono text-2xl font-bold text-white">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-astra-navy font-mono text-2xl font-bold text-astra-warm">
                 {clampedCurrentIndex + 1}
               </div>
               <button
@@ -479,7 +479,7 @@ export function TakeExamClient({
             </div>
             <button
               type="button"
-              className="rounded-lg border-2 border-slate-900 px-3 py-1 font-mono text-lg font-bold text-slate-900"
+                className="rounded-full border-2 border-astra-navy px-3 py-1 font-mono text-lg font-bold text-astra-navy"
               aria-label={`${currentQuestion.type.toUpperCase()}, ${currentQuestion.points} point${currentQuestion.points === 1 ? "" : "s"}`}
             >
               {currentQuestion.type === "mcq" ? "ABC" : "FRQ"}
@@ -597,7 +597,7 @@ function ExamConfirmDialog({
         if (event.target === event.currentTarget) onCancel();
       }}
     >
-      <div className="edu-panel w-full max-w-md rounded-2xl p-6">
+      <div className="glass-panel w-full max-w-md rounded-[1.75rem] p-6">
         <h2 id="exam-dialog-title" className="edu-heading text-xl">
           {title}
         </h2>

@@ -1,11 +1,17 @@
 import Link from "next/link";
-import { BookOpen, Trophy } from "lucide-react";
+import { BookOpen, ClipboardList, GraduationCap, Trophy } from "lucide-react";
 import { AvailableExamsBrowser } from "@/components/exam/AvailableExamsBrowser";
 import { AppHeader } from "@/components/layout/AppHeader";
+import { AcademicPageShell } from "@/components/layout/AcademicPageShell";
+import { DashboardPanel } from "@/components/ui-custom/DashboardPanel";
+import { EmptyState } from "@/components/ui-custom/StateBlock";
+import { MetricCard } from "@/components/ui-custom/MetricCard";
+import { PageHeader } from "@/components/ui-custom/PageHeader";
+import { StatusBadge } from "@/components/ui-custom/StatusBadge";
+import { Button } from "@/components/ui/button";
 import { requireProfile } from "@/lib/auth";
 import { getStudentDashboard } from "@/lib/data";
 import {
-  cn,
   formatFriendlyDuration,
   isResumableSubmission,
   submissionCurrentSectionLabel,
@@ -32,122 +38,127 @@ export default async function DashboardPage({
 }) {
   const profile = await requireProfile();
   const data = await getStudentDashboard(profile.id);
+  const inProgress = data.submissions.filter((submission) => isResumableSubmission(submission.status));
 
   return (
     <>
       <AppHeader />
-      <main className="edu-page px-4 py-8 sm:px-6 lg:px-8">
-        <div className="edu-shell">
-        <div className="mb-8">
-          <p className="edu-kicker">Student workspace</p>
-          <h1 className="edu-heading mt-2 text-3xl">{profile.full_name || profile.email}</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-            Continue timed practice, review completed sections, and keep your AP preparation organized by subject.
-          </p>
+      <AcademicPageShell className="flex flex-col gap-8">
+        <PageHeader
+          eyebrow="Student portal"
+          title={profile.full_name || profile.email}
+          description="Continue timed practice, monitor completed work, and keep your AP preparation organized by subject and exam set."
+          actions={
+            profile.role === "admin" ? (
+              <div className="flex flex-wrap gap-2">
+                <Button asChild>
+                  <Link href="/admin/questions">Question Bank</Link>
+                </Button>
+                <Button asChild variant="outline">
+                  <Link href="/admin/exams">Manage Exams</Link>
+                </Button>
+              </div>
+            ) : null
+          }
+        />
+
+        <div className="grid gap-4 md:grid-cols-3">
+          <MetricCard label="Available exams" value={data.examDetails.length} helper="Published exam sets" icon={ClipboardList} />
+          <MetricCard label="In progress" value={inProgress.length} helper="Saved attempts ready to resume" icon={GraduationCap} tone="gold" />
+          <MetricCard
+            label="Latest score"
+            value={data.latestSubmission ? `${data.latestSubmission.percentage}%` : "—"}
+            helper={data.latestSubmission ? `${data.latestSubmission.total_score}/${data.latestSubmission.max_score} points` : "Submit an exam to see results"}
+            icon={Trophy}
+            tone="blue"
+          />
         </div>
 
-        {profile.role === "admin" ? (
-          <section className="edu-panel mb-6 rounded-2xl">
-            <div className="edu-panel-header rounded-t-2xl px-4 py-3">Admin tools</div>
-            <div className="flex flex-wrap gap-3 p-4">
-              <Link href="/admin/questions" className="edu-button-primary px-4 py-2 text-sm font-semibold">
-                Question Bank
-              </Link>
-              <Link href="/admin/exams" className="edu-button-secondary px-4 py-2 text-sm font-semibold">
-                Manage Exams
-              </Link>
-              <Link href="/admin/import" className="edu-button-secondary px-4 py-2 text-sm font-semibold">
-                JSON Import
-              </Link>
-            </div>
-          </section>
-        ) : null}
-
-        <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
-          <section className="space-y-5">
+        <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
+          <section className="flex flex-col gap-6">
             <AvailableExamsBrowser exams={data.examDetails} submissions={data.submissions} searchParams={searchParams} />
 
-            <div className="edu-panel rounded-2xl">
-              <div className="edu-panel-header rounded-t-2xl px-4 py-3">Attempt history</div>
-              <div className="space-y-3 p-4">
+            <DashboardPanel title="Attempt history" description="Resume active work or review completed reports.">
+              <div className="flex flex-col gap-3">
                 {data.submissions.map((submission) => {
                   const resumable = isResumableSubmission(submission.status);
                   const href = resumable
                     ? `/exam/${submission.exam_id}/take?submission=${submission.id}`
                     : `/results/${submission.id}`;
-                  const label = submissionStatusLabel(submission.status);
                   const partLabel = submissionPartLabel(submission);
                   const currentSectionLabel = submissionCurrentSectionLabel(submission);
+                  const statusKey = submission.status;
                   return (
-                    <Link key={submission.id} href={href} className="edu-card flex flex-wrap items-center justify-between gap-3 rounded-xl p-4 transition hover:border-blue-300">
-                      <div>
-                        <p className="font-medium text-ink">{submission.exam?.title || "Exam"}</p>
-                        {resumable && currentSectionLabel ? (
-                          <p className="text-sm font-medium text-slate-700">Current section: {currentSectionLabel}</p>
-                        ) : partLabel ? (
-                          <p className="text-sm font-medium text-slate-700">{partLabel}</p>
-                        ) : null}
-                        <p className="text-sm text-slate-500">
-                          {submission.exam?.course ? `${submission.exam.course} · ` : ""}
-                          {formatFriendlyDuration(submission.time_spent_seconds)}
-                          {!resumable ? ` · ${submissionScoreLabel(submission)}` : ""}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span
-                          className={cn(
-                            "rounded-full border px-2.5 py-1 text-xs font-bold",
-                            resumable ? "border-amber-200 bg-amber-50 text-amber-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"
-                          )}
-                        >
-                          {label}
-                        </span>
-                        <span className="edu-button-primary px-3 py-2 text-xs font-semibold">
-                          {resumable ? "Resume" : "Review Results"}
-                        </span>
+                    <Link
+                      key={submission.id}
+                      href={href}
+                      className="group rounded-[1.5rem] border border-white/70 bg-white/78 p-4 shadow-inner transition hover:border-sky-200/90 hover:bg-white"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-4">
+                        <div className="min-w-0">
+                          <p className="font-semibold text-astra-navy">{submission.exam?.title || "Exam"}</p>
+                          {resumable && currentSectionLabel ? (
+                            <p className="mt-1 text-sm font-medium text-astra-slate">Current section: {currentSectionLabel}</p>
+                          ) : partLabel ? (
+                            <p className="mt-1 text-sm font-medium text-astra-slate">{partLabel}</p>
+                          ) : null}
+                          <p className="mt-1 text-sm text-slate-500">
+                            {submission.exam?.course ? `${submission.exam.course} · ` : ""}
+                            {formatFriendlyDuration(submission.time_spent_seconds)}
+                            {!resumable ? ` · ${submissionScoreLabel(submission)}` : ""}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <StatusBadge status={statusKey}>{submissionStatusLabel(statusKey)}</StatusBadge>
+                          <span className="rounded-full bg-astra-navy px-4 py-2 text-sm font-semibold text-white shadow-[0_14px_28px_-22px_rgba(6,18,37,0.86)]">
+                            {resumable ? "Resume" : "Review Results"}
+                          </span>
+                        </div>
                       </div>
                     </Link>
                   );
                 })}
-                {data.submissions.length === 0 ? <p className="text-sm text-slate-500">No attempts yet.</p> : null}
+                {data.submissions.length === 0 ? (
+                  <EmptyState
+                    title="No attempts yet"
+                    description="Start an available exam to create your first saved attempt."
+                    action={
+                      <Button asChild>
+                        <Link href="/available-exams">Browse exams</Link>
+                      </Button>
+                    }
+                  />
+                ) : null}
               </div>
-            </div>
+            </DashboardPanel>
           </section>
 
-          <aside className="space-y-5">
-            <div className="edu-panel rounded-2xl p-5">
-              <div className="flex items-center gap-2">
-                <Trophy className="h-5 w-5 text-blue-800" />
-                <h2 className="font-semibold text-slate-950">Latest score</h2>
-              </div>
-              {data.latestSubmission ? (
-                <div className="mt-4">
-                  <p className="text-4xl font-semibold text-ink">{data.latestSubmission.percentage}%</p>
-                  <p className="mt-1 text-sm text-slate-500">{data.latestSubmission.total_score}/{data.latestSubmission.max_score} points</p>
-                </div>
-              ) : (
-                <p className="mt-4 text-sm text-slate-500">Submit an exam to see your latest score.</p>
-              )}
-            </div>
-
-            <div className="edu-panel rounded-2xl p-5">
-              <div className="mb-4 flex items-center gap-2">
-                <BookOpen className="h-5 w-5 text-blue-800" />
-                <h2 className="font-semibold text-slate-950">Recommended guides</h2>
-              </div>
-              <div className="space-y-3">
+          <aside className="flex flex-col gap-6">
+            <DashboardPanel title="Recommended guides" description="Fast review before your next section.">
+              <div className="flex flex-col gap-3">
                 {data.guides.map((guide) => (
-                  <Link key={guide.id} href={`/review/${guide.slug}`} className="edu-card block rounded-xl p-3 transition hover:border-blue-300">
-                    <p className="font-medium text-ink">{guide.title}</p>
-                    <p className="text-sm text-slate-500">{guide.estimated_reading_time_minutes} min · {guide.topic}</p>
+                  <Link key={guide.id} href={`/review/${guide.slug}`} className="rounded-[1.5rem] border border-white/70 bg-white/78 p-4 shadow-inner transition hover:border-sky-200/90 hover:bg-white">
+                    <p className="font-semibold text-astra-navy">{guide.title}</p>
+                    <p className="mt-1 text-sm text-slate-500">{guide.estimated_reading_time_minutes} min · {guide.topic}</p>
                   </Link>
                 ))}
+                {data.guides.length === 0 ? (
+                  <EmptyState title="No guides yet" description="Published review guides will appear here." icon={BookOpen} />
+                ) : null}
               </div>
-            </div>
+            </DashboardPanel>
+
+            <DashboardPanel title="Study posture" description="Keep the current attempt focused.">
+              <div className="rounded-[1.5rem] border border-white/10 bg-[rgba(6,18,37,0.92)] p-5 text-white shadow-[0_22px_70px_-48px_rgba(6,18,37,0.82)] backdrop-blur-2xl">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-astra-gold">Exam rule</p>
+                <p className="mt-3 text-sm leading-6 text-slate-200">
+                  Work through the active section, save when needed, and return to results only after submitting.
+                </p>
+              </div>
+            </DashboardPanel>
           </aside>
         </div>
-        </div>
-      </main>
+      </AcademicPageShell>
     </>
   );
 }

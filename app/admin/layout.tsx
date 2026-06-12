@@ -10,7 +10,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   return (
     <>
       <AppHeader />
-      <div className="edu-page lg:flex">
+      <div className="glass-shell lg:flex">
         <AdminSidebar />
         <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8">
           <div className="mx-auto max-w-[1500px]">{children}</div>

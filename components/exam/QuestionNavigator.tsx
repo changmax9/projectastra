@@ -15,7 +15,7 @@ export function QuestionNavigator({
   onSelect: (index: number) => void;
 }) {
   return (
-    <div className="edu-panel grid grid-cols-6 gap-2 rounded-2xl p-3 sm:grid-cols-8 lg:grid-cols-1">
+    <div className="glass-panel grid grid-cols-6 gap-2 rounded-[1.5rem] p-3 sm:grid-cols-8 lg:grid-cols-1">
       {Array.from({ length: count }, (_, index) => {
         const active = index === currentIndex;
         const isAnswered = answered.has(index);
@@ -28,10 +28,10 @@ export function QuestionNavigator({
             className={cn(
               "relative flex h-10 items-center justify-center rounded-lg border font-mono text-sm font-bold transition",
               active
-                ? "border-blue-950 bg-blue-950 text-white shadow-lg shadow-blue-950/10"
+                ? "border-astra-navy bg-astra-navy text-white shadow-lg shadow-blue-950/10"
                 : isAnswered
-                  ? "border-green-200 bg-green-50 text-success"
-                  : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                  ? "border-green-200 bg-green-50/90 text-success"
+                  : "border-white/70 bg-white/70 text-slate-600 hover:bg-white"
             )}
             aria-label={`Go to question ${index + 1}`}
           >

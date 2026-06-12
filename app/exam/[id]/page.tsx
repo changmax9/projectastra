@@ -1,7 +1,10 @@
 import { notFound } from "next/navigation";
 import { CheckCircle2, Clock, FileQuestion } from "lucide-react";
 import { AppHeader } from "@/components/layout/AppHeader";
+import { AcademicPageShell } from "@/components/layout/AcademicPageShell";
+import { SectionTimeline } from "@/components/exam/SectionTimeline";
 import { startExamAction } from "@/app/actions";
+import { Button } from "@/components/ui/button";
 import { requireProfile } from "@/lib/auth";
 import { getExamWithQuestionSummaries, listStudentSubmissions } from "@/lib/data";
 import type { ExamWithQuestions } from "@/lib/types";
@@ -38,50 +41,53 @@ export default async function ExamStartPage({
   return (
     <>
       <AppHeader />
-      <main className="edu-page px-4 py-10 sm:px-6 lg:px-8">
-        <div className="edu-shell">
-        <div className="edu-terminal-bar rounded-xl px-4 py-3">
-          EXAM/START · {exam.course} · {exam.year || "NO-YEAR"} · {exam.exam_type}
-        </div>
-        <div className="edu-panel mt-4 rounded-2xl">
-          <div className="edu-panel-header rounded-t-2xl px-5 py-3">Pre-exam briefing</div>
+      <AcademicPageShell variant="exam" className="max-w-6xl">
+        <section className="glass-panel rounded-[2.25rem]">
+          <div className="navy-band rounded-[2rem] p-6 sm:p-8">
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-astra-gold">{exam.subject} · {exam.course} · {exam.year || "No year"}</p>
+          <h1 className="mt-3 max-w-4xl text-4xl font-black leading-tight tracking-tight text-astra-warm">{exam.title}</h1>
+          <p className="mt-3 max-w-3xl leading-7 text-slate-200">{exam.description}</p>
+          </div>
           <div className="p-6 sm:p-8">
-          <p className="edu-kicker">{exam.subject}</p>
-          <h1 className="edu-heading mt-3 text-3xl">{exam.title}</h1>
-          <p className="mt-3 max-w-3xl leading-7 text-slate-600">{exam.description}</p>
 
           <div className="mt-6 grid gap-4 sm:grid-cols-3">
-            <div className="edu-card rounded-xl p-4">
+            <div className="glass-solid rounded-[1.5rem] p-4">
               <Clock className="h-5 w-5 text-blue-800" />
               <p className="mt-2 text-sm text-slate-500">Time limit</p>
               <p className="font-semibold text-ink">{exam.time_limit_minutes} minutes</p>
             </div>
-            <div className="edu-card rounded-xl p-4">
+            <div className="glass-solid rounded-[1.5rem] p-4">
               <FileQuestion className="h-5 w-5 text-blue-800" />
               <p className="mt-2 text-sm text-slate-500">Questions</p>
               <p className="font-semibold text-ink">{exam.exam_questions.length}</p>
             </div>
-            <div className="edu-card rounded-xl p-4">
+            <div className="glass-solid rounded-[1.5rem] p-4">
               <CheckCircle2 className="h-5 w-5 text-blue-800" />
               <p className="mt-2 text-sm text-slate-500">Scoring</p>
               <p className="font-semibold text-ink">MCQ auto, FRQ pending</p>
             </div>
           </div>
 
-          <div className="mt-6 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-900">
+          <div className="mt-6 rounded-[1.5rem] border border-sky-100 bg-sky-50/82 p-4 text-sm leading-6 text-astra-blue">
             Your work is autosaved. You can flag questions for review and submit when ready. Submitted attempts cannot be edited.
           </div>
 
           {hasSections ? (
-            <div className="mt-6 rounded-xl border border-slate-200 bg-white">
-              <div className="border-b border-slate-100 px-4 py-3">
+            <div className="mt-6 rounded-[1.75rem] border border-white/70 bg-white/76 p-4 shadow-inner">
+              <div className="mb-4 border-b border-astra-navy/10 pb-3">
                 <h2 className="edu-heading text-xl">Exam flow</h2>
                 <p className="mt-1 text-sm text-slate-500">
                   Sections advance automatically inside one exam attempt.
                 </p>
               </div>
-              <div className="divide-y divide-slate-100">
-                {sections.map((section) => {
+              <SectionTimeline
+                sections={sections.map((section) => ({
+                  ...section,
+                  questionCount: actualSectionQuestionCount(exam, section.section)
+                }))}
+              />
+              <div className="mt-4 divide-y divide-slate-100">
+                {sections.filter((section) => actualSectionQuestionCount(exam, section.section) === 0).map((section) => {
                   const count = actualSectionQuestionCount(exam, section.section);
                   return (
                     <div
@@ -112,14 +118,13 @@ export default async function ExamStartPage({
 
           <form action={startExamAction} className="mt-6">
             <input type="hidden" name="exam_id" value={exam.id} />
-            <button className="edu-button-primary px-6 py-3 font-semibold">
+            <Button size="lg" className="rounded-full bg-astra-navy px-8 text-white shadow-[0_18px_38px_-26px_rgba(6,18,37,0.88)] hover:bg-astra-blue">
               {inProgress ? "Resume Exam" : "Start Exam"}
-            </button>
+            </Button>
           </form>
           </div>
-        </div>
-        </div>
-      </main>
+        </section>
+      </AcademicPageShell>
     </>
   );
 }

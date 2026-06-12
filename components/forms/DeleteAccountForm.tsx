@@ -3,17 +3,23 @@
 import { useMemo, useState } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import { deleteAccountAction, type ActionState } from "@/app/actions";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { DangerZonePanel } from "@/components/ui-custom/DangerZonePanel";
 
 function DeleteSubmitButton({ canSubmit }: { canSubmit: boolean }) {
   const { pending } = useFormStatus();
   return (
-    <button
+    <Button
       type="submit"
       disabled={!canSubmit || pending}
-      className="edu-button-danger px-5 py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+      variant="destructive"
+      className="rounded-full"
     >
       {pending ? "Deleting..." : "Permanently delete account"}
-    </button>
+    </Button>
   );
 }
 
@@ -23,60 +29,65 @@ export function DeleteAccountForm({ isAdmin }: { isAdmin: boolean }) {
   const canSubmit = useMemo(() => confirmation === "DELETE" && !isAdmin, [confirmation, isAdmin]);
 
   return (
-    <section className="rounded-2xl border border-rose-200 bg-rose-50 p-6 shadow-[0_14px_28px_-26px_rgba(190,18,60,0.45)]">
-      <div>
-        <p className="text-sm font-semibold uppercase tracking-wide text-rose-600">Danger Zone</p>
-        <h2 className="edu-heading mt-2 text-2xl text-rose-950">Delete account</h2>
-        <div className="mt-3 space-y-1 text-sm leading-6 text-rose-800">
+    <DangerZonePanel title="Delete account">
+        <span className="sr-only">Danger Zone</span>
+        <div className="space-y-1 text-sm leading-6 text-rose-800">
           <p>Deleting your account is permanent.</p>
           <p>Your profile and account access will be removed.</p>
           <p>This action cannot be undone.</p>
         </div>
-      </div>
 
-      {isAdmin ? (
-        <div className="mt-5 rounded-3xl border border-rose-200 bg-white/80 px-4 py-3 text-sm font-medium text-rose-700">
-          Admin accounts cannot be deleted from this page.
-        </div>
-      ) : (
-        <form action={formAction} className="mt-5 space-y-4">
-          <label className="block text-sm font-medium text-rose-950">
-            Current password
-            <input
-              required
-              type="password"
-              name="current_password"
-              className="mt-1 w-full rounded-2xl border border-rose-200 bg-white px-3 py-2 text-slate-900 outline-none focus:border-rose-400 focus:ring-2 focus:ring-rose-100"
-              placeholder="Enter your current password"
-            />
-          </label>
-
-          <label className="block text-sm font-medium text-rose-950">
-            Type DELETE to confirm
-            <input
-              required
-              name="delete_confirmation"
-              value={confirmation}
-              onChange={(event) => setConfirmation(event.target.value)}
-              className="mt-1 w-full rounded-2xl border border-rose-200 bg-white px-3 py-2 text-slate-900 outline-none focus:border-rose-400 focus:ring-2 focus:ring-rose-100"
-              placeholder="DELETE"
-            />
-          </label>
-
-          {state.error ? (
-            <div className="rounded-3xl border border-red-200 bg-white px-3 py-2 text-sm text-red-700">{state.error}</div>
-          ) : null}
-          {state.message ? (
-            <div className="rounded-3xl border border-emerald-200 bg-white px-3 py-2 text-sm text-emerald-700">
-              {state.message}
+        {isAdmin ? (
+          <Alert className="mt-5 border-rose-200 bg-white/80 text-rose-700">
+            <AlertDescription>Admin accounts cannot be deleted from this page.</AlertDescription>
+          </Alert>
+        ) : (
+          <form action={formAction} className="mt-5 space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="current_password" className="text-rose-950">
+                Current password
+              </Label>
+              <Input
+                id="current_password"
+                required
+                type="password"
+                name="current_password"
+                className="rounded-full border-rose-200 bg-white focus-visible:ring-rose-300"
+                placeholder="Enter your current password"
+              />
             </div>
-          ) : null}
 
-          <div className="flex justify-end">
-            <DeleteSubmitButton canSubmit={canSubmit} />
-          </div>
-        </form>
-      )}
-    </section>
+            <div className="space-y-2">
+              <Label htmlFor="delete_confirmation" className="text-rose-950">
+                Type DELETE to confirm
+              </Label>
+              <Input
+                id="delete_confirmation"
+                required
+                name="delete_confirmation"
+                value={confirmation}
+                onChange={(event) => setConfirmation(event.target.value)}
+                className="rounded-full border-rose-200 bg-white focus-visible:ring-rose-300"
+                placeholder="DELETE"
+              />
+            </div>
+
+            {state.error ? (
+              <Alert variant="destructive" className="bg-white">
+                <AlertDescription>{state.error}</AlertDescription>
+              </Alert>
+            ) : null}
+            {state.message ? (
+              <Alert className="border-emerald-200 bg-white text-emerald-700">
+                <AlertDescription>{state.message}</AlertDescription>
+              </Alert>
+            ) : null}
+
+            <div className="flex justify-end">
+              <DeleteSubmitButton canSubmit={canSubmit} />
+            </div>
+          </form>
+        )}
+    </DangerZonePanel>
   );
 }
