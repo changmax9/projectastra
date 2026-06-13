@@ -23,6 +23,11 @@ async function updateJob(jobId: string, values: Record<string, unknown>) {
   if (error) throw new Error(error.message);
 }
 
+async function updateBatch(batchId: string, values: Record<string, unknown>) {
+  const { error } = await supabase.from("pdf_import_batches").update({ ...values, updated_at: new Date().toISOString() }).eq("id", batchId);
+  if (error) throw new Error(error.message);
+}
+
 async function claimJob() {
   const { data, error } = await supabase.rpc("claim_next_pdf_import_job", { worker_id: workerId, lease_seconds: 300 });
   if (error) throw new Error(error.message);
@@ -64,14 +69,13 @@ async function persistBatchPages(job: PdfImportJob, analysis: PdfImportAnalysisI
     const { error } = await supabase.from("pdf_import_pages").upsert(rows, { onConflict: "job_id,page_number" });
     if (error) throw new Error(error.message);
   }
-  const { error } = await supabase.from("pdf_import_batches").update({
+  await updateBatch(batchId, {
     status: "completed",
+    next_attempt_at: null,
     lease_owner: null,
     lease_expires_at: null,
-    error_message: null,
-    updated_at: timestamp
-  }).eq("id", batchId);
-  if (error) throw new Error(error.message);
+    error_message: null
+  });
   const { count } = await supabase.from("pdf_import_pages").select("*", { head: true, count: "exact" }).eq("job_id", job.id);
   await updateJob(job.id, { processed_page_count: count || 0 });
 }
@@ -93,11 +97,13 @@ async function processJob(job: PdfImportJob) {
   const workDir = path.join(process.env.PDF_WORKER_TEMP_DIR || "/tmp", "astra-pdf-worker", job.id);
   await mkdir(workDir, { recursive: true });
   const pdfPath = path.join(workDir, "source.pdf");
-  const heartbeat = setInterval(() => void updateJob(job.id, {
-    heartbeat_at: new Date().toISOString(),
-    lease_expires_at: new Date(Date.now() + 5 * 60_000).toISOString(),
-    lease_owner: workerId
-  }), 30_000);
+  const heartbeat = setInterval(() => {
+    void updateJob(job.id, {
+      heartbeat_at: new Date().toISOString(),
+      lease_expires_at: new Date(Date.now() + 5 * 60_000).toISOString(),
+      lease_owner: workerId
+    }).catch((error) => console.error(`Unable to heartbeat PDF import job ${job.id}:`, error));
+  }, 30_000);
   try {
     const { data: pdf, error } = await supabase.from("pdf_uploads").select("*").eq("id", job.pdf_upload_id).single();
     if (error || !pdf) throw new Error(error?.message || "PDF upload not found.");
@@ -118,24 +124,25 @@ async function processJob(job: PdfImportJob) {
         await updateJob(job.id, { status: "cancelled", phase: "cancelled", lease_owner: null, lease_expires_at: null });
         return;
       }
-      await supabase.from("pdf_import_batches").update({
+      await updateBatch(batch.id, {
         status: "processing",
         attempt_count: Number(batch.attempt_count || 0) + 1,
+        next_attempt_at: null,
         lease_owner: workerId,
         lease_expires_at: new Date(Date.now() + 5 * 60_000).toISOString()
-      }).eq("id", batch.id);
+      });
       try {
         await persistBatchPages(job, await analyzePdfUpload(localPdf, { ocrPageNumbers: batch.page_numbers }), batch.id);
       } catch (error) {
         const attempts = Number(batch.attempt_count || 0) + 1;
         const nextAttemptAt = new Date(Date.now() + [1, 5, 15][Math.min(attempts - 1, 2)] * 60_000).toISOString();
-        await supabase.from("pdf_import_batches").update({
+        await updateBatch(batch.id, {
           status: attempts >= 3 ? "failed" : "pending",
           error_message: error instanceof Error ? error.message : "Batch processing failed.",
           next_attempt_at: nextAttemptAt,
           lease_owner: null,
           lease_expires_at: null
-        }).eq("id", batch.id);
+        });
         if (attempts < 3) {
           await updateJob(job.id, {
             status: "queued",

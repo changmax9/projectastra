@@ -2614,7 +2614,18 @@ export async function requestPdfImportCancellation(jobId: string) {
 export async function retryPdfImportJob(jobId: string) {
   if (!hasSupabaseEnv()) throw new Error("Remote worker retry requires Supabase.");
   const timestamp = nowIso();
-  const { error } = await adminClient().from("pdf_import_jobs").update({
+  const supabase = adminClient();
+  const { error: batchError } = await supabase.from("pdf_import_batches").update({
+    status: "pending",
+    attempt_count: 0,
+    next_attempt_at: null,
+    lease_owner: null,
+    lease_expires_at: null,
+    error_message: null,
+    updated_at: timestamp
+  }).eq("job_id", jobId).eq("status", "failed");
+  if (batchError) throw new Error(batchError.message);
+  const { error } = await supabase.from("pdf_import_jobs").update({
     status: "queued",
     phase: "queued",
     error_message: null,

@@ -33,3 +33,13 @@ jobs:
 
       - name: Type check
         run: npx tsc --noEmit
+
+      - name: Build OCR worker image
+        run: docker build --file Dockerfile.worker --tag astra-pdf-worker:ci .
+
+      - name: Smoke test OCR worker image
+        run: >-
+          docker run --rm --entrypoint sh astra-pdf-worker:ci -c
+          "./node_modules/.bin/tsx --version &&
+          python3 -c 'import fitz, PIL, pytesseract' &&
+          tesseract --version"

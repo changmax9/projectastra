@@ -6,12 +6,15 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+RUN npm ci
 
 COPY requirements-worker.txt ./
 RUN pip3 install --break-system-packages --no-cache-dir -r requirements-worker.txt
 
 COPY . .
+RUN ./node_modules/.bin/tsx --version \
+  && python3 -m py_compile scripts/pdf-ocr-worker.py scripts/pdf-text-worker.py
+
 ENV PDF_OCR_MODE=local
 ENV PDF_OCR_PYTHON=/usr/bin/python3
 ENV PDF_TEXT_PYTHON=/usr/bin/python3

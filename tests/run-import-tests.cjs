@@ -607,6 +607,17 @@ assert.match(remoteWorkerMigration, /create table if not exists public\.pdf_impo
 assert.match(remoteWorkerMigration, /claim_next_pdf_import_job/, "Remote worker migration provides an atomic leased job claim");
 assert.match(remoteWorkerMigration, /cancel_requested_at/, "Remote worker migration records admin cancellation requests");
 
+const workerDockerfile = source("Dockerfile.worker");
+assert.match(workerDockerfile, /RUN npm ci\r?\n/, "Railway worker installs the tsx runtime used by its start command");
+assert.doesNotMatch(workerDockerfile, /npm ci --omit=dev/, "Railway worker does not omit its tsx runtime dependency");
+assert.match(workerDockerfile, /tsx --version/, "Railway worker image verifies the TypeScript runtime during build");
+assert.match(workerDockerfile, /python3 -m py_compile/, "Railway worker image compiles its Python OCR scripts during build");
+
+const ciWorkflow = source(".github/workflows/ci.yml");
+assert.match(ciWorkflow, /docker build --file Dockerfile\.worker/, "CI builds the production OCR worker image");
+assert.match(ciWorkflow, /import fitz, PIL, pytesseract/, "CI smoke tests the worker's Python OCR dependencies");
+assert.match(ciWorkflow, /tesseract --version/, "CI smoke tests Tesseract inside the worker image");
+
 const pdfTextWorker = source("scripts/pdf-text-worker.py");
 assert.match(pdfTextWorker, /get_text\("blocks"/, "PDF text worker extracts positioned text blocks");
 assert.match(pdfTextWorker, /likely_two_columns/, "PDF text worker detects two-column layouts");
