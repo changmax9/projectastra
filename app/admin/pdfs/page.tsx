@@ -8,6 +8,14 @@ import { getPdfImportJobDetails, getPdfImportSchemaStatus, listPdfImportJobs, li
 export const dynamic = "force-dynamic";
 
 export default async function AdminPdfsPage({ searchParams }: { searchParams?: { import_error?: string; job_id?: string } }) {
+  const remoteWorkerMode = process.env.PDF_OCR_MODE === "remote-worker";
+  const remoteStorageConfigured = Boolean(
+    process.env.R2_ACCOUNT_ID &&
+    process.env.R2_ACCESS_KEY_ID &&
+    process.env.R2_SECRET_ACCESS_KEY &&
+    process.env.R2_EVIDENCE_PUBLIC_URL
+  );
+  const remoteReady = remoteWorkerMode && remoteStorageConfigured;
   const [pdfs, jobs, importSchemaStatus] = await Promise.all([
     listPdfUploads(),
     listPdfImportJobs(),
@@ -47,7 +55,13 @@ export default async function AdminPdfsPage({ searchParams }: { searchParams?: {
           </div>
         ))}
       </section>
-      <PdfUploader />
+      <PdfUploader remoteEnabled={remoteReady} />
+      {remoteWorkerMode && !remoteReady ? (
+        <section className="rounded-lg border border-red-200 bg-red-50 p-5 text-sm leading-6 text-red-800">
+          <h2 className="font-semibold">Remote OCR setup is incomplete</h2>
+          <p className="mt-2">Configure Cloudflare R2 credentials and the public evidence URL before uploading or queueing production PDF imports.</p>
+        </section>
+      ) : null}
       <section className="rounded-lg border border-blue-100 bg-blue-50 p-5 text-sm leading-6 text-blue-900">
         <h2 className="font-semibold">Review-only import safety</h2>
         <p className="mt-2">OCR output stays as draft/review-state content. Imported questions are never published directly.</p>
@@ -87,7 +101,7 @@ export default async function AdminPdfsPage({ searchParams }: { searchParams?: {
               <form action={adminStartPdfImportAction}>
                 <input type="hidden" name="pdf_id" value={pdf.id} />
                 <button
-                  disabled={!importSchemaStatus.available || pdf.upload_status === "uploading" || importActive}
+                  disabled={!importSchemaStatus.available || pdf.upload_status === "uploading" || importActive || (remoteWorkerMode && !remoteReady)}
                   className="rounded-full bg-blue-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-slate-300"
                 >
                   Start analysis

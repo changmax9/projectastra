@@ -1,7 +1,9 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { useFormState, useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
+import { adminUploadPdfAction, type ActionState } from "@/app/actions";
 
 type MultipartState = { pdfId: string; objectKey: string; uploadId: string; partSize: number };
 
@@ -36,7 +38,33 @@ async function uploadPartWithRetries(state: MultipartState, file: File, partNumb
   throw lastError instanceof Error ? lastError : new Error(`Part ${partNumber} failed after 3 attempts.`);
 }
 
-export function PdfUploader() {
+function LocalUploadButton() {
+  const { pending } = useFormStatus();
+  return <button disabled={pending} className="rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">{pending ? "Uploading..." : "Upload source PDF"}</button>;
+}
+
+function LocalPdfUploader() {
+  const [state, action] = useFormState<ActionState, FormData>(adminUploadPdfAction, {});
+  return (
+    <form action={action} className="space-y-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <div>
+        <h2 className="text-lg font-semibold text-ink">Upload source PDF</h2>
+        <p className="text-sm text-slate-500">Local mode stores the PDF with the website and runs the configured local OCR runtime.</p>
+      </div>
+      <input required type="file" name="file" accept="application/pdf" className="block w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+      <div className="grid gap-3 md:grid-cols-3">
+        <input name="subject" placeholder="AP Course" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+        <input name="unit" placeholder="Unit" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+        <input name="topic" placeholder="Topic" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+      </div>
+      <LocalUploadButton />
+      {state.error ? <p className="rounded-md bg-red-50 p-3 text-sm text-red-700">{state.error}</p> : null}
+      {state.message ? <p className="rounded-md bg-green-50 p-3 text-sm text-green-700">{state.message}</p> : null}
+    </form>
+  );
+}
+
+function RemotePdfUploader() {
   const router = useRouter();
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState<"idle" | "uploading" | "completed" | "failed">("idle");
@@ -117,4 +145,8 @@ export function PdfUploader() {
       {status === "completed" ? <p className="rounded-md bg-green-50 p-3 text-sm text-green-700">{message}</p> : null}
     </form>
   );
+}
+
+export function PdfUploader({ remoteEnabled }: { remoteEnabled: boolean }) {
+  return remoteEnabled ? <RemotePdfUploader /> : <LocalPdfUploader />;
 }

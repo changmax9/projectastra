@@ -240,6 +240,8 @@ Configure source-bucket CORS for the production site and localhost. Allow `PUT`,
 
 Apply `supabase/migrations/009_remote_pdf_worker.sql` before enabling remote-worker mode. Configure the shared Supabase/R2 variables from `.env.example` on both Vercel and Railway; Railway additionally runs `npm run worker:pdf-import`.
 
+See `docs/PRODUCTION_OCR_DEPLOYMENT.md` for the provider provisioning and verification runbook.
+
 Typical macOS setup:
 
 ```bash
