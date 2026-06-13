@@ -3,13 +3,13 @@ import { AlertTriangle, ArrowRight, FileSearch, LoaderCircle } from "lucide-reac
 import type { PdfImportReviewQueue } from "@/lib/types";
 
 function statusLabel(status: PdfImportReviewQueue["items"][number]["status"]) {
-  if (status === "processing") return "Processing";
+  if (["queued", "triaging", "processing", "finalizing"].includes(status)) return status === "queued" ? "Queued" : "Processing";
   if (status === "failed") return "Needs attention";
   return "Awaiting review";
 }
 
 function statusTone(status: PdfImportReviewQueue["items"][number]["status"]) {
-  if (status === "processing") return "bg-blue-50 text-blue-700";
+  if (["queued", "triaging", "processing", "finalizing"].includes(status)) return "bg-blue-50 text-blue-700";
   if (status === "failed") return "bg-red-50 text-red-700";
   return "bg-amber-50 text-amber-800";
 }
@@ -45,7 +45,7 @@ export function AdminPdfImportReviewQueue({ queue }: { queue: PdfImportReviewQue
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="font-semibold text-ink">{job.pdf_upload?.file_name || job.pdf_upload_id}</p>
                   <span className={`rounded-md px-2 py-1 text-xs font-semibold ${statusTone(job.status)}`}>
-                    {job.status === "processing" ? <LoaderCircle className="mr-1 inline h-3 w-3" /> : null}
+                    {["queued", "triaging", "processing", "finalizing"].includes(job.status) ? <LoaderCircle className="mr-1 inline h-3 w-3" /> : null}
                     {job.status === "failed" ? <AlertTriangle className="mr-1 inline h-3 w-3" /> : null}
                     {statusLabel(job.status)}
                   </span>

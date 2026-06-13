@@ -197,7 +197,7 @@ Current review-first behavior:
 
 Imported questions are never published directly. OCR output and generated drafts are untrusted until the admin verifies them against source evidence.
 
-Supabase mode requires `supabase/migrations/008_pdf_import_pipeline.sql`. Verify the connected project before testing:
+Supabase mode requires migrations through `supabase/migrations/009_remote_pdf_worker.sql`. Verify the connected project before testing:
 
 ```bash
 npm run check:supabase:pdf-import
@@ -209,10 +209,12 @@ Local OCR uses Python, PyMuPDF, Pillow, pytesseract, and a Tesseract installatio
 PDF_TEXT_PYTHON=
 PDF_OCR_PYTHON=
 TESSERACT_CMD=
-PDF_OCR_PSM=6
+PDF_OCR_PSM=3
+PDF_OCR_TIMEOUT_MS=
 ```
 
-`PDF_OCR_PSM` defaults to Tesseract single-block segmentation (`6`). For difficult scanned packets, the supported overrides are `3`, `4`, and `11`.
+`PDF_OCR_PSM` defaults to Tesseract automatic layout segmentation (`3`) so mixed and multi-column scanned packets retain more question boundaries. Supported overrides are `4`, `6`, and `11`.
+When `PDF_OCR_TIMEOUT_MS` is unset, the full OCR worker gets a bounded page-scaled timeout: at least 30 seconds, 15 seconds per selected page, and at most 10 minutes.
 
 For the local Windows OCR setup used by Astra, keep the runtime on `D:`:
 
@@ -224,6 +226,19 @@ TESSERACT_CMD=D:\Codex\tools\tesseract-ocr\tesseract.exe
 ```
 
 Run `npm run check:ocr` before testing PDF imports. The page audit shows untouched Tesseract output separately from Astra's normalized text.
+
+### Production PDF OCR
+
+Vercel hosts the website but must not run Python/Tesseract. Set `PDF_OCR_MODE=remote-worker` on Vercel and deploy `Dockerfile.worker` as one Railway worker. The worker claims queued jobs from Supabase, processes page batches sequentially, and uploads generated evidence to Cloudflare R2.
+
+Create two R2 buckets:
+
+- Private `astra-pdf-sources`
+- Public `astra-pdf-evidence`
+
+Configure source-bucket CORS for the production site and localhost. Allow `PUT`, expose `ETag`, and permit the `Content-Type` header. The browser uploader uses 10 MiB multipart parts, three concurrent requests, three retries, and a 500 MB application limit.
+
+Apply `supabase/migrations/009_remote_pdf_worker.sql` before enabling remote-worker mode. Configure the shared Supabase/R2 variables from `.env.example` on both Vercel and Railway; Railway additionally runs `npm run worker:pdf-import`.
 
 Typical macOS setup:
 
@@ -333,5 +348,5 @@ Admin:
 - If image/PDF upload fails with Supabase, confirm buckets `question-media` and `pdf-uploads` exist.
 - If RLS blocks an admin action, confirm the logged-in user's profile row has `role = 'admin'`.
 - If JSON import fails, check MCQ `correct_answer` matches a `choices[].id`, and FRQ has `choices: []` plus `correct_answer: null`.
-- If PDF analysis says import tables are not installed, run `npm run check:supabase:pdf-import` and apply `supabase/migrations/008_pdf_import_pipeline.sql` to the exact Supabase project reported by that command.
+- If PDF analysis says import tables are not installed, run `npm run check:supabase:pdf-import` and apply migrations through `supabase/migrations/009_remote_pdf_worker.sql` to the exact Supabase project reported by that command.
 - If PDF analysis reaches OCR but fails locally, install Python packages `pymupdf`, `pillow`, and `pytesseract`, install Tesseract, and set `PDF_TEXT_PYTHON`, `PDF_OCR_PYTHON`, or `TESSERACT_CMD` when the executables are not on the default paths.

@@ -26,6 +26,10 @@ if (!supabaseUrl || !serviceRoleKey) {
 
 const checks = [
   {
+    table: "pdf_uploads",
+    columns: "id,file_name,file_url,status,storage_provider,storage_bucket,storage_object_key,mime_type,size_bytes,upload_status"
+  },
+  {
     table: "pdf_import_jobs",
     columns: "id,pdf_upload_id,status,parser_version,ocr_provider,page_count,extracted_page_count,draft_question_count,warnings,error_message"
   },
@@ -40,6 +44,10 @@ const checks = [
   {
     table: "pdf_import_draft_assets",
     columns: "id,job_id,pdf_upload_id,draft_question_id,page_number,asset_type,image_url,bbox,keep_for_question,status,notes"
+  },
+  {
+    table: "pdf_import_batches",
+    columns: "id,job_id,page_numbers,status,attempt_count,next_attempt_at,lease_owner,lease_expires_at,error_message"
   }
 ];
 
@@ -61,7 +69,7 @@ async function main() {
   console.log(`Supabase project: ${new URL(supabaseUrl).hostname}`);
   console.table(results);
   if (results.some((result) => !result.available)) {
-    console.error("PDF import schema is incomplete. Apply supabase/migrations/008_pdf_import_pipeline.sql to this Supabase project.");
+    console.error("PDF import schema is incomplete. Apply Supabase migrations through 009_remote_pdf_worker.sql to this project.");
     process.exit(1);
   }
   console.log("PDF import schema check passed.");

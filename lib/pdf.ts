@@ -15,16 +15,18 @@ import type {
   QuestionChoice
 } from "@/lib/types";
 
-export const PARSER_VERSION = "pdf-import-mvp-2026-06-11";
+export const PARSER_VERSION = "pdf-import-mvp-2026-06-13";
 const CHOICE_MARKER_RE = /(?:^|\s)(?:\(([A-E])\)|([A-E])[\).])\s+/g;
 const FRQ_PART_RE = /(?:^|\s)\(((?:[a-g])|(?:i{1,3}|iv|v))\)\s+/gi;
 const DEFAULT_OCR_MAX_PAGES = 12;
-const DEFAULT_OCR_PSM = 6;
+const DEFAULT_OCR_PSM = 3;
 const DEFAULT_OCR_TRIAGE_SAMPLE_PAGES = 48;
 const DEFAULT_OCR_TRIAGE_DPI = 105;
 const DEFAULT_OCR_TRIAGE_TIMEOUT_MS = 120_000;
 const DEFAULT_RENDER_MAX_PAGES = 24;
 const DEFAULT_OCR_TIMEOUT_MS = 30_000;
+const DEFAULT_OCR_TIMEOUT_PER_PAGE_MS = 15_000;
+const MAX_DEFAULT_OCR_TIMEOUT_MS = 600_000;
 const DEFAULT_TEXT_TIMEOUT_MS = 15_000;
 const execFileAsync = promisify(execFile);
 
@@ -92,6 +94,7 @@ interface LocalOcrPageResult {
   status: PdfImportPage["ocr_status"];
   text: string;
   raw_text?: string;
+  raw_blocks?: JsonRecord[];
   confidence: number | null;
   image_url: string | null;
   warnings: string[];
@@ -222,14 +225,18 @@ function parseOcrTriageTimeoutMs() {
   return { value: Math.floor(parsed), warning: null as string | null };
 }
 
-function parseOcrTimeoutMs() {
+function parseOcrTimeoutMs(pageCount: number) {
+  const scaledDefault = Math.min(
+    MAX_DEFAULT_OCR_TIMEOUT_MS,
+    Math.max(DEFAULT_OCR_TIMEOUT_MS, pageCount * DEFAULT_OCR_TIMEOUT_PER_PAGE_MS)
+  );
   const raw = process.env.PDF_OCR_TIMEOUT_MS;
-  if (raw === undefined || raw.trim() === "") return { value: DEFAULT_OCR_TIMEOUT_MS, warning: null as string | null };
+  if (raw === undefined || raw.trim() === "") return { value: scaledDefault, warning: null as string | null };
   const parsed = Number(raw);
   if (!Number.isFinite(parsed) || parsed <= 0) {
     return {
-      value: DEFAULT_OCR_TIMEOUT_MS,
-      warning: `Invalid PDF_OCR_TIMEOUT_MS value "${raw}". Using the default timeout of ${DEFAULT_OCR_TIMEOUT_MS} ms.`
+      value: scaledDefault,
+      warning: `Invalid PDF_OCR_TIMEOUT_MS value "${raw}". Using the page-scaled default timeout of ${scaledDefault} ms.`
     };
   }
   return { value: Math.floor(parsed), warning: null as string | null };
@@ -404,11 +411,11 @@ async function runLocalTesseractOcr(pdf: PdfUpload, pageNumbers: number[]) {
 
   const { value: maxPages, warning: maxPagesWarning } = parseOcrMaxPages();
   const { value: psm, warning: psmWarning } = parseOcrPsm();
-  const { value: timeoutMs, warning: timeoutWarning } = parseOcrTimeoutMs();
   const triage = maxPages > 0 && pageNumbers.length > maxPages
     ? await runLocalOcrTriage(pdf, pageNumbers, maxPages, pythonPath, tesseractCmd)
     : { selectedPages: pageNumbers, warnings: [] as string[] };
   const selectedPages = maxPages > 0 ? triage.selectedPages.slice(0, maxPages) : pageNumbers;
+  const { value: timeoutMs, warning: timeoutWarning } = parseOcrTimeoutMs(selectedPages.length);
   const skippedPageNumbers = new Set(pageNumbers.filter((pageNumber) => !selectedPages.includes(pageNumber)));
   const warnings = [
     ...triage.warnings,
@@ -513,8 +520,8 @@ async function runLocalPageRender(pdf: PdfUpload, pageNumbers: number[]) {
 
   const uniquePageNumbers = Array.from(new Set(pageNumbers.filter((pageNumber) => Number.isInteger(pageNumber) && pageNumber > 0))).sort((a, b) => a - b);
   const { value: maxPages, warning: maxPagesWarning } = parseRenderMaxPages();
-  const { value: timeoutMs, warning: timeoutWarning } = parseOcrTimeoutMs();
   const selectedPages = maxPages > 0 ? uniquePageNumbers.slice(0, maxPages) : uniquePageNumbers;
+  const { value: timeoutMs, warning: timeoutWarning } = parseOcrTimeoutMs(selectedPages.length);
   const skippedPageNumbers = new Set(uniquePageNumbers.filter((pageNumber) => !selectedPages.includes(pageNumber)));
   if (maxPagesWarning) warnings.push(maxPagesWarning);
   if (timeoutWarning) warnings.push(timeoutWarning);
@@ -599,7 +606,7 @@ async function runLocalVisualCropRender(pdf: PdfUpload, candidates: VisualCropCa
     return { results: new Map(), warnings } satisfies LocalVisualCropRunResult;
   }
 
-  const { value: timeoutMs, warning: timeoutWarning } = parseOcrTimeoutMs();
+  const { value: timeoutMs, warning: timeoutWarning } = parseOcrTimeoutMs(candidates.length);
   if (timeoutWarning) warnings.push(timeoutWarning);
   const pdfPath = await materializePdfForWorker(pdf);
   const outputKey = `${safePathSegment(pdf.id)}-crops-${Date.now().toString(36)}`;
@@ -1221,9 +1228,9 @@ function extractScoringNotes(text: string) {
   return cleanText(match?.[1] || "");
 }
 
-function extractFrqParts(text: string): PdfFrqPartDraft[] {
+function extractFrqParts(text: string, allowSinglePart = false): PdfFrqPartDraft[] {
   const matches = [...text.matchAll(FRQ_PART_RE)];
-  if (matches.length < 2) return [];
+  if (matches.length < 2 && !allowSinglePart) return [];
   return matches.map((match, index) => {
     const start = (match.index || 0) + match[0].length;
     const end = matches[index + 1]?.index ?? text.length;
@@ -1437,6 +1444,7 @@ function draftFromBlock(
   const { stem, choices } = splitChoices(block.text);
   const frqParts = extractFrqParts(block.text);
   const type = block.section === "mcq" && choices.length >= 2 && !isFrqPacket(pdf) ? "mcq" : block.section === "frq" ? "frq" : !isFrqPacket(pdf) && choices.length >= 2 ? "mcq" : "frq";
+  const structuredFrqParts = type === "frq" ? extractFrqParts(block.text, true) : [];
   const course = pdf.subject?.startsWith("AP ") ? pdf.subject : pdf.subject || "AP Course";
   const subject = course.startsWith("AP ") ? inferSubjectFromCourse(course) : pdf.subject || "AP";
   const year = parseYearFromText(pdf.file_name, block.text);
@@ -1466,7 +1474,7 @@ function draftFromBlock(
     .map((value) => normalizeConfidence(value))
     .filter((value): value is number => typeof value === "number");
   const minPageConfidence = normalizedConfidences.length > 0 ? Math.min(...normalizedConfidences) : null;
-  let confidence = choices.length >= 2 || frqParts.length > 0 ? 0.65 : 0.35;
+  let confidence = choices.length >= 2 || structuredFrqParts.length > 0 ? 0.65 : 0.35;
   if (choiceWarnings.length > 0) confidence -= 0.2;
   if (hasSevereChoiceIssue) confidence -= 0.25;
   if (minPageConfidence !== null && minPageConfidence < 0.6) confidence -= 0.25;
@@ -1492,7 +1500,7 @@ function draftFromBlock(
     correct_answer: type === "mcq" ? extractExplicitAnswer(block.text, choices) : null,
     explanation: extractExplanation(block.text),
     scoring_notes: extractScoringNotes(block.text),
-    frq_parts: type === "frq" ? frqParts : [],
+    frq_parts: structuredFrqParts,
     question_images: [],
     confidence,
     warnings
@@ -1509,7 +1517,11 @@ function isSegmentedBlockWorthReview(block: QuestionBlockCandidate, pdf: PdfUplo
   }
   if (block.section === "frq") {
     if (block.questionNumber !== null && block.questionNumber > 20) return false;
-    return frqParts.length > 0 || /\bAnswer\s+the\s+following\s+questions\b/i.test(block.text);
+    const hasExplicitFrqPart = /(?:^|\s)\([a-g]\)\s+\S/i.test(block.text);
+    const hasFrqPromptVerb = /\b(?:calculate|derive|explain|describe|determine|identify|justify|sketch|plot|show|predict)\b/i.test(block.text);
+    return frqParts.length > 0 ||
+      /\bAnswer\s+the\s+following\s+questions\b/i.test(block.text) ||
+      (block.questionNumber !== null && hasExplicitFrqPart && hasFrqPromptVerb && block.text.length >= 80);
   }
   return block.text.length >= 20;
 }
@@ -1743,11 +1755,15 @@ function visualBlockAssociationScore(
   }
   if (!anchor) return { score, reason: `${reasons.join(", ")}; ranked by source-page proximity` };
 
-  const [, anchorY0, , anchorY1] = anchor.bbox;
+  const [anchorX0, anchorY0, anchorX1, anchorY1] = anchor.bbox;
+  const anchorXCenter = (anchorX0 + anchorX1) / 2;
   const anchorCenter = (anchorY0 + anchorY1) / 2;
+  const blockXCenter = (block.bbox[0] + block.bbox[2]) / 2;
   const blockCenter = (block.y0 + block.y1) / 2;
   const normalizedDistance = Math.abs(blockCenter - anchorCenter) / Math.max(1, block.pageHeight || 792);
-  score += normalizedDistance;
+  const normalizedHorizontalDistance = Math.abs(blockXCenter - anchorXCenter) / Math.max(1, block.pageWidth || 612);
+  score += normalizedDistance + normalizedHorizontalDistance * 1.5;
+  reasons.push("ranked by horizontal and vertical proximity to question text");
   if (direction === "below") {
     if (blockCenter >= anchorCenter) {
       score -= 0.75;
@@ -1775,6 +1791,10 @@ function buildVisualCropCandidates(drafts: DraftQuestionWithoutStorage[], pages:
   for (const [draftIndex, draft] of drafts.entries()) {
     if (!draftNeedsVisualEvidence(draft)) continue;
     const assetType = visualAssetTypeForDraft(draft);
+    const likelyVisualChoices = draft.type === "mcq" && (
+      draft.choices.length < 4 ||
+      draft.choices.some((choice) => cleanText(choice.text).length < 8 || /^Choice\s+[A-E]$/i.test(cleanText(choice.text)))
+    );
     const blocks = Array.from(
       { length: Math.max(0, draft.source_page_end - draft.source_page_start + 1) },
       (_, offset) => draft.source_page_start + offset
@@ -1790,8 +1810,8 @@ function buildVisualCropCandidates(drafts: DraftQuestionWithoutStorage[], pages:
         return { ...item, association: visualBlockAssociationScore(draft, page, item.pageNumber, item.block) };
       })
       .sort((a, b) => a.association.score - b.association.score || a.pageNumber - b.pageNumber || a.block.y0 - b.block.y0 || a.block.x0 - b.block.x0)
-      .filter((item, index, sorted) => index === 0 || item.association.score <= sorted[0].association.score + 1.25)
-      .slice(0, 3);
+      .filter((item, index, sorted) => index === 0 || item.association.score <= sorted[0].association.score + (likelyVisualChoices ? 4 : 1.25))
+      .slice(0, likelyVisualChoices ? 6 : 3);
 
     for (const [blockIndex, item] of blocks.entries()) {
       candidates.push({
@@ -1849,7 +1869,7 @@ function filterDuplicateMcqDrafts(drafts: DraftQuestionWithoutStorage[]) {
   return { drafts: kept, removedCount };
 }
 
-export async function analyzePdfUpload(pdf: PdfUpload): Promise<PdfImportAnalysisInput> {
+export async function analyzePdfUpload(pdf: PdfUpload, options?: { ocrPageNumbers?: number[] }): Promise<PdfImportAnalysisInput> {
   const bytes = await loadPdfBytes(pdf);
   if (!isPdfBytes(bytes)) {
     return {
@@ -1888,7 +1908,8 @@ export async function analyzePdfUpload(pdf: PdfUpload): Promise<PdfImportAnalysi
   });
   const pagesNeedingOcr = pageQualities
     .map((item, index) => (item.quality.usable ? null : index + 1))
-    .filter((pageNumber): pageNumber is number => pageNumber !== null);
+    .filter((pageNumber): pageNumber is number => pageNumber !== null)
+    .filter((pageNumber) => !options?.ocrPageNumbers || options.ocrPageNumbers.includes(pageNumber));
   const localOcr = pagesNeedingOcr.length > 0
     ? await runLocalTesseractOcr(pdf, pagesNeedingOcr)
     : { provider: "embedded-text", results: new Map<number, LocalOcrPageResult>(), warnings: [], skippedPageNumbers: new Set<number>() };
@@ -1915,9 +1936,10 @@ export async function analyzePdfUpload(pdf: PdfUpload): Promise<PdfImportAnalysi
       });
     } else {
       const ocr = localOcr.results.get(pageNumber);
+      const ocrRawBlocks = ocr?.raw_blocks || [];
       const auditRawBlocks = ocr?.raw_text
-        ? [...rawBlocks, { kind: "ocr_raw_text", source: "tesseract-local-raw", text: ocr.raw_text }]
-        : rawBlocks;
+        ? [...rawBlocks, ...ocrRawBlocks, { kind: "ocr_raw_text", source: "tesseract-local-raw", text: ocr.raw_text }]
+        : [...rawBlocks, ...ocrRawBlocks];
       if (ocr && ocr.status === "completed") {
         const ocrText = cleanText(ocr.text);
         const ocrQuality = textQuality(ocrText);
@@ -1976,6 +1998,20 @@ export async function analyzePdfUpload(pdf: PdfUpload): Promise<PdfImportAnalysi
         });
         continue;
       }
+      if (options?.ocrPageNumbers && !options.ocrPageNumbers.includes(pageNumber)) {
+        pages.push({
+          page_number: pageNumber,
+          extraction_method: "none",
+          ocr_status: "pending",
+          text_extracted: "",
+          ocr_text: "",
+          page_image_url: null,
+          confidence: null,
+          warnings: [...(structuredPage?.warnings || []), "OCR is pending in a later remote-worker page batch."],
+          raw_blocks: rawBlocks
+        });
+        continue;
+      }
       const unavailable = await unavailableOcrProvider.analyzePage(pageNumber);
       pages.push({
         page_number: pageNumber,
@@ -1993,6 +2029,17 @@ export async function analyzePdfUpload(pdf: PdfUpload): Promise<PdfImportAnalysi
     }
   }
 
+  return finalizePdfPages(pdf, pages, warnings, localOcr.provider, pageCount);
+}
+
+export async function finalizePdfPages(
+  pdf: PdfUpload,
+  pages: PageWithoutStorage[],
+  initialWarnings: string[] = [],
+  ocrProvider = "tesseract-remote-worker",
+  pageCount = pages.length
+): Promise<PdfImportAnalysisInput> {
+  const warnings = [...initialWarnings];
   const scoringContent = classifyScoringGuideContent(pages);
   warnings.push(...scoringContent.warnings);
   const segmentationSections = buildSegmentationSections(pages);
@@ -2143,7 +2190,7 @@ export async function analyzePdfUpload(pdf: PdfUpload): Promise<PdfImportAnalysi
     pdfUploadId: pdf.id,
     status: draftQuestions.length > 0 ? "needs_review" : "failed",
     parserVersion: PARSER_VERSION,
-    ocrProvider: localOcr.provider,
+    ocrProvider,
     pageCount,
     warnings,
     errorMessage: draftQuestions.length > 0 ? null : "No draft questions could be created from the available text.",

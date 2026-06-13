@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { adminStartPdfImportAction, adminUpdatePdfMetadataAction } from "@/app/actions";
+import { adminCancelPdfImportAction, adminDeletePdfUploadAction, adminRetryPdfImportAction, adminStartPdfImportAction, adminUpdatePdfMetadataAction } from "@/app/actions";
 import { DataTable } from "@/components/admin/DataTable";
 import { PdfImportWorkspace } from "@/components/admin/PdfImportWorkspace";
 import { PdfUploader } from "@/components/admin/PdfUploader";
@@ -13,7 +13,10 @@ export default async function AdminPdfsPage({ searchParams }: { searchParams?: {
     listPdfImportJobs(),
     getPdfImportSchemaStatus()
   ]);
-  const latestJobByPdf = new Map(jobs.map((job) => [job.pdf_upload_id, job]));
+  const latestJobByPdf = new Map<string, (typeof jobs)[number]>();
+  for (const job of jobs) {
+    if (!latestJobByPdf.has(job.pdf_upload_id)) latestJobByPdf.set(job.pdf_upload_id, job);
+  }
   const selectedJobId = searchParams?.job_id || jobs[0]?.id || "";
   const selectedJob = selectedJobId ? await getPdfImportJobDetails(selectedJobId) : null;
   const showMissingSchemaWarning = !importSchemaStatus.available || searchParams?.import_error === "schema_missing";
@@ -54,7 +57,7 @@ export default async function AdminPdfsPage({ searchParams }: { searchParams?: {
           <h2 className="font-semibold">PDF import setup needed</h2>
           <p className="mt-2">
             Supabase is connected, but the PDF import tables are not available in this project yet. Existing PDF uploads
-            still work, but OCR analysis is disabled until <code className="rounded bg-amber-100 px-1">supabase/migrations/008_pdf_import_pipeline.sql</code> is applied.
+            still work, but OCR analysis is disabled until migrations through <code className="rounded bg-amber-100 px-1">supabase/migrations/009_remote_pdf_worker.sql</code> are applied.
           </p>
         </section>
       ) : null}
@@ -63,7 +66,7 @@ export default async function AdminPdfsPage({ searchParams }: { searchParams?: {
           <h2 className="font-semibold">Unable to start PDF analysis</h2>
           <p className="mt-2">
             The import job could not be queued. Check the server log for the underlying error and confirm that the
-            current Supabase project has every migration through <code className="rounded bg-red-100 px-1">008_pdf_import_pipeline.sql</code>.
+            current Supabase project has every migration through <code className="rounded bg-red-100 px-1">009_remote_pdf_worker.sql</code>.
           </p>
         </section>
       ) : null}
@@ -73,8 +76,9 @@ export default async function AdminPdfsPage({ searchParams }: { searchParams?: {
         rows={pdfs.map((pdf) => {
           const latestJob = latestJobByPdf.get(pdf.id);
           const isSelected = Boolean(latestJob && latestJob.id === selectedJobId);
+          const importActive = Boolean(latestJob && ["queued", "triaging", "processing", "finalizing"].includes(latestJob.status));
           return [
-            <a key="file" href={pdf.file_url} target="_blank" className="font-medium text-brand">{pdf.file_name}</a>,
+            <a key="file" href={pdf.file_url || "#"} target="_blank" className="font-medium text-brand">{pdf.file_name}</a>,
             pdf.subject || "",
             pdf.unit || "",
             pdf.topic || "",
@@ -83,7 +87,7 @@ export default async function AdminPdfsPage({ searchParams }: { searchParams?: {
               <form action={adminStartPdfImportAction}>
                 <input type="hidden" name="pdf_id" value={pdf.id} />
                 <button
-                  disabled={!importSchemaStatus.available}
+                  disabled={!importSchemaStatus.available || pdf.upload_status === "uploading" || importActive}
                   className="rounded-full bg-blue-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-slate-300"
                 >
                   Start analysis
@@ -97,6 +101,22 @@ export default async function AdminPdfsPage({ searchParams }: { searchParams?: {
                   {isSelected ? "Selected" : `Review ${latestJob.draft_question_count}`}
                 </Link>
               ) : null}
+              {latestJob && ["queued", "triaging", "processing", "finalizing"].includes(latestJob.status) ? (
+                <form action={adminCancelPdfImportAction}>
+                  <input type="hidden" name="job_id" value={latestJob.id} />
+                  <button className="rounded-full border border-red-300 px-3 py-1.5 text-xs font-semibold text-red-700">Cancel</button>
+                </form>
+              ) : null}
+              {latestJob?.status === "failed" || latestJob?.status === "cancelled" ? (
+                <form action={adminRetryPdfImportAction}>
+                  <input type="hidden" name="job_id" value={latestJob.id} />
+                  <button className="rounded-full border border-blue-300 px-3 py-1.5 text-xs font-semibold text-blue-700">Retry</button>
+                </form>
+              ) : null}
+              <form action={adminDeletePdfUploadAction}>
+                <input type="hidden" name="pdf_id" value={pdf.id} />
+                <button disabled={importActive} className="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:opacity-40">Delete</button>
+              </form>
             </div>,
             <form key="meta" action={adminUpdatePdfMetadataAction} className="grid min-w-[420px] gap-2 md:grid-cols-[1fr_1fr_1fr_70px]">
               <input type="hidden" name="id" value={pdf.id} />

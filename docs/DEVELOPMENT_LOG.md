@@ -1350,3 +1350,23 @@ npx tsc --noEmit
   - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules/next/dist/bin/next lint` passed with no ESLint warnings or errors.
   - `C:\Users\ethan\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe scripts/predeploy-check.cjs` passed with expected local warnings only.
   - `curl.exe -s --cookie ... http://127.0.0.1:3024/admin/pdfs` authenticated render smoke passed for the workflow landmarks above.
+
+### 2026-06-12 Scanned visual evidence and OCR timeout pass
+
+- Added geometry-aware Tesseract line blocks and bounded non-text visual-region detection for scanned pages. Detected regions become review-only crop candidates and are associated using horizontal and vertical proximity.
+- Kept untouched Tesseract text and line blocks for audit. Low-confidence and tiny OCR fragments substantially inside detected visual regions are excluded only from normalized segmentation text.
+- Defaulted Tesseract layout segmentation to PSM 3, recovered explicit single-visible-subpart FRQ pages conservatively, and populated their structured FRQ parts after classification.
+- Replaced the fixed 30-second default full-OCR timeout with a bounded page-scaled timeout: 30 seconds minimum, 15 seconds per selected page, and 10 minutes maximum. Explicit `PDF_OCR_TIMEOUT_MS` still overrides it.
+- Focused sample probes:
+  - Page 610 now produces FRQ 3 with one structured `(a)` part and two crop candidates. Normalized text fell from 1,862 raw OCR characters to 977 while raw OCR remained available.
+  - Pages 150, 205, and 255 retained their review drafts and generated crop candidates.
+  - The supplied 718-page Physics packet completed bounded triage in about 152 seconds: 12 pages selected for OCR, 26 review-only MCQ drafts, 50 crop candidates, and 20 detected visual regions. Before the timeout change, the same pass failed after 30 seconds with zero drafts.
+
+### 2026-06-13 Production remote OCR worker pass
+
+- Added migration `009_remote_pdf_worker.sql` with queued/leased job phases, cancellation state, persistent page batches, and an atomic worker claim function.
+- Added browser-to-Cloudflare-R2 multipart uploads with 10 MiB parts, three concurrent uploads, three retries, a 500 MB limit, private source downloads, and public unguessable evidence paths.
+- Added a single-replica Railway worker that claims Supabase jobs, validates sources, processes and persists 12-page batches, heartbeats its lease, retries failed batches, resumes completed batches, and finalizes stable drafts from persisted pages without rerunning OCR.
+- Preserved local OCR mode for development and changed remote-worker mode so Vercel only queues and polls jobs.
+- Extended the admin PDF workspace with queue phases, heartbeat/batch progress, cancel, retry, and delete controls.
+- A focused 718-page batch probe processed only requested page 150, left the other 717 pages pending, and produced no unexpected terminal page states.

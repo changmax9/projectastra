@@ -7,8 +7,9 @@ export type SubmissionStatus = "in_progress" | "submitted" | "graded" | "complet
 export type ExamAttemptStep = "section" | "break" | "completed";
 export type ExamSectionProgressStatus = "not_started" | "in_progress" | "completed";
 export type ReviewGuideStatus = "draft" | "published";
-export type PdfStatus = "uploaded" | "parsed" | "failed";
-export type PdfImportJobStatus = "processing" | "needs_review" | "completed" | "failed";
+export type PdfStatus = "uploading" | "uploaded" | "parsed" | "failed" | "deleted";
+export type PdfImportJobStatus = "queued" | "triaging" | "processing" | "finalizing" | "needs_review" | "completed" | "failed" | "cancelled";
+export type PdfImportBatchStatus = "pending" | "processing" | "completed" | "failed" | "cancelled";
 export type PdfPageExtractionMethod = "text" | "ocr" | "none";
 export type PdfOcrStatus = "not_needed" | "pending" | "unavailable" | "completed" | "failed";
 export type PdfDraftReviewStatus = "pending" | "saved" | "rejected";
@@ -195,6 +196,12 @@ export interface PdfUpload {
   unit: string | null;
   topic: string | null;
   status: PdfStatus;
+  storage_provider?: string;
+  storage_bucket?: string | null;
+  storage_object_key?: string | null;
+  mime_type?: string;
+  size_bytes?: number;
+  upload_status?: "uploading" | "completed" | "failed" | "deleted";
   uploaded_by: string | null;
   created_at: string;
   updated_at: string;
@@ -209,12 +216,33 @@ export interface PdfImportJob {
   page_count: number;
   extracted_page_count: number;
   draft_question_count: number;
+  phase?: string;
+  processed_page_count?: number;
+  lease_owner?: string | null;
+  lease_expires_at?: string | null;
+  heartbeat_at?: string | null;
+  cancel_requested_at?: string | null;
+  attempt_count?: number;
   warnings: string[];
   error_message: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
   pdf_upload?: PdfUpload | null;
+}
+
+export interface PdfImportBatch {
+  id: string;
+  job_id: string;
+  page_numbers: number[];
+  status: PdfImportBatchStatus;
+  attempt_count: number;
+  next_attempt_at: string | null;
+  lease_owner: string | null;
+  lease_expires_at: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface PdfImportPage {
@@ -291,6 +319,7 @@ export interface PdfImportJobDetails extends PdfImportJob {
   pages: PdfImportPage[];
   draft_questions: PdfImportDraftQuestion[];
   draft_assets: PdfImportDraftAsset[];
+  batches?: PdfImportBatch[];
 }
 
 export interface PdfImportReviewQueueItem extends PdfImportJob {

@@ -448,7 +448,9 @@ assert.match(pdfImportSource, /scoring\\s\+guidelines/, "PDF OCR triage penalize
 assert.match(pdfImportSource, /question\\s\+descriptors\\s\+and\\s\+performance\\s\+data/, "PDF OCR triage penalizes performance-data tables");
 assert.match(pdfImportSource, /answers\?\\s\+to\\s\+multiple-choice\\s\+questions/, "PDF OCR triage penalizes answer-list pages");
 assert.match(pdfImportSource, /tesseract-local-raw/, "PDF import preserves untouched Tesseract output separately for audit");
+assert.match(pdfImportSource, /ocr\?\.raw_blocks/, "PDF import preserves scanned-page OCR geometry blocks for visual crop proposals");
 assert.match(pdfImportSource, /PDF_OCR_TIMEOUT_MS/, "PDF import has a configurable OCR worker timeout");
+assert.match(pdfImportSource, /DEFAULT_OCR_TIMEOUT_PER_PAGE_MS/, "PDF import scales the default full-OCR timeout with the selected page count");
 assert.match(pdfImportSource, /Local OCR worker timed out/, "PDF import reports OCR worker timeouts clearly");
 assert.match(pdfImportSource, /Configured TESSERACT_CMD was not found/, "PDF import fails closed for invalid explicit Tesseract config");
 assert.match(pdfImportSource, /skippedPageNumbers/, "PDF import distinguishes page-limit skipped OCR pages");
@@ -469,6 +471,8 @@ assert.match(pdfImportSource, /isTableOfContentsLikeText/, "PDF import filters t
 assert.match(pdfImportSource, /isScoringSectionStart/, "PDF import filters answer and scoring sections before question segmentation");
 assert.match(pdfImportSource, /filterDuplicateMcqDrafts/, "PDF import filters broader duplicate MCQ candidates caused by instruction-page starts");
 assert.match(pdfImportSource, /filterOutOfSequenceFrqDrafts/, "PDF import filters out-of-sequence FRQ-like starts caused by formulas or subparts");
+assert.match(pdfImportSource, /hasExplicitFrqPart/, "PDF import accepts explicit single-subpart FRQ pages with a clear prompt verb");
+assert.match(pdfImportSource, /extractFrqParts\(block\.text, true\)/, "PDF import structures a single visible subpart only after classifying the block as FRQ");
 assert.match(pdfImportSource, /function choiceDiagnostics/, "PDF import warns on suspicious choice parsing");
 assert.match(pdfImportSource, /merged or corrupted choices/, "PDF import explicitly flags severe merged-choice drafts");
 assert.match(pdfImportSource, /Candidate source page for a visual reference/, "PDF import creates visual source-page asset candidates");
@@ -476,6 +480,8 @@ assert.match(pdfImportSource, /function draftNeedsVisualEvidence/, "PDF import d
 assert.match(pdfImportSource, /function buildVisualCropCandidates/, "PDF import proposes visual crop candidates from structured page blocks");
 assert.match(pdfImportSource, /function visualBlockAssociationScore/, "PDF import ranks visual crop candidates against their draft question anchors");
 assert.match(pdfImportSource, /matches below-reference cue/, "PDF import prefers nearby visual regions that match below-reference cues");
+assert.match(pdfImportSource, /normalizedHorizontalDistance/, "PDF import associates scanned visual regions using horizontal as well as vertical proximity");
+assert.match(pdfImportSource, /likelyVisualChoices/, "PDF import keeps a broader review-only crop set when scanned answer choices are likely visual");
 assert.match(pdfImportSource, /\["image", "table", "vector"\]/, "PDF import accepts bounded raster, table, and vector crop evidence blocks");
 assert.match(pdfImportSource, /runLocalVisualCropRender/, "PDF import renders cropped visual evidence candidates separately from page previews");
 assert.match(pdfImportSource, /pdf-import-crops/, "PDF import stores generated crop candidates outside full-page preview paths");
@@ -567,11 +573,39 @@ assert.match(pdfOcrWorker, /get_pixmap/, "PDF OCR worker renders PDF pages befor
 assert.match(pdfOcrWorker, /render-only/, "PDF OCR worker supports render-only source-page previews");
 assert.match(pdfOcrWorker, /rendered_lines/, "PDF OCR worker preserves line breaks for segmentation");
 assert.match(pdfOcrWorker, /page_result\["raw_text"\]/, "PDF OCR worker returns untouched Tesseract text before deterministic normalization");
-assert.match(pdfOcrWorker, /choices=\[3, 4, 6, 11\], default=6/, "PDF OCR worker keeps the proven single-block default with bounded segmentation overrides");
+assert.match(pdfOcrWorker, /scanned_visual_blocks/, "PDF OCR worker detects bounded non-text visual regions on scanned pages");
+assert.match(pdfOcrWorker, /tesseract-nontext-region/, "PDF OCR worker labels scanned visual-region evidence separately from OCR text");
+assert.match(pdfOcrWorker, /rounded_pdf_bbox/, "PDF OCR worker converts OCR geometry back into PDF coordinates");
+assert.match(pdfOcrWorker, /"source": "tesseract-line"/, "PDF OCR worker preserves geometry-aware OCR text lines for visual association");
+assert.match(pdfOcrWorker, /removed_visual_noise_lines/, "PDF OCR worker excludes low-confidence text inside visual regions only from normalized segmentation text");
+assert.match(pdfOcrWorker, /looks_like_visual_fragment/, "PDF OCR worker excludes tiny diagram-internal OCR fragments from normalized segmentation text");
+assert.match(pdfOcrWorker, /choices=\[3, 4, 6, 11\], default=3/, "PDF OCR worker defaults to automatic layout segmentation with bounded overrides");
 assert.match(pdfOcrWorker, /normalize_choice_lines/, "PDF OCR worker conservatively normalizes complete sequential OCR choice-label runs");
 assert.match(pdfOcrWorker, /normalize_question_lines/, "PDF OCR worker conservatively restores dropped punctuation on question-like OCR starts");
 assert.match(pdfOcrWorker, /crops-json/, "PDF OCR worker can render bounded visual evidence crops");
 assert.match(pdfOcrWorker, /too close to a full page/, "PDF OCR worker refuses crop requests that look like full-page screenshots");
+
+const remotePdfWorker = source("scripts/pdf-import-worker.ts");
+assert.match(remotePdfWorker, /claim_next_pdf_import_job/, "Remote PDF worker atomically claims queued jobs");
+assert.match(remotePdfWorker, /PDF_WORKER_BATCH_SIZE/, "Remote PDF worker processes bounded resumable page batches");
+assert.match(remotePdfWorker, /cancel_requested_at/, "Remote PDF worker checks cancellation between batches");
+assert.match(remotePdfWorker, /uploadAnalysisEvidence/, "Remote PDF worker uploads generated evidence to durable storage");
+assert.match(remotePdfWorker, /status: "finalizing"/, "Remote PDF worker finalizes stable drafts only after page batches finish");
+
+const r2Source = source("lib/r2.ts");
+assert.match(r2Source, /AWS4-HMAC-SHA256/, "R2 integration signs S3-compatible requests without exposing credentials");
+assert.match(r2Source, /R2_MAX_PDF_BYTES/, "R2 upload path enforces the production PDF size ceiling");
+assert.match(r2Source, /deleteR2Prefix/, "R2 integration can clean up generated evidence on admin deletion");
+
+const multipartUploader = source("components/admin/PdfUploader.tsx");
+assert.match(multipartUploader, /Math\.min\(3, partCount\)/, "Browser PDF uploader limits multipart concurrency to three");
+assert.match(multipartUploader, /attempt <= 3/, "Browser PDF uploader retries each failed part up to three times");
+assert.match(multipartUploader, /multipart\/complete/, "Browser PDF uploader completes R2 multipart uploads explicitly");
+
+const remoteWorkerMigration = source("supabase/migrations/009_remote_pdf_worker.sql");
+assert.match(remoteWorkerMigration, /create table if not exists public\.pdf_import_batches/, "Remote worker migration persists resumable page batches");
+assert.match(remoteWorkerMigration, /claim_next_pdf_import_job/, "Remote worker migration provides an atomic leased job claim");
+assert.match(remoteWorkerMigration, /cancel_requested_at/, "Remote worker migration records admin cancellation requests");
 
 const pdfTextWorker = source("scripts/pdf-text-worker.py");
 assert.match(pdfTextWorker, /get_text\("blocks"/, "PDF text worker extracts positioned text blocks");

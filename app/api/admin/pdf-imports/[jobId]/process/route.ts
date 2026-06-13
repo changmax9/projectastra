@@ -38,7 +38,11 @@ export async function POST(_: Request, { params }: { params: { jobId: string } }
     return NextResponse.json({ error: "PDF import job not found." }, { status: 404 });
   }
 
-  if (current.status !== "processing") {
+  if (process.env.PDF_OCR_MODE === "remote-worker") {
+    const active = ["queued", "triaging", "processing", "finalizing"].includes(current.status);
+    return NextResponse.json({ job: current, progress: progressFromJob(current), done: !active });
+  }
+  if (!["queued", "processing"].includes(current.status)) {
     return NextResponse.json({ job: current, progress: progressFromJob(current), done: true });
   }
 
@@ -72,7 +76,7 @@ export async function POST(_: Request, { params }: { params: { jobId: string } }
       await completePdfImportJob(current.id, failedAnalysis, admin.id);
     } catch (persistError) {
       const persistMessage = isPdfImportSchemaSetupError(persistError)
-        ? "PDF import database tables are unavailable. Apply supabase/migrations/008_pdf_import_pipeline.sql and retry."
+        ? "PDF import database tables are unavailable. Apply Supabase migrations through 009_remote_pdf_worker.sql and retry."
         : "PDF import failed, and its failed state could not be saved. Check the server log.";
       console.error("Unable to save failed PDF import state:", persistError);
       return NextResponse.json({ done: true, error: persistMessage }, { status: 500 });

@@ -11,6 +11,7 @@ import {
   completeSubmissionBreak,
   createOrContinueSubmission,
   createPdfImportJob,
+  deletePdfUploadRecord,
   deleteExam,
   deleteMediaFile,
   deleteQuestion,
@@ -27,6 +28,8 @@ import {
   linkImageToChoice,
   linkImageToQuestion,
   removeQuestionFromExam,
+  requestPdfImportCancellation,
+  retryPdfImportJob,
   recoverMockSubmission,
   reorderExamQuestion,
   saveAnswer,
@@ -59,6 +62,7 @@ import { examFormSchema, questionFormSchema, questionImportArraySchema, reviewGu
 import type { QuestionImportBatch, QuestionImportItem } from "@/lib/types";
 import { normalizeQuestionImportItems } from "@/lib/question-import";
 import { PARSER_VERSION } from "@/lib/pdf";
+import { deleteR2Object, deleteR2Prefix, r2Buckets } from "@/lib/r2";
 import { nowIso, slugify } from "@/lib/utils";
 
 export interface ActionState {
@@ -756,6 +760,7 @@ export async function adminStartPdfImportAction(formData: FormData) {
   try {
     const pdf = await getPdfUpload(pdfId);
     if (!pdf) throw new Error("PDF upload not found.");
+    if (pdf.upload_status === "uploading") throw new Error("PDF upload has not completed yet.");
     job = await createPdfImportJob(pdf.id, admin.id, PARSER_VERSION);
   } catch (error) {
     if (isPdfImportSchemaSetupError(error)) redirect("/admin/pdfs?import_error=schema_missing");
@@ -765,6 +770,33 @@ export async function adminStartPdfImportAction(formData: FormData) {
   revalidatePath("/admin/pdfs");
   revalidatePath(`/admin/pdf-imports/${job.id}`);
   redirect(`/admin/pdfs?job_id=${job.id}`);
+}
+
+export async function adminCancelPdfImportAction(formData: FormData) {
+  await requireAdmin();
+  const jobId = String(formData.get("job_id") || "");
+  if (jobId) await requestPdfImportCancellation(jobId);
+  revalidatePath("/admin/pdfs");
+}
+
+export async function adminRetryPdfImportAction(formData: FormData) {
+  await requireAdmin();
+  const jobId = String(formData.get("job_id") || "");
+  if (jobId) await retryPdfImportJob(jobId);
+  revalidatePath("/admin/pdfs");
+}
+
+export async function adminDeletePdfUploadAction(formData: FormData) {
+  await requireAdmin();
+  const pdfId = String(formData.get("pdf_id") || "");
+  const pdf = pdfId ? await getPdfUpload(pdfId) : null;
+  if (!pdf) return;
+  if (pdf.storage_provider === "r2") {
+    if (pdf.storage_bucket && pdf.storage_object_key) await deleteR2Object(pdf.storage_bucket, pdf.storage_object_key);
+    await deleteR2Prefix(r2Buckets.evidence, `evidence/${pdf.id}/`);
+  }
+  await deletePdfUploadRecord(pdf.id);
+  revalidatePath("/admin/pdfs");
 }
 
 export async function adminSavePdfDraftQuestionAction(_: ActionState, formData: FormData): Promise<ActionState> {

@@ -31,6 +31,7 @@ import type {
   PdfDraftReviewStatus,
   PdfImportDraftAsset,
   PdfImportDraftQuestion,
+  PdfImportBatch,
   PdfImportJob,
   PdfImportJobDetails,
   PdfImportPage,
@@ -2413,9 +2414,13 @@ export interface PdfImportAnalysisInput {
 }
 
 const PDF_IMPORT_SCHEMA_SETUP_MESSAGE =
-  "PDF import database tables are not installed. Apply supabase/migrations/008_pdf_import_pipeline.sql before analyzing PDFs in Supabase mode.";
+  "PDF import database tables are not installed. Apply Supabase migrations through 009_remote_pdf_worker.sql before analyzing PDFs in Supabase mode.";
 
 const PDF_IMPORT_SCHEMA_CHECKS = [
+  {
+    table: "pdf_uploads",
+    columns: "id,file_name,file_url,status,storage_provider,storage_bucket,storage_object_key,mime_type,size_bytes,upload_status"
+  },
   {
     table: "pdf_import_jobs",
     columns: "id,pdf_upload_id,status,parser_version,ocr_provider,page_count,extracted_page_count,draft_question_count,warnings,error_message"
@@ -2431,6 +2436,10 @@ const PDF_IMPORT_SCHEMA_CHECKS = [
   {
     table: "pdf_import_draft_assets",
     columns: "id,job_id,pdf_upload_id,draft_question_id,page_number,asset_type,image_url,bbox,keep_for_question,status,notes"
+  },
+  {
+    table: "pdf_import_batches",
+    columns: "id,job_id,page_numbers,status,attempt_count,next_attempt_at,lease_owner,lease_expires_at,error_message"
   }
 ] as const;
 
@@ -2535,13 +2544,13 @@ export async function createPdfImportJob(pdfUploadId: string, adminId: string, p
   const job: PdfImportJob = {
     id: uid("pdf_job"),
     pdf_upload_id: pdfUploadId,
-    status: "processing",
+    status: "queued",
     parser_version: parserVersion,
     ocr_provider: "pending",
     page_count: 0,
     extracted_page_count: 0,
     draft_question_count: 0,
-    warnings: ["PDF import job queued. OCR/text processing has not completed yet."],
+    warnings: ["PDF import job queued. The OCR worker has not claimed it yet."],
     error_message: null,
     created_by: adminId,
     created_at: timestamp,
@@ -2554,7 +2563,7 @@ export async function createPdfImportJob(pdfUploadId: string, adminId: string, p
     await adminClient().from("pdf_uploads").update({ status: "uploaded", updated_at: timestamp }).eq("id", pdfUploadId);
     await logAdminEdit(adminId, "pdf_import_job", job.id, "create-processing", {
       pdf_upload_id: pdfUploadId,
-      status: "processing"
+      status: "queued"
     });
     return data as PdfImportJob;
   }
@@ -2567,6 +2576,66 @@ export async function createPdfImportJob(pdfUploadId: string, adminId: string, p
   pdf.updated_at = timestamp;
   await saveMockStore();
   return job;
+}
+
+export async function updatePdfUploadStorage(
+  pdfId: string,
+  updates: Partial<Pick<PdfUpload, "file_url" | "status" | "storage_provider" | "storage_bucket" | "storage_object_key" | "mime_type" | "size_bytes" | "upload_status">>
+) {
+  const payload = { ...updates, updated_at: nowIso() };
+  if (hasSupabaseEnv()) {
+    const { data, error } = await adminClient().from("pdf_uploads").update(payload).eq("id", pdfId).select("*").single();
+    if (error) throw new Error(error.message);
+    return data as PdfUpload;
+  }
+  await ensureMockStore();
+  const pdf = mockPdfUploads.find((item) => item.id === pdfId);
+  if (!pdf) throw new Error("PDF upload not found.");
+  Object.assign(pdf, payload);
+  await saveMockStore();
+  return pdf;
+}
+
+export async function requestPdfImportCancellation(jobId: string) {
+  if (!hasSupabaseEnv()) throw new Error("Remote worker cancellation requires Supabase.");
+  const timestamp = nowIso();
+  const client = adminClient();
+  const { data: job, error: readError } = await client.from("pdf_import_jobs").select("status").eq("id", jobId).single();
+  if (readError) throw new Error(readError.message);
+  const queued = job.status === "queued";
+  const { error } = await client.from("pdf_import_jobs").update({
+    cancel_requested_at: timestamp,
+    ...(queued ? { status: "cancelled", phase: "cancelled", lease_owner: null, lease_expires_at: null } : {}),
+    updated_at: timestamp
+  }).eq("id", jobId);
+  if (error) throw new Error(error.message);
+}
+
+export async function retryPdfImportJob(jobId: string) {
+  if (!hasSupabaseEnv()) throw new Error("Remote worker retry requires Supabase.");
+  const timestamp = nowIso();
+  const { error } = await adminClient().from("pdf_import_jobs").update({
+    status: "queued",
+    phase: "queued",
+    error_message: null,
+    cancel_requested_at: null,
+    lease_owner: null,
+    lease_expires_at: null,
+    updated_at: timestamp
+  }).eq("id", jobId);
+  if (error) throw new Error(error.message);
+}
+
+export async function deletePdfUploadRecord(pdfId: string) {
+  if (hasSupabaseEnv()) {
+    const { error } = await adminClient().from("pdf_uploads").delete().eq("id", pdfId);
+    if (error) throw new Error(error.message);
+    return;
+  }
+  await ensureMockStore();
+  const index = mockPdfUploads.findIndex((item) => item.id === pdfId);
+  if (index >= 0) mockPdfUploads.splice(index, 1);
+  await saveMockStore();
 }
 
 export async function savePdfImportAnalysis(input: PdfImportAnalysisInput, adminId: string) {
@@ -2732,7 +2801,8 @@ export async function listPdfImportJobs(pdfUploadId?: string) {
 }
 
 export async function getPdfImportReviewQueue(): Promise<PdfImportReviewQueue> {
-  const reviewStatuses: PdfImportJob["status"][] = ["processing", "needs_review", "failed"];
+  const activeStatuses: PdfImportJob["status"][] = ["queued", "triaging", "processing", "finalizing"];
+  const reviewStatuses: PdfImportJob["status"][] = [...activeStatuses, "needs_review", "failed"];
   const jobs = (await listPdfImportJobs())
     .filter((job) => reviewStatuses.includes(job.status))
     .slice(0, 8);
@@ -2782,7 +2852,7 @@ export async function getPdfImportReviewQueue(): Promise<PdfImportReviewQueue> {
   return {
     items,
     pending_draft_count: items.reduce((sum, job) => sum + job.pending_draft_count, 0),
-    processing_job_count: items.filter((job) => job.status === "processing").length,
+    processing_job_count: items.filter((job) => activeStatuses.includes(job.status)).length,
     failed_job_count: items.filter((job) => job.status === "failed").length
   };
 }
@@ -2798,7 +2868,7 @@ export async function getPdfImportJobDetails(jobId: string): Promise<PdfImportJo
     if (isMissingPdfImportSchemaError(error)) return null;
     if (error) throw new Error(error.message);
     if (!job) return null;
-    const [{ data: pages, error: pageError }, { data: drafts, error: draftError }, { data: assets, error: assetError }] =
+    const [{ data: pages, error: pageError }, { data: drafts, error: draftError }, { data: assets, error: assetError }, { data: batches, error: batchError }] =
       await Promise.all([
         supabase.from("pdf_import_pages").select("*").eq("job_id", jobId).order("page_number", { ascending: true }),
         supabase
@@ -2806,16 +2876,19 @@ export async function getPdfImportJobDetails(jobId: string): Promise<PdfImportJo
           .select("*")
           .eq("job_id", jobId)
           .order("question_number", { ascending: true, nullsFirst: false }),
-        supabase.from("pdf_import_draft_assets").select("*").eq("job_id", jobId).order("page_number", { ascending: true })
+        supabase.from("pdf_import_draft_assets").select("*").eq("job_id", jobId).order("page_number", { ascending: true }),
+        supabase.from("pdf_import_batches").select("*").eq("job_id", jobId).order("created_at", { ascending: true })
       ]);
     if (pageError) throw new Error(isMissingPdfImportSchemaError(pageError) ? PDF_IMPORT_SCHEMA_SETUP_MESSAGE : pageError.message);
     if (draftError) throw new Error(isMissingPdfImportSchemaError(draftError) ? PDF_IMPORT_SCHEMA_SETUP_MESSAGE : draftError.message);
     if (assetError) throw new Error(isMissingPdfImportSchemaError(assetError) ? PDF_IMPORT_SCHEMA_SETUP_MESSAGE : assetError.message);
+    if (batchError && !isMissingPdfImportSchemaError(batchError)) throw new Error(batchError.message);
     return {
       ...(job as PdfImportJob),
       pages: (pages || []) as PdfImportPage[],
       draft_questions: (drafts || []) as PdfImportDraftQuestion[],
-      draft_assets: (assets || []) as PdfImportDraftAsset[]
+      draft_assets: (assets || []) as PdfImportDraftAsset[],
+      batches: (batches || []) as PdfImportBatch[]
     };
   }
 

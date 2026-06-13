@@ -153,4 +153,6 @@ Check Vercel Function logs. Common causes are missing Supabase env variables, mi
 
 If errors mention missing `exam_attempts`, `section_progress`, `student_answers`, or `exam_sections`, apply all migrations in `supabase/migrations`, especially the production data-layer migration.
 
-If PDF analysis says its import tables are missing, run `npm run check:supabase:pdf-import` locally and apply `supabase/migrations/008_pdf_import_pipeline.sql` to the exact Supabase project reported by that command.
+If PDF analysis says its import tables are missing, run `npm run check:supabase:pdf-import` locally and apply migrations through `supabase/migrations/009_remote_pdf_worker.sql` to the exact Supabase project reported by that command.
+
+Production OCR is not executed inside Vercel. Apply `supabase/migrations/009_remote_pdf_worker.sql`, set `PDF_OCR_MODE=remote-worker`, configure Cloudflare R2 credentials, and deploy `Dockerfile.worker` as a single Railway worker before starting scanned-PDF imports.

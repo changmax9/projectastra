@@ -13,3 +13,4 @@ tmp-*
 backups/
 public/uploads/*
 !public/uploads/.gitkeep
+.worker-temp/

@@ -17,7 +17,7 @@ function progressForJob(job: PdfImportJobDetails) {
   const ocrPending = job.pages.filter((page) => page.ocr_status === "pending").length;
   const ocrCompleted = job.pages.filter((page) => page.ocr_status === "completed" || page.ocr_status === "not_needed").length;
   const ocrFailed = job.pages.filter((page) => page.ocr_status === "failed" || page.ocr_status === "unavailable").length;
-  const processedPages = job.pages.filter((page) => page.extraction_method !== "none" || page.ocr_status !== "pending").length;
+  const processedPages = job.processed_page_count ?? job.pages.filter((page) => page.extraction_method !== "none" || page.ocr_status !== "pending").length;
   return {
     processedPages,
     ocrPending,
@@ -28,13 +28,14 @@ function progressForJob(job: PdfImportJobDetails) {
 
 function statusTone(status: PdfImportJobDetails["status"]) {
   if (status === "failed") return "border-red-200 bg-red-50 text-red-800";
-  if (status === "processing") return "border-blue-200 bg-blue-50 text-blue-900";
+  if (["queued", "triaging", "processing", "finalizing"].includes(status)) return "border-blue-200 bg-blue-50 text-blue-900";
   if (status === "completed") return "border-green-200 bg-green-50 text-green-800";
   return "border-amber-200 bg-amber-50 text-amber-900";
 }
 
 function workspaceActionLabel(job: PdfImportJobDetails, pendingCount: number) {
-  if (job.status === "processing") return "Analysis is running";
+  if (job.status === "queued") return "Waiting for the OCR worker";
+  if (["triaging", "processing", "finalizing"].includes(job.status)) return `Analysis is running: ${job.phase || job.status}`;
   if (job.status === "failed") return "Fix the import issue, then start analysis again";
   if (pendingCount > 0) return `Review ${pendingCount} pending draft${pendingCount === 1 ? "" : "s"}`;
   if (job.draft_questions.length > 0) return "All drafts have been reviewed";
@@ -55,7 +56,7 @@ export function PdfImportWorkspace({ initialJob }: { initialJob: PdfImportJobDet
   const progress = useMemo(() => (job ? progressForJob(job) : null), [job]);
 
   useEffect(() => {
-    if (!job || job.status !== "processing") return;
+    if (!job || !["queued", "triaging", "processing", "finalizing"].includes(job.status)) return;
     let cancelled = false;
     const jobId = job.id;
     async function processJob() {
@@ -74,7 +75,7 @@ export function PdfImportWorkspace({ initialJob }: { initialJob: PdfImportJobDet
         if (!cancelled) setError(caught instanceof Error ? caught.message : "PDF import processing failed.");
       }
     }
-    const timer = window.setTimeout(processJob, 600);
+    const timer = window.setTimeout(processJob, 3000);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
@@ -111,6 +112,7 @@ export function PdfImportWorkspace({ initialJob }: { initialJob: PdfImportJobDet
           <span className={`rounded-md border px-3 py-1 ${statusTone(job.status)}`}>Status: {job.status}</span>
           <span className="rounded-md bg-slate-100 px-3 py-1 text-slate-700">Pages: {job.page_count}</span>
           <span className="rounded-md bg-slate-100 px-3 py-1 text-slate-700">Drafts: {job.draft_question_count}</span>
+          {job.heartbeat_at ? <span className="rounded-md bg-slate-100 px-3 py-1 text-slate-700">Heartbeat: {new Date(job.heartbeat_at).toLocaleTimeString()}</span> : null}
           <Link href={`/admin/pdf-imports/${job.id}`} className="rounded-md border border-slate-300 px-3 py-1 text-slate-700 hover:bg-slate-50">
             Deep link
           </Link>
@@ -153,9 +155,15 @@ export function PdfImportWorkspace({ initialJob }: { initialJob: PdfImportJobDet
         </div>
       </div>
 
-      {job.status === "processing" ? (
+      {["queued", "triaging", "processing", "finalizing"].includes(job.status) ? (
         <div className="rounded-md border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
-          OCR/import is running. This page will update automatically. {isPending ? "Refreshing..." : null}
+          OCR/import is {job.phase || job.status}. This page will update automatically. {isPending ? "Refreshing..." : null}
+        </div>
+      ) : null}
+
+      {job.batches?.length ? (
+        <div className="rounded-md border border-slate-200 p-4 text-sm text-slate-700">
+          Batch progress: {job.batches.filter((batch) => batch.status === "completed").length} / {job.batches.length} completed
         </div>
       ) : null}
 

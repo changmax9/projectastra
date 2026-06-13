@@ -1,0 +1,11 @@
+node_modules
+.next
+.git
+.env
+.env.local
+.mock-db.json
+.test-build
+.pdf-ocr-temp
+public/uploads/*
+tmp*
+backups

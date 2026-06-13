@@ -3,6 +3,7 @@ import json
 import os
 import re
 import sys
+from collections import deque
 from pathlib import Path
 
 
@@ -155,6 +156,124 @@ def normalize_question_lines(rendered_lines):
     return normalized, recovered
 
 
+def rounded_pdf_bbox(pixel_bbox, image_width, image_height, page_width, page_height):
+    x0, y0, x1, y1 = pixel_bbox
+    return [
+        round(x0 * page_width / image_width, 2),
+        round(y0 * page_height / image_height, 2),
+        round(x1 * page_width / image_width, 2),
+        round(y1 * page_height / image_height, 2),
+    ]
+
+
+def connected_regions(mask):
+    width, height = mask.size
+    pixels = mask.load()
+    visited = bytearray(width * height)
+    regions = []
+    for y in range(height):
+        for x in range(width):
+            offset = y * width + x
+            if visited[offset] or pixels[x, y] == 0:
+                continue
+            queue = deque([(x, y)])
+            visited[offset] = 1
+            x0 = x1 = x
+            y0 = y1 = y
+            pixel_count = 0
+            while queue:
+                current_x, current_y = queue.popleft()
+                pixel_count += 1
+                x0 = min(x0, current_x)
+                y0 = min(y0, current_y)
+                x1 = max(x1, current_x)
+                y1 = max(y1, current_y)
+                for next_x, next_y in (
+                    (current_x - 1, current_y),
+                    (current_x + 1, current_y),
+                    (current_x, current_y - 1),
+                    (current_x, current_y + 1),
+                ):
+                    if next_x < 0 or next_y < 0 or next_x >= width or next_y >= height:
+                        continue
+                    next_offset = next_y * width + next_x
+                    if visited[next_offset] or pixels[next_x, next_y] == 0:
+                        continue
+                    visited[next_offset] = 1
+                    queue.append((next_x, next_y))
+            regions.append((x0, y0, x1 + 1, y1 + 1, pixel_count))
+    return regions
+
+
+def scanned_visual_blocks(gray, word_boxes, page_width, page_height):
+    from PIL import ImageDraw, ImageFilter
+
+    image_width, image_height = gray.size
+    scale = min(1.0, 720 / max(1, image_width))
+    reduced_width = max(1, round(image_width * scale))
+    reduced_height = max(1, round(image_height * scale))
+    reduced = gray.resize((reduced_width, reduced_height))
+    ink = reduced.point(lambda value: 255 if value < 185 else 0)
+    draw = ImageDraw.Draw(ink)
+    for left, top, right, bottom in word_boxes:
+        padding = max(2, round(5 * scale))
+        draw.rectangle(
+            (
+                max(0, round(left * scale) - padding),
+                max(0, round(top * scale) - padding),
+                min(reduced_width, round(right * scale) + padding),
+                min(reduced_height, round(bottom * scale) + padding),
+            ),
+            fill=0,
+        )
+
+    merged = ink.filter(ImageFilter.MaxFilter(9)).filter(ImageFilter.MaxFilter(9))
+    page_area = reduced_width * reduced_height
+    blocks = []
+    for region_index, (x0, y0, x1, y1, pixel_count) in enumerate(connected_regions(merged)):
+        width = x1 - x0
+        height = y1 - y0
+        area_ratio = width * height / max(1, page_area)
+        if width < reduced_width * 0.06 or height < reduced_height * 0.025:
+            continue
+        if area_ratio < 0.002 or area_ratio > 0.48:
+            continue
+        if y0 > reduced_height * 0.80:
+            continue
+        density = pixel_count / max(1, width * height)
+        if density < 0.015:
+            continue
+        pixel_bbox = (
+            x0 / scale,
+            y0 / scale,
+            x1 / scale,
+            y1 / scale,
+        )
+        blocks.append(
+            {
+                "bbox": rounded_pdf_bbox(pixel_bbox, image_width, image_height, page_width, page_height),
+                "text": "",
+                "block_number": None,
+                "source": "tesseract-nontext-region",
+                "kind": "image",
+                "visual_type": "diagram",
+                "visual_index": region_index,
+                "ink_density": round(density, 4),
+                "page_width": round(page_width, 2),
+                "page_height": round(page_height, 2),
+            }
+        )
+    return sorted(blocks, key=lambda block: (block["bbox"][1], block["bbox"][0]))[:12]
+
+
+def bbox_overlap_ratio(left, right):
+    intersection_width = max(0, min(left[2], right[2]) - max(left[0], right[0]))
+    intersection_height = max(0, min(left[3], right[3]) - max(left[1], right[1]))
+    intersection = intersection_width * intersection_height
+    left_area = max(1, (left[2] - left[0]) * (left[3] - left[1]))
+    return intersection / left_area
+
+
 def main():
     parser = argparse.ArgumentParser(description="Render PDF pages and OCR them with Tesseract.")
     parser.add_argument("--pdf", required=True)
@@ -163,7 +282,7 @@ def main():
     parser.add_argument("--public-prefix", required=True)
     parser.add_argument("--tesseract-cmd", default="")
     parser.add_argument("--dpi", type=int, default=220)
-    parser.add_argument("--psm", type=int, choices=[3, 4, 6, 11], default=6)
+    parser.add_argument("--psm", type=int, choices=[3, 4, 6, 11], default=3)
     parser.add_argument("--render-only", action="store_true")
     parser.add_argument("--crops-json", default="", help="JSON crop requests using PDF page coordinates.")
     args = parser.parse_args()
@@ -229,6 +348,7 @@ def main():
             "status": "failed",
             "text": "",
             "raw_text": "",
+            "raw_blocks": [],
             "confidence": None,
             "image_url": None,
             "warnings": [],
@@ -253,6 +373,9 @@ def main():
             gray = image.convert("L")
             data = pytesseract.image_to_data(gray, lang="eng", config=f"--psm {args.psm}", output_type=pytesseract.Output.DICT)
             lines = {}
+            line_boxes = {}
+            line_confidences = {}
+            word_boxes = []
             confidences = []
             texts = data.get("text", [])
             confs = data.get("conf", [])
@@ -260,6 +383,10 @@ def main():
             pars = data.get("par_num", [])
             line_nums = data.get("line_num", [])
             word_nums = data.get("word_num", [])
+            lefts = data.get("left", [])
+            tops = data.get("top", [])
+            widths = data.get("width", [])
+            heights = data.get("height", [])
             for index, (text, conf) in enumerate(zip(texts, confs)):
                 text = (text or "").strip()
                 if text:
@@ -270,17 +397,80 @@ def main():
                     )
                     word_number = word_nums[index] if index < len(word_nums) else index
                     lines.setdefault(key, []).append((word_number, text))
+                    left = int(lefts[index]) if index < len(lefts) else 0
+                    top = int(tops[index]) if index < len(tops) else 0
+                    width = int(widths[index]) if index < len(widths) else 0
+                    height = int(heights[index]) if index < len(heights) else 0
+                    word_bbox = (left, top, left + width, top + height)
+                    word_boxes.append(word_bbox)
+                    previous = line_boxes.get(key)
+                    line_boxes[key] = word_bbox if previous is None else (
+                        min(previous[0], word_bbox[0]),
+                        min(previous[1], word_bbox[1]),
+                        max(previous[2], word_bbox[2]),
+                        max(previous[3], word_bbox[3]),
+                    )
                 try:
                     confidence = float(conf)
                 except Exception:
                     confidence = -1
                 if confidence >= 0:
                     confidences.append(confidence)
+                    if text:
+                        line_confidences.setdefault(key, []).append(confidence)
 
-            rendered_lines = []
+            line_records = []
+            raw_blocks = []
             for key in sorted(lines.keys()):
-                rendered_lines.append(" ".join(text for _, text in sorted(lines[key], key=lambda item: item[0])))
-            page_result["raw_text"] = "\n".join(rendered_lines).strip()
+                line_text = " ".join(text for _, text in sorted(lines[key], key=lambda item: item[0]))
+                line_bbox = line_boxes.get(key)
+                if line_bbox:
+                    pdf_bbox = rounded_pdf_bbox(line_bbox, image.width, image.height, float(page.rect.width), float(page.rect.height))
+                    line_confidence_values = line_confidences.get(key, [])
+                    line_confidence = (
+                        round(sum(line_confidence_values) / len(line_confidence_values), 2)
+                        if line_confidence_values
+                        else None
+                    )
+                    line_records.append({"text": line_text, "bbox": pdf_bbox, "confidence": line_confidence})
+                    raw_blocks.append(
+                        {
+                            "bbox": pdf_bbox,
+                            "text": line_text,
+                            "block_number": int(key[0]) if key else None,
+                            "source": "tesseract-line",
+                            "kind": "text",
+                            "confidence": line_confidence,
+                            "page_width": round(float(page.rect.width), 2),
+                            "page_height": round(float(page.rect.height), 2),
+                        }
+                    )
+            visual_blocks = scanned_visual_blocks(gray, word_boxes, float(page.rect.width), float(page.rect.height))
+            page_result["raw_blocks"] = [*raw_blocks, *visual_blocks]
+            page_result["raw_text"] = "\n".join(record["text"] for record in line_records).strip()
+            if visual_blocks:
+                page_result["warnings"].append(
+                    f"Detected {len(visual_blocks)} bounded non-text visual region(s) from the scanned page for review-only crop proposals."
+                )
+            removed_visual_noise_lines = 0
+            rendered_lines = []
+            for record in line_records:
+                overlaps_visual = any(
+                    bbox_overlap_ratio(record["bbox"], visual_block["bbox"]) >= 0.6
+                    for visual_block in visual_blocks
+                )
+                compact_text = re.sub(r"\W+", "", record["text"])
+                looks_like_visual_fragment = len(compact_text) <= 4 and not re.search(r"[.!?]", record["text"])
+                if overlaps_visual and (
+                    (record["confidence"] is not None and record["confidence"] < 55) or looks_like_visual_fragment
+                ):
+                    removed_visual_noise_lines += 1
+                    continue
+                rendered_lines.append(record["text"])
+            if removed_visual_noise_lines:
+                page_result["warnings"].append(
+                    f"Excluded {removed_visual_noise_lines} low-confidence OCR line(s) inside detected visual regions from normalized segmentation text; raw OCR remains available for audit."
+                )
             rendered_lines, recovered_question_starts = normalize_question_lines(rendered_lines)
             rendered_lines, recovered_choice_labels = normalize_choice_lines(rendered_lines)
 
