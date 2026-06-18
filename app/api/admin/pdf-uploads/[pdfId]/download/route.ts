@@ -3,6 +3,9 @@ import { requireAdmin } from "@/lib/auth";
 import { getPdfUpload } from "@/lib/data";
 import { r2SignedUrl } from "@/lib/r2";
 
+export const runtime = "nodejs";
+export const maxDuration = 10;
+
 export async function GET(_: Request, { params }: { params: { pdfId: string } }) {
   await requireAdmin();
   const pdf = await getPdfUpload(params.pdfId);

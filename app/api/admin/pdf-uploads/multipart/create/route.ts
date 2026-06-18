@@ -3,6 +3,9 @@ import { requireAdmin } from "@/lib/auth";
 import { savePdfUpload, updatePdfUploadStorage } from "@/lib/data";
 import { R2_MAX_PDF_BYTES, R2_MULTIPART_PART_SIZE, r2Buckets, r2ObjectKey, r2Request } from "@/lib/r2";
 
+export const runtime = "nodejs";
+export const maxDuration = 10;
+
 export async function POST(request: Request) {
   const admin = await requireAdmin();
   const body = await request.json() as { fileName?: string; fileSize?: number; contentType?: string; subject?: string; unit?: string; topic?: string };

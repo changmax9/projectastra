@@ -532,11 +532,13 @@ assert.match(dataSource, /PDF_IMPORT_SCHEMA_CHECKS/, "PDF import schema prefligh
 assert.match(dataSource, /pdf_import_pages/, "PDF import schema preflight checks page audit storage");
 assert.match(dataSource, /pdf_import_draft_questions/, "PDF import schema preflight checks draft storage");
 assert.match(dataSource, /pdf_import_draft_assets/, "PDF import schema preflight checks visual asset storage");
+assert.match(dataSource, /\.in\("status", \["failed", "cancelled"\]\)/, "PDF import retry revives failed and cancelled batches");
 
 const pdfAdminPageSource = source("app/admin/pdfs/page.tsx");
 assert.match(pdfAdminPageSource, /PdfImportWorkspace/, "PDF admin page renders the same-page import workspace");
 assert.match(pdfAdminPageSource, /job_id/, "PDF admin page can select an import job inline");
 assert.match(pdfAdminPageSource, /Unable to start PDF analysis/, "PDF admin page shows queue failures without a runtime overlay");
+assert.match(pdfAdminPageSource, /isRemotePdfOcrMode/, "PDF admin page uses the centralized OCR mode guard");
 
 const adminHomeSource = source("app/admin/page.tsx");
 assert.match(adminHomeSource, /Account health/, "Admin dashboard surfaces account health");
@@ -566,6 +568,14 @@ assert.match(pdfProcessRouteSource, /analyzePdfUpload/, "PDF import process rout
 assert.match(pdfProcessRouteSource, /completePdfImportJob/, "PDF import process route persists completed analysis");
 assert.match(pdfProcessRouteSource, /getPdfImportSchemaStatus/, "PDF import process route rechecks schema before analysis");
 assert.match(pdfProcessRouteSource, /failed state could not be saved/, "PDF import process route handles failed-state persistence errors");
+assert.match(pdfProcessRouteSource, /maxDuration = 10/, "PDF import process route stays short-lived in production");
+assert.match(pdfProcessRouteSource, /isRemotePdfOcrMode/, "PDF import process route only polls status in remote-worker mode");
+
+const pdfOcrModeSource = source("lib/pdf-ocr-mode.ts");
+assert.match(pdfOcrModeSource, /process\.env\.VERCEL \? "remote-worker" : "local"/, "Vercel defaults PDF OCR to the remote worker if the dashboard env is omitted");
+
+const pdfDownloadRouteSource = source("app/api/admin/pdf-uploads/[pdfId]/download/route.ts");
+assert.match(pdfDownloadRouteSource, /maxDuration = 10/, "Private PDF download route only signs a short-lived R2 redirect");
 
 const pdfOcrWorker = source("scripts/pdf-ocr-worker.py");
 assert.match(pdfOcrWorker, /pytesseract/, "PDF OCR worker uses Tesseract");
@@ -589,8 +599,13 @@ const remotePdfWorker = source("scripts/pdf-import-worker.ts");
 assert.match(remotePdfWorker, /claim_next_pdf_import_job/, "Remote PDF worker atomically claims queued jobs");
 assert.match(remotePdfWorker, /PDF_WORKER_BATCH_SIZE/, "Remote PDF worker processes bounded resumable page batches");
 assert.match(remotePdfWorker, /cancel_requested_at/, "Remote PDF worker checks cancellation between batches");
+assert.match(remotePdfWorker, /markJobCancelled/, "Remote PDF worker marks unfinished batches cancelled when cancellation is observed");
 assert.match(remotePdfWorker, /uploadAnalysisEvidence/, "Remote PDF worker uploads generated evidence to durable storage");
 assert.match(remotePdfWorker, /status: "finalizing"/, "Remote PDF worker finalizes stable drafts only after page batches finish");
+assert.match(remotePdfWorker, /PDF_WORKER_SMOKE/, "Remote PDF worker has a no-claim startup smoke mode");
+
+const envExample = source(".env.example");
+assert.match(envExample, /PDF_WORKER_SMOKE=/, "Example env documents the no-claim worker smoke flag");
 
 const r2Source = source("lib/r2.ts");
 assert.match(r2Source, /AWS4-HMAC-SHA256/, "R2 integration signs S3-compatible requests without exposing credentials");
@@ -602,10 +617,28 @@ assert.match(multipartUploader, /Math\.min\(3, partCount\)/, "Browser PDF upload
 assert.match(multipartUploader, /attempt <= 3/, "Browser PDF uploader retries each failed part up to three times");
 assert.match(multipartUploader, /multipart\/complete/, "Browser PDF uploader completes R2 multipart uploads explicitly");
 
+const multipartCompleteRoute = source("app/api/admin/pdf-uploads/multipart/complete/route.ts");
+assert.match(multipartCompleteRoute, /upload_status !== "uploading"/, "R2 multipart completion only completes active uploads");
+assert.match(multipartCompleteRoute, /seen\.has\(part\.partNumber\)/, "R2 multipart completion rejects duplicate part numbers");
+
 const remoteWorkerMigration = source("supabase/migrations/009_remote_pdf_worker.sql");
 assert.match(remoteWorkerMigration, /create table if not exists public\.pdf_import_batches/, "Remote worker migration persists resumable page batches");
 assert.match(remoteWorkerMigration, /claim_next_pdf_import_job/, "Remote worker migration provides an atomic leased job claim");
 assert.match(remoteWorkerMigration, /cancel_requested_at/, "Remote worker migration records admin cancellation requests");
+
+const pdfImportSchemaChecks = source("scripts/pdf-import-schema-checks.cjs");
+assert.match(pdfImportSchemaChecks, /missingColumns/, "PDF import schema checker reports missing columns");
+assert.match(pdfImportSchemaChecks, /PDF_UPLOADS_REMOTE_STORAGE_REPAIR_SQL/, "PDF import schema checker prints targeted repair SQL for partial migration 009");
+
+const remoteWorkerCheck = source("scripts/check-remote-pdf-worker.cjs");
+assert.match(remoteWorkerCheck, /checkPdfImportSchema/, "Remote worker checker validates Supabase schema");
+assert.match(remoteWorkerCheck, /repairSqlForResults/, "Remote worker checker prints targeted schema repair SQL");
+
+const r2Cors = source("infra/r2-source-cors.json");
+assert.match(r2Cors, /https:\/\/projectastra\.uk/, "R2 source CORS includes the apex production domain");
+
+const productionOcrDeployment = source("docs/PRODUCTION_OCR_DEPLOYMENT.md");
+assert.match(productionOcrDeployment, /PDF_WORKER_SMOKE=1 npm run worker:pdf-import/, "Production OCR docs include the no-claim worker smoke command");
 
 const workerDockerfile = source("Dockerfile.worker");
 assert.match(workerDockerfile, /RUN npm ci\r?\n/, "Railway worker installs the tsx runtime used by its start command");
@@ -634,12 +667,13 @@ assert.match(pdfTextWorker, /id\(block\) not in choice_parent/, "PDF text worker
 assert.match(pdfTextWorker, /column = 0 if x0 < page_width \/ 2 else 1/, "PDF text worker assigns two-column reading order from each block's left edge");
 assert.match(pdfTextWorker, /UNAUTHORIZED COPYING/, "PDF text worker filters repeated AP footer noise");
 
-const pdfSchemaCheckSource = source("scripts/check-supabase-pdf-import-schema.cjs");
+const pdfSchemaCheckSource = source("scripts/pdf-import-schema-checks.cjs");
 assert.match(pdfSchemaCheckSource, /pdf_import_jobs/, "PDF import schema checker verifies job storage");
 assert.match(pdfSchemaCheckSource, /pdf_import_pages/, "PDF import schema checker verifies page audit storage");
 assert.match(pdfSchemaCheckSource, /pdf_import_draft_questions/, "PDF import schema checker verifies draft storage");
 assert.match(pdfSchemaCheckSource, /pdf_import_draft_assets/, "PDF import schema checker verifies asset storage");
-assert.match(pdfSchemaCheckSource, /Supabase project:/, "PDF import schema checker identifies the configured project without printing credentials");
+const pdfSchemaCheckCli = source("scripts/check-supabase-pdf-import-schema.cjs");
+assert.match(pdfSchemaCheckCli, /Supabase project:/, "PDF import schema checker identifies the configured project without printing credentials");
 
 const authSource = source("lib/auth.ts");
 assert.match(authSource, /auth\.signInWithPassword/, "login uses Supabase Auth password verification");

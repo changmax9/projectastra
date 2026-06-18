@@ -2603,6 +2603,20 @@ export async function requestPdfImportCancellation(jobId: string) {
   const { data: job, error: readError } = await client.from("pdf_import_jobs").select("status").eq("id", jobId).single();
   if (readError) throw new Error(readError.message);
   const queued = job.status === "queued";
+  if (queued) {
+    const { error: batchError } = await client
+      .from("pdf_import_batches")
+      .update({
+        status: "cancelled",
+        next_attempt_at: null,
+        lease_owner: null,
+        lease_expires_at: null,
+        updated_at: timestamp
+      })
+      .eq("job_id", jobId)
+      .neq("status", "completed");
+    if (batchError) throw new Error(batchError.message);
+  }
   const { error } = await client.from("pdf_import_jobs").update({
     cancel_requested_at: timestamp,
     ...(queued ? { status: "cancelled", phase: "cancelled", lease_owner: null, lease_expires_at: null } : {}),
@@ -2623,7 +2637,7 @@ export async function retryPdfImportJob(jobId: string) {
     lease_expires_at: null,
     error_message: null,
     updated_at: timestamp
-  }).eq("job_id", jobId).eq("status", "failed");
+  }).eq("job_id", jobId).in("status", ["failed", "cancelled"]);
   if (batchError) throw new Error(batchError.message);
   const { error } = await supabase.from("pdf_import_jobs").update({
     status: "queued",

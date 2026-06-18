@@ -9,8 +9,11 @@ import {
   isPdfImportSchemaSetupError
 } from "@/lib/data";
 import { analyzePdfUpload } from "@/lib/pdf";
+import { isRemotePdfOcrMode } from "@/lib/pdf-ocr-mode";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+export const maxDuration = 10;
 
 function progressFromJob(job: NonNullable<Awaited<ReturnType<typeof getPdfImportJobDetails>>>) {
   const ocrPending = job.pages.filter((page) => page.ocr_status === "pending").length;
@@ -38,7 +41,7 @@ export async function POST(_: Request, { params }: { params: { jobId: string } }
     return NextResponse.json({ error: "PDF import job not found." }, { status: 404 });
   }
 
-  if (process.env.PDF_OCR_MODE === "remote-worker") {
+  if (isRemotePdfOcrMode()) {
     const active = ["queued", "triaging", "processing", "finalizing"].includes(current.status);
     return NextResponse.json({ job: current, progress: progressFromJob(current), done: !active });
   }

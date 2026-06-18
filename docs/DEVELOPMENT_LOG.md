@@ -1370,3 +1370,67 @@ npx tsc --noEmit
 - Preserved local OCR mode for development and changed remote-worker mode so Vercel only queues and polls jobs.
 - Extended the admin PDF workspace with queue phases, heartbeat/batch progress, cancel, retry, and delete controls.
 - A focused 718-page batch probe processed only requested page 150, left the other 717 pages pending, and produced no unexpected terminal page states.
+
+### 2026-06-17 Production OCR hardening pass
+
+- Started from `D:\Codex\workspaces\projectastra\personal-ap-website-vercel`, preserved the existing untracked handoff docs/zip, and did not mutate Supabase or publish imported questions.
+- Added a centralized PDF OCR mode helper. Local development still defaults to `PDF_OCR_MODE=local`, while Vercel defaults to `remote-worker` polling if the dashboard environment variable is omitted.
+- Marked the PDF import polling route and R2 multipart routes as short-lived Node routes so production endpoints upload, enqueue, and poll instead of running long OCR jobs.
+- Tightened R2 multipart completion by requiring an active uploading record, unique valid part numbers, and non-empty ETags before completing the source upload.
+- Improved cancellation/retry handling: the Railway worker marks unfinished batches cancelled when cancellation is observed, and admin retry now revives both failed and cancelled batches.
+- Improved `/admin/pdf-imports/[jobId]` so the deep-link page exposes phase/heartbeat/progress, batch attempts/retry timing, cancel/retry/delete controls, raw OCR audit output, and review-only visual candidates.
+- Verification:
+  - `node tests/run-import-tests.cjs` passed using the bundled Codex Node runtime.
+  - `node node_modules/typescript/bin/tsc --noEmit` passed.
+  - `node node_modules/next/dist/bin/next lint` passed with no warnings or errors.
+  - `node scripts/predeploy-check.cjs` passed with expected local `.env.local`, `.mock-db.json`, and running-process warnings.
+  - `python -m py_compile scripts/pdf-ocr-worker.py scripts/pdf-text-worker.py` passed.
+  - `node node_modules/next/dist/bin/next build` passed.
+  - `node scripts/check-local-ocr-runtime.cjs` passed with D-drive Python/Tesseract paths.
+  - A targeted local OCR smoke on supplied Physics page 610 returned `needs_review`, provider `tesseract-local`, 1 draft, 2 visual candidate assets, raw OCR audit blocks, and diagram-noise filtering warnings.
+  - `node scripts/check-remote-pdf-worker.cjs` could not run because the shell lacks required Supabase/R2 worker variables.
+  - `node scripts/check-supabase-pdf-import-schema.cjs` found the configured Supabase project still missing the expected `pdf_uploads` remote-storage schema even though import job/page/draft/batch tables are present.
+  - Docker smoke was blocked because `docker` is not installed on this machine.
+
+### 2026-06-17 Blocker follow-up
+
+- Rechecked the remaining blocked production OCR pieces without printing secrets. `.env.local` has Supabase URL/service-role values, but does not have Cloudflare R2 account/access/secret/public evidence URL values. No DB URL, Supabase access token, Supabase CLI, Cloudflare token, Railway CLI, Docker, Podman, or nerdctl is available in this shell.
+- Replaced `scripts/check-remote-pdf-worker.cjs` with a fuller preflight that loads `.env.local`, applies the same default R2 bucket names as the app, checks required remote-worker variables, and checks the PDF import schema when remote credentials are present.
+- Added `PDF_WORKER_SMOKE=1` to `scripts/pdf-import-worker.ts`. This validates worker startup and Supabase reachability without claiming or processing any live job.
+- Read-only Supabase worker-style smoke passed: a service-role process can select from `pdf_import_jobs`.
+- Safe SQL-execution RPC probes for `exec_sql`, `execute_sql`, and `run_sql` all failed because those functions do not exist. Applying migration DDL from this environment is therefore blocked until a DB URL, Supabase CLI/session, Management API token, or dashboard SQL editor is available.
+- Current blocked checks:
+  - `node scripts/check-remote-pdf-worker.cjs` now fails only for missing `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, and `R2_EVIDENCE_PUBLIC_URL`.
+  - `node scripts/check-supabase-pdf-import-schema.cjs` still reports `pdf_uploads` missing the expected remote-storage columns, while the import job/page/draft/asset/batch tables are available.
+  - Docker/Railway image smoke remains blocked locally because no container runtime is installed.
+- Verification after the follow-up:
+  - `PDF_WORKER_SMOKE=1 node_modules/tsx/dist/cli.mjs scripts/pdf-import-worker.ts` passed with Supabase env loaded from `.env.local`.
+  - `node tests/run-import-tests.cjs` passed.
+  - `node node_modules/typescript/bin/tsc --noEmit` passed.
+  - `node node_modules/next/dist/bin/next lint` passed with no warnings or errors.
+  - `node scripts/predeploy-check.cjs` passed with expected local warnings.
+  - `python -m py_compile scripts/pdf-ocr-worker.py scripts/pdf-text-worker.py` passed.
+  - `git diff --check` passed with only CRLF normalization warnings.
+  - `node node_modules/next/dist/bin/next build` passed.
+
+### 2026-06-18 Deployment diagnostics pass
+
+- Improved the Supabase PDF-import schema checker so it probes required columns individually and reports exact missing columns instead of only marking a table unavailable.
+- Added `scripts/pdf-import-schema-checks.cjs` as the shared source of schema expectations for the Supabase checker and remote-worker checker.
+- The current configured Supabase project is missing these migration `009` columns:
+  - `pdf_uploads`: `storage_provider`, `storage_bucket`, `storage_object_key`, `mime_type`, `size_bytes`, `upload_status`
+  - `pdf_import_jobs`: `phase`, `processed_page_count`, `lease_owner`, `lease_expires_at`, `heartbeat_at`, `cancel_requested_at`, `attempt_count`
+- The schema checker now prints an idempotent SQL repair block for the missing `pdf_uploads` and `pdf_import_jobs` column groups so the Supabase SQL editor step is copy-pasteable.
+- The remote-worker checker now reports both missing Cloudflare R2 variables and Supabase schema gaps in one run.
+- Added `runtime = "nodejs"` and `maxDuration = 10` to the private PDF download route, matching the other short-lived upload/poll endpoints.
+- Added `https://projectastra.uk` to `infra/r2-source-cors.json` in addition to the `www` origin.
+- Documented `PDF_WORKER_SMOKE=1 npm run worker:pdf-import` in `docs/PRODUCTION_OCR_DEPLOYMENT.md` and added `PDF_WORKER_SMOKE=` to `.env.example`.
+- Verification:
+  - `PDF_WORKER_SMOKE=1 node_modules/tsx/dist/cli.mjs scripts/pdf-import-worker.ts` passed.
+  - `node tests/run-import-tests.cjs` passed.
+  - `node node_modules/typescript/bin/tsc --noEmit` passed.
+  - `node node_modules/next/dist/bin/next lint` passed with no warnings or errors.
+  - `node scripts/predeploy-check.cjs` passed with expected local warnings.
+  - `python -m py_compile scripts/pdf-ocr-worker.py scripts/pdf-text-worker.py` passed.
+  - `git diff --check` passed with only CRLF normalization warnings.
+  - `node node_modules/next/dist/bin/next build` passed.

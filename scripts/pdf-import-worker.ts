@@ -47,6 +47,28 @@ async function cancelled(jobId: string) {
   return Boolean(data.cancel_requested_at);
 }
 
+async function markJobCancelled(jobId: string) {
+  const timestamp = new Date().toISOString();
+  const { error } = await supabase
+    .from("pdf_import_batches")
+    .update({
+      status: "cancelled",
+      lease_owner: null,
+      lease_expires_at: null,
+      next_attempt_at: null,
+      updated_at: timestamp
+    })
+    .eq("job_id", jobId)
+    .neq("status", "completed");
+  if (error) throw new Error(error.message);
+  await updateJob(jobId, {
+    status: "cancelled",
+    phase: "cancelled",
+    lease_owner: null,
+    lease_expires_at: null
+  });
+}
+
 async function ensureBatches(jobId: string, pageCount: number) {
   const { data: existing, error } = await supabase.from("pdf_import_batches").select("*").eq("job_id", jobId).order("created_at");
   if (error) throw new Error(error.message);
@@ -121,7 +143,7 @@ async function processJob(job: PdfImportJob) {
     for (const batch of batches) {
       if (batch.status === "completed") continue;
       if (await cancelled(job.id)) {
-        await updateJob(job.id, { status: "cancelled", phase: "cancelled", lease_owner: null, lease_expires_at: null });
+        await markJobCancelled(job.id);
         return;
       }
       await updateBatch(batch.id, {
@@ -168,6 +190,10 @@ async function processJob(job: PdfImportJob) {
     await completePdfImportJob(job.id, finalAnalysis, job.created_by || workerId);
     await updateJob(job.id, { phase: "needs_review", processed_page_count: finalAnalysis.pageCount, lease_owner: null, lease_expires_at: null });
   } catch (error) {
+    if (await cancelled(job.id).catch(() => false)) {
+      await markJobCancelled(job.id);
+      return;
+    }
     await updateJob(job.id, {
       status: "failed",
       phase: "failed",
@@ -183,6 +209,12 @@ async function processJob(job: PdfImportJob) {
 
 async function main() {
   console.log(`Astra PDF worker ${workerId} started.`);
+  if (process.env.PDF_WORKER_SMOKE === "1") {
+    const { error } = await supabase.from("pdf_import_jobs").select("id", { head: true, count: "exact" }).limit(1);
+    if (error) throw new Error(error.message);
+    console.log("Astra PDF worker smoke check passed.");
+    return;
+  }
   for (;;) {
     const job = await claimJob();
     if (job) await processJob(job);

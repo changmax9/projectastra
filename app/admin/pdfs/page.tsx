@@ -4,11 +4,12 @@ import { DataTable } from "@/components/admin/DataTable";
 import { PdfImportWorkspace } from "@/components/admin/PdfImportWorkspace";
 import { PdfUploader } from "@/components/admin/PdfUploader";
 import { getPdfImportJobDetails, getPdfImportSchemaStatus, listPdfImportJobs, listPdfUploads } from "@/lib/data";
+import { isRemotePdfOcrMode } from "@/lib/pdf-ocr-mode";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminPdfsPage({ searchParams }: { searchParams?: { import_error?: string; job_id?: string } }) {
-  const remoteWorkerMode = process.env.PDF_OCR_MODE === "remote-worker";
+  const remoteWorkerMode = isRemotePdfOcrMode();
   const remoteStorageConfigured = Boolean(
     process.env.R2_ACCOUNT_ID &&
     process.env.R2_ACCESS_KEY_ID &&

@@ -16,6 +16,8 @@ Then verify locally:
 npm run check:supabase:pdf-import
 ```
 
+If the project has a partial migration, the check prints the missing columns and an idempotent SQL repair block that can be pasted into the Supabase SQL editor.
+
 ## 2. Create Cloudflare R2 Storage
 
 Create:
@@ -32,6 +34,12 @@ R2_SECRET_ACCESS_KEY=
 R2_SOURCE_BUCKET=astra-pdf-sources
 R2_EVIDENCE_BUCKET=astra-pdf-evidence
 R2_EVIDENCE_PUBLIC_URL=https://<public-evidence-domain>
+```
+
+Then verify the full remote configuration from a shell that has the same environment:
+
+```bash
+npm run check:ocr:remote
 ```
 
 ## 3. Deploy Railway Worker
@@ -52,6 +60,14 @@ PDF_WORKER_MAX_PAGES=2000
 ```
 
 The worker logs should show `Astra PDF worker ... started.` Run `npm run check:ocr:remote` with the same environment before accepting imports.
+
+For a no-claim startup smoke, run the worker once with:
+
+```bash
+PDF_WORKER_SMOKE=1 npm run worker:pdf-import
+```
+
+It should print `Astra PDF worker smoke check passed.` and exit without claiming or processing live jobs.
 
 ## 4. Configure Vercel
 
