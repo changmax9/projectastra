@@ -480,6 +480,11 @@ assert.match(pdfImportSource, /Candidate source page for a visual reference/, "P
 assert.match(pdfImportSource, /function draftNeedsVisualEvidence/, "PDF import detects drafts that need source-page visual evidence");
 assert.match(pdfImportSource, /function buildVisualCropCandidates/, "PDF import proposes visual crop candidates from structured page blocks");
 assert.match(pdfImportSource, /function visualBlockAssociationScore/, "PDF import ranks visual crop candidates against their draft question anchors");
+assert.match(pdfImportSource, /function draftQuestionWindow/, "PDF import bounds visual crop pairing to the owning draft question window");
+assert.match(pdfImportSource, /draftVisualCueAnchor/, "PDF import can anchor visual pairing to explicit graph/table/diagram cue text");
+assert.match(pdfImportSource, /question_window_overlap/, "PDF import stores question-window overlap for crop pairing auditability");
+assert.match(pdfImportSource, /association_confidence/, "PDF import stores visual crop pairing confidence for reviewer triage");
+assert.match(pdfImportSource, /outside the draft question window/, "PDF import penalizes visual blocks that likely belong to another question");
 assert.match(pdfImportSource, /matches below-reference cue/, "PDF import prefers nearby visual regions that match below-reference cues");
 assert.match(pdfImportSource, /normalizedHorizontalDistance/, "PDF import associates scanned visual regions using horizontal as well as vertical proximity");
 assert.match(pdfImportSource, /likelyVisualChoices/, "PDF import keeps a broader review-only crop set when scanned answer choices are likely visual");

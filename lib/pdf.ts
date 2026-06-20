@@ -122,6 +122,9 @@ interface VisualCropCandidate {
   blockNumber: number | null;
   source: string;
   association: string;
+  associationScore: number;
+  associationConfidence: "high" | "medium" | "low";
+  questionWindowOverlap: number;
 }
 
 interface LocalVisualCropRunResult {
@@ -1709,19 +1712,136 @@ function visualReferenceDirection(draft: DraftQuestionWithoutStorage) {
   return "nearby";
 }
 
-function draftPromptAnchor(draft: DraftQuestionWithoutStorage, page: PageWithoutStorage) {
-  const textBlocks = (page.raw_blocks || [])
+function textBlocksForPage(page: PageWithoutStorage) {
+  return (page.raw_blocks || [])
     .filter((block) => block.kind === "text")
     .map((block) => ({ block, bbox: rawBlockBbox(block) }))
-    .filter((item): item is { block: JsonRecord; bbox: [number, number, number, number] } => Boolean(item.bbox));
-  if (textBlocks.length === 0) return null;
-  const questionNumberPattern = draft.question_number === null
+    .filter((item): item is { block: JsonRecord; bbox: [number, number, number, number] } => Boolean(item.bbox))
+    .sort((a, b) => a.bbox[1] - b.bbox[1] || a.bbox[0] - b.bbox[0]);
+}
+
+function draftQuestionNumberPattern(draft: DraftQuestionWithoutStorage) {
+  return draft.question_number === null
     ? null
-    : new RegExp(`(?:^|\\n)(?:Question\\s+)?${draft.question_number}[\\).]\\s+`, "i");
+    : new RegExp(`(?:^|\\n)\\s*(?:Question\\s+)?${draft.question_number}[\\).]\\s+`, "i");
+}
+
+function draftPromptAnchor(draft: DraftQuestionWithoutStorage, page: PageWithoutStorage) {
+  const textBlocks = textBlocksForPage(page);
+  if (textBlocks.length === 0) return null;
+  const questionNumberPattern = draftQuestionNumberPattern(draft);
   const promptPrefix = cleanText(draft.question_text).slice(0, 48).toLowerCase();
   return textBlocks.find(({ block }) => questionNumberPattern?.test(String(block.text || ""))) ||
     textBlocks.find(({ block }) => promptPrefix.length >= 16 && String(block.text || "").toLowerCase().includes(promptPrefix)) ||
     null;
+}
+
+function meaningfulWords(text: string) {
+  const stopWords = new Set(["the", "and", "for", "with", "that", "this", "from", "into", "which", "what", "when", "where", "shown", "below", "above"]);
+  return new Set(
+    cleanText(text)
+      .toLowerCase()
+      .match(/[a-z0-9]{3,}/g)
+      ?.filter((word) => !stopWords.has(word)) || []
+  );
+}
+
+function sharedWordCount(left: string, rightWords: Set<string>) {
+  let count = 0;
+  for (const word of meaningfulWords(left)) {
+    if (rightWords.has(word)) count += 1;
+  }
+  return count;
+}
+
+function draftVisualCueAnchor(
+  draft: DraftQuestionWithoutStorage,
+  page: PageWithoutStorage,
+  promptAnchor: { block: JsonRecord; bbox: [number, number, number, number] } | null
+) {
+  const cuePattern = /\b(?:figure|diagram|graph|table|shown|below|above|image|plot|chart|sketch)\b/i;
+  const draftWords = meaningfulWords([draft.question_text, ...draft.choices.map((choice) => choice.text)].join(" "));
+  const questionNumberPattern = draftQuestionNumberPattern(draft);
+  const promptY = promptAnchor ? (promptAnchor.bbox[1] + promptAnchor.bbox[3]) / 2 : null;
+  const candidates = textBlocksForPage(page)
+    .filter(({ block }) => {
+      const text = String(block.text || "");
+      if (!cuePattern.test(text)) return false;
+      return questionNumberPattern?.test(text) || sharedWordCount(text, draftWords) >= 1 || draftWords.size === 0;
+    })
+    .map((item) => {
+      const center = (item.bbox[1] + item.bbox[3]) / 2;
+      const promptDistance = promptY === null ? 0 : Math.abs(center - promptY);
+      const sharedWords = sharedWordCount(String(item.block.text || ""), draftWords);
+      return { ...item, rank: promptDistance - sharedWords * 12 };
+    })
+    .sort((a, b) => a.rank - b.rank || a.bbox[1] - b.bbox[1]);
+  return candidates[0] || null;
+}
+
+function pageDimension(page: PageWithoutStorage, key: "page_width" | "page_height", fallback: number) {
+  for (const block of page.raw_blocks || []) {
+    const value = recordNumber(block, key);
+    if (value) return value;
+  }
+  return fallback;
+}
+
+function draftIncludesPage(draft: DraftQuestionWithoutStorage, pageNumber: number) {
+  return pageNumber >= draft.source_page_start && pageNumber <= draft.source_page_end;
+}
+
+function verticalOverlapRatio(subjectY0: number, subjectY1: number, windowY0: number, windowY1: number) {
+  const overlap = Math.max(0, Math.min(subjectY1, windowY1) - Math.max(subjectY0, windowY0));
+  return overlap / Math.max(1, subjectY1 - subjectY0);
+}
+
+function draftQuestionWindow(
+  draft: DraftQuestionWithoutStorage,
+  allDrafts: DraftQuestionWithoutStorage[],
+  page: PageWithoutStorage,
+  pageNumber: number
+) {
+  const pageHeight = pageDimension(page, "page_height", 792);
+  const promptAnchor = draftPromptAnchor(draft, page);
+  const anchors = allDrafts
+    .filter((candidate) => candidate !== draft && draftIncludesPage(candidate, pageNumber))
+    .map((candidate) => ({ draft: candidate, anchor: draftPromptAnchor(candidate, page) }))
+    .filter((item): item is { draft: DraftQuestionWithoutStorage; anchor: { block: JsonRecord; bbox: [number, number, number, number] } } => Boolean(item.anchor))
+    .sort((a, b) => a.anchor.bbox[1] - b.anchor.bbox[1]);
+  let y0 = 0;
+  let y1 = pageHeight;
+  const reasons: string[] = [];
+
+  if (promptAnchor) {
+    y0 = Math.max(0, promptAnchor.bbox[1] - 10);
+    const nextAnchor = anchors.find((item) => item.anchor.bbox[1] > promptAnchor.bbox[1] + 8);
+    if (nextAnchor) {
+      y1 = Math.max(y0 + 36, nextAnchor.anchor.bbox[1] - 8);
+      reasons.push("bounded before next question anchor");
+    } else if (pageNumber === draft.source_page_end) {
+      y1 = pageHeight;
+    }
+    reasons.push("bounded from matched draft question anchor");
+  } else if (pageNumber > draft.source_page_start && pageNumber < draft.source_page_end) {
+    reasons.push("full continuation page for multi-page draft");
+  } else {
+    const nextAnchor = anchors.find((item) => item.draft.source_page_start >= pageNumber);
+    if (nextAnchor) {
+      y1 = Math.max(36, nextAnchor.anchor.bbox[1] - 8);
+      reasons.push("bounded before nearby next question anchor");
+    } else {
+      reasons.push("source-page fallback window");
+    }
+  }
+
+  return {
+    y0,
+    y1,
+    promptAnchor,
+    cueAnchor: draftVisualCueAnchor(draft, page, promptAnchor),
+    reason: reasons.join("; ")
+  };
 }
 
 function visualBlockAssetType(
@@ -1735,13 +1855,15 @@ function visualBlockAssetType(
 
 function visualBlockAssociationScore(
   draft: DraftQuestionWithoutStorage,
+  allDrafts: DraftQuestionWithoutStorage[],
   page: PageWithoutStorage,
   pageNumber: number,
   block: NonNullable<ReturnType<typeof usableVisualBlock>>
 ) {
   const draftAssetType = visualAssetTypeForDraft(draft);
   const direction = visualReferenceDirection(draft);
-  const anchor = draftPromptAnchor(draft, page);
+  const questionWindow = draftQuestionWindow(draft, allDrafts, page, pageNumber);
+  const anchor = questionWindow.cueAnchor || questionWindow.promptAnchor;
   const pageDistance = Math.min(
     Math.abs(pageNumber - draft.source_page_start),
     Math.abs(pageNumber - draft.source_page_end)
@@ -1753,7 +1875,19 @@ function visualBlockAssociationScore(
   } else if (draftAssetType === "diagram") {
     score += block.kind === "vector" || block.kind === "image" ? -2 : 1;
   }
-  if (!anchor) return { score, reason: `${reasons.join(", ")}; ranked by source-page proximity` };
+  const windowOverlap = verticalOverlapRatio(block.y0, block.y1, questionWindow.y0, questionWindow.y1);
+  if (windowOverlap >= 0.65) {
+    score -= 2.25;
+    reasons.push(`overlaps draft question window by ${Math.round(windowOverlap * 100)}%`);
+  } else if (windowOverlap >= 0.25) {
+    score -= 0.5;
+    reasons.push(`partially overlaps draft question window by ${Math.round(windowOverlap * 100)}%`);
+  } else {
+    score += 4.5;
+    reasons.push("outside the draft question window");
+  }
+  if (questionWindow.reason) reasons.push(questionWindow.reason);
+  if (!anchor) return { score, reason: `${reasons.join(", ")}; ranked by source-page proximity`, windowOverlap };
 
   const [anchorX0, anchorY0, anchorX1, anchorY1] = anchor.bbox;
   const anchorXCenter = (anchorX0 + anchorX1) / 2;
@@ -1764,6 +1898,10 @@ function visualBlockAssociationScore(
   const normalizedHorizontalDistance = Math.abs(blockXCenter - anchorXCenter) / Math.max(1, block.pageWidth || 612);
   score += normalizedDistance + normalizedHorizontalDistance * 1.5;
   reasons.push("ranked by horizontal and vertical proximity to question text");
+  if (questionWindow.cueAnchor) {
+    score -= 0.75;
+    reasons.push("anchored to explicit visual-reference text");
+  }
   if (direction === "below") {
     if (blockCenter >= anchorCenter) {
       score -= 0.75;
@@ -1781,7 +1919,18 @@ function visualBlockAssociationScore(
   } else {
     reasons.push("nearest to question text");
   }
-  return { score, reason: reasons.join(", ") };
+  return { score, reason: reasons.join(", "), windowOverlap };
+}
+
+function visualPairingConfidence(
+  association: ReturnType<typeof visualBlockAssociationScore>,
+  nextBestScore: number | null,
+  likelyVisualChoices: boolean
+): "high" | "medium" | "low" {
+  const margin = nextBestScore === null ? 99 : nextBestScore - association.score;
+  if (association.windowOverlap >= 0.65 && margin >= (likelyVisualChoices ? 0.75 : 1.2)) return "high";
+  if (association.windowOverlap >= 0.35 && margin >= 0.35) return "medium";
+  return "low";
 }
 
 function buildVisualCropCandidates(drafts: DraftQuestionWithoutStorage[], pages: PageWithoutStorage[]) {
@@ -1807,13 +1956,14 @@ function buildVisualCropCandidates(drafts: DraftQuestionWithoutStorage[], pages:
       })
       .map((item) => {
         const page = pagesByNumber.get(item.pageNumber)!;
-        return { ...item, association: visualBlockAssociationScore(draft, page, item.pageNumber, item.block) };
+        return { ...item, association: visualBlockAssociationScore(draft, drafts, page, item.pageNumber, item.block) };
       })
       .sort((a, b) => a.association.score - b.association.score || a.pageNumber - b.pageNumber || a.block.y0 - b.block.y0 || a.block.x0 - b.block.x0)
       .filter((item, index, sorted) => index === 0 || item.association.score <= sorted[0].association.score + (likelyVisualChoices ? 4 : 1.25))
       .slice(0, likelyVisualChoices ? 6 : 3);
 
     for (const [blockIndex, item] of blocks.entries()) {
+      const nextBestScore = blocks[blockIndex + 1]?.association.score ?? null;
       candidates.push({
         candidateId: `draft-${draftIndex}-page-${item.pageNumber}-${item.block.kind}-${blockIndex}`,
         draftIndex,
@@ -1822,7 +1972,10 @@ function buildVisualCropCandidates(drafts: DraftQuestionWithoutStorage[], pages:
         bbox: item.block.bbox,
         blockNumber: item.block.blockNumber,
         source: typeof item.raw.source === "string" ? item.raw.source : "pymupdf",
-        association: item.association.reason
+        association: item.association.reason,
+        associationScore: Number(item.association.score.toFixed(3)),
+        associationConfidence: visualPairingConfidence(item.association, nextBestScore, likelyVisualChoices),
+        questionWindowOverlap: Number(item.association.windowOverlap.toFixed(3))
       });
     }
   }
@@ -2148,13 +2301,16 @@ export async function finalizePdfPages(
         source: candidate.source,
         block_number: candidate.blockNumber,
         candidate_id: candidate.candidateId,
-        association: candidate.association
+        association: candidate.association,
+        association_score: candidate.associationScore,
+        association_confidence: candidate.associationConfidence,
+        question_window_overlap: candidate.questionWindowOverlap
       },
       keep_for_question: false,
       status: "candidate" as const,
       notes: [
         "Candidate source page for a visual reference. This is a cropped source candidate, not saved automatically.",
-        `Auto-associated for review: ${candidate.association}.`,
+        `Auto-associated for review (${candidate.associationConfidence} confidence, score ${candidate.associationScore}): ${candidate.association}.`,
         rendered?.image_url ? "Admin must verify the crop before using it as a question image." : "Crop rendering did not produce an image; use the source page preview to crop manually.",
         ...renderedWarnings
       ].filter(Boolean).join(" ")
