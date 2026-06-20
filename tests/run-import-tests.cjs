@@ -482,6 +482,11 @@ assert.match(pdfImportSource, /function buildVisualCropCandidates/, "PDF import 
 assert.match(pdfImportSource, /function visualBlockAssociationScore/, "PDF import ranks visual crop candidates against their draft question anchors");
 assert.match(pdfImportSource, /function draftQuestionWindow/, "PDF import bounds visual crop pairing to the owning draft question window");
 assert.match(pdfImportSource, /draftVisualCueAnchor/, "PDF import can anchor visual pairing to explicit graph/table/diagram cue text");
+assert.match(pdfImportSource, /function choiceLabelFromText/, "PDF import detects answer-choice visual anchors from OCR text");
+assert.match(pdfImportSource, /function choiceSlotsForPage/, "PDF import builds per-choice visual pairing windows");
+assert.match(pdfImportSource, /function buildChoiceVisualCropCandidates/, "PDF import emits choice-level visual crop candidates");
+assert.match(pdfImportSource, /assetType: "choice_image"/, "PDF import stores visual answer option crops as choice_image candidates");
+assert.match(pdfImportSource, /choice_id: candidate\.choiceId/, "PDF import stores predicted choice labels in crop metadata");
 assert.match(pdfImportSource, /question_window_overlap/, "PDF import stores question-window overlap for crop pairing auditability");
 assert.match(pdfImportSource, /association_confidence/, "PDF import stores visual crop pairing confidence for reviewer triage");
 assert.match(pdfImportSource, /outside the draft question window/, "PDF import penalizes visual blocks that likely belong to another question");
@@ -521,6 +526,11 @@ assert.match(pdfReviewSource, /useful_crop/, "PDF import review can label useful
 assert.match(pdfReviewSource, /wrong_region/, "PDF import review can label wrong-region crop evidence");
 assert.match(pdfReviewSource, /missing_graph/, "PDF import review can label missing graph evidence");
 assert.match(pdfReviewSource, /bad_segmentation/, "PDF import review can label OCR segmentation failures");
+assert.match(pdfReviewSource, /Choice-level visual evidence/, "PDF import review groups visual answer-choice evidence separately");
+assert.match(pdfReviewSource, /choiceTargetOptions\.map/, "PDF import review can explicitly assign a crop to detected choice labels");
+assert.match(pdfReviewSource, /Use as choice \$\{choiceId\} image/, "PDF import review renders dynamic choice image labels");
+assert.match(pdfReviewSource, /buildChoicesJson/, "PDF import review writes approved choice crops into choices_json");
+assert.match(pdfReviewSource, /selection\.target === "choice"/, "PDF import review keeps choice crops out of question_images_json");
 assert.match(pdfReviewSource, /adminSavePdfDraftAssetFeedbackAction/, "PDF import review persists visual evidence feedback");
 assert.match(pdfReviewSource, /Save feedback/, "PDF import review exposes a separate feedback save action");
 assert.doesNotMatch(pdfReviewSource, /page\.confidence > 1/, "PDF import review assumes normalized 0..1 confidence values");

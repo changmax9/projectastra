@@ -70,6 +70,25 @@ function isAiAsset(asset: PdfImportDraftAsset | NonNullable<PdfImportAnalysisInp
   return bbox.ai_visual_evidence === true || /AI visual evidence/i.test(asset.notes || "");
 }
 
+function isChoiceImageAsset(asset: PdfImportDraftAsset | NonNullable<PdfImportAnalysisInput["draftAssets"]>[number]) {
+  const bbox = jsonRecord(asset.bbox);
+  return asset.asset_type === "choice_image" || bbox.target === "choice" || typeof bbox.choice_id === "string";
+}
+
+function choiceIdForAsset(asset: PdfImportDraftAsset | NonNullable<PdfImportAnalysisInput["draftAssets"]>[number]) {
+  const bbox = jsonRecord(asset.bbox);
+  return typeof bbox.choice_id === "string" ? bbox.choice_id : null;
+}
+
+function confidenceCounts(assets: Array<PdfImportDraftAsset | NonNullable<PdfImportAnalysisInput["draftAssets"]>[number]>) {
+  return assets.reduce<Record<string, number>>((counts, asset) => {
+    const bbox = jsonRecord(asset.bbox);
+    const confidence = typeof bbox.association_confidence === "string" ? bbox.association_confidence : "unknown";
+    counts[confidence] = (counts[confidence] || 0) + 1;
+    return counts;
+  }, {});
+}
+
 function draftsForPage(analysis: PdfImportAnalysisInput, pageNumber: number) {
   return analysis.draftQuestions.filter((draft) =>
     pageNumber >= draft.source_page_start && pageNumber <= draft.source_page_end
@@ -99,6 +118,7 @@ function evaluatePage(
   const choiceCount = drafts.reduce((sum, draft) => sum + draft.choices.length, 0);
   const frqPartCount = drafts.reduce((sum, draft) => sum + draft.frq_parts.length, 0);
   const pageAiBlocks = aiBlocks.filter((block) => block.page_number === pageNumber);
+  const choiceImageAssets = assets.filter(isChoiceImageAsset);
   const pageChecks = [
     check("page-present", Boolean(page), page ? "present" : "missing", "present"),
     check("min-ai-blocks", pageAiBlocks.length >= (expectation.minAiBlocks || 0), pageAiBlocks.length, expectation.minAiBlocks || 0),
@@ -152,6 +172,9 @@ function evaluatePage(
       choice_count: choiceCount,
       frq_part_count: frqPartCount,
       candidate_asset_count: assets.length,
+      choice_image_candidate_count: choiceImageAssets.length,
+      choice_image_choices_detected: Array.from(new Set(choiceImageAssets.map(choiceIdForAsset).filter(Boolean))).sort(),
+      choice_pairing_confidence_counts: confidenceCounts(choiceImageAssets),
       ai_asset_count: assets.filter(isAiAsset).length,
       ai_block_count: pageAiBlocks.length,
       crop_usefulness_label: expectation.cropUsefulness || "unlabeled",
@@ -201,6 +224,7 @@ async function main() {
   const aiBlocks = aiVisualBlocks(after);
   const assetDelta = (after.draftAssets || []).length - (before.draftAssets || []).length;
   const visualAiAssetDelta = (after.draftAssets || []).filter(isAiAsset).length - (before.draftAssets || []).filter(isAiAsset).length;
+  const choiceImageAssets = (after.draftAssets || []).filter(isChoiceImageAsset);
   const expectations = fixture.expectations;
   const pageExpectations = expectations.pages.filter((item) => pages.includes(item.pageNumber));
   const pageResults = pageExpectations.map((expectation) => evaluatePage(expectation, before, after, aiBlocks));
@@ -252,6 +276,9 @@ async function main() {
     draft_asset_count_before: before.draftAssets?.length || 0,
     draft_asset_count_after: after.draftAssets?.length || 0,
     draft_asset_delta: assetDelta,
+    choice_image_candidate_count: choiceImageAssets.length,
+    choice_image_choices_detected: Array.from(new Set(choiceImageAssets.map(choiceIdForAsset).filter(Boolean))).sort(),
+    choice_pairing_confidence_counts: confidenceCounts(choiceImageAssets),
     visual_ai_asset_delta: visualAiAssetDelta,
     ai_visual_blocks: aiBlocks,
     global_checks: globalChecks,

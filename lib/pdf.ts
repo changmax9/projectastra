@@ -117,7 +117,7 @@ interface VisualCropCandidate {
   candidateId: string;
   draftIndex: number;
   pageNumber: number;
-  assetType: "diagram" | "table" | "unknown";
+  assetType: "diagram" | "table" | "choice_image" | "unknown";
   bbox: [number, number, number, number];
   blockNumber: number | null;
   source: string;
@@ -125,6 +125,12 @@ interface VisualCropCandidate {
   associationScore: number;
   associationConfidence: "high" | "medium" | "low";
   questionWindowOverlap: number;
+  choiceWindowOverlap?: number;
+  target: "prompt" | "choice";
+  choiceId?: string;
+  choiceAnchorBbox?: [number, number, number, number];
+  choiceWindowBbox?: [number, number, number, number];
+  sourceBlockKind?: "image" | "table" | "vector";
 }
 
 interface LocalVisualCropRunResult {
@@ -1933,6 +1939,312 @@ function visualPairingConfidence(
   return "low";
 }
 
+function draftLikelyVisualChoices(draft: DraftQuestionWithoutStorage) {
+  return draft.type === "mcq" && (
+    draft.choices.length < 4 ||
+    draft.choices.some((choice) => cleanText(choice.text).length < 8 || /^Choice\s+[A-E]$/i.test(cleanText(choice.text)) || /^Option\s+[A-E]$/i.test(cleanText(choice.text))) ||
+    draft.warnings.some((warning) => /visual choice|choice image|graph-choice|answer choices/i.test(warning))
+  );
+}
+
+function pageNumbersForDraft(draft: DraftQuestionWithoutStorage) {
+  return Array.from(
+    { length: Math.max(0, draft.source_page_end - draft.source_page_start + 1) },
+    (_, offset) => draft.source_page_start + offset
+  );
+}
+
+function choiceLabelFromText(text: string) {
+  const normalized = cleanText(text)
+    .replaceAll("©", "C")
+    .replaceAll("ⓒ", "C")
+    .replaceAll("®", "D")
+    .trim();
+  const choiceWord = normalized.match(/^Choice\s+([A-E])\b/i);
+  if (choiceWord) return choiceWord[1].toUpperCase();
+  const punctuated = normalized.match(/^\(?([A-E])\)?[\).:]\s*(?:\S|$)/i);
+  if (punctuated) return punctuated[1].toUpperCase();
+  const isolated = normalized.match(/^\(?([A-E])\)?$/i);
+  if (isolated) return isolated[1].toUpperCase();
+  return null;
+}
+
+function blockColumn(block: JsonRecord, bbox: [number, number, number, number], pageWidth: number) {
+  const column = recordNumber(block, "column");
+  if (column === 0 || column === 1) return column;
+  return (bbox[0] + bbox[2]) / 2 < pageWidth / 2 ? 0 : 1;
+}
+
+function bboxArea(bbox: [number, number, number, number]) {
+  return Math.max(0, bbox[2] - bbox[0]) * Math.max(0, bbox[3] - bbox[1]);
+}
+
+function bboxOverlapRatio(subject: [number, number, number, number], window: [number, number, number, number]) {
+  const xOverlap = Math.max(0, Math.min(subject[2], window[2]) - Math.max(subject[0], window[0]));
+  const yOverlap = Math.max(0, Math.min(subject[3], window[3]) - Math.max(subject[1], window[1]));
+  return (xOverlap * yOverlap) / Math.max(1, bboxArea(subject));
+}
+
+type ChoiceAnchor = {
+  choiceId: string;
+  pageNumber: number;
+  bbox: [number, number, number, number];
+  column: number;
+  text: string;
+};
+
+type ChoiceSlot = ChoiceAnchor & {
+  windowBbox: [number, number, number, number];
+  questionWindow: ReturnType<typeof draftQuestionWindow>;
+};
+
+function choiceAnchorsForPage(
+  draft: DraftQuestionWithoutStorage,
+  page: PageWithoutStorage,
+  pageNumber: number,
+  questionWindow: ReturnType<typeof draftQuestionWindow>
+) {
+  const choiceIds = new Set([
+    "A",
+    "B",
+    "C",
+    "D",
+    "E",
+    ...draft.choices.map((choice) => choice.id.trim().toUpperCase()).filter((id) => /^[A-E]$/.test(id))
+  ]);
+  if (choiceIds.size === 0) return [];
+  const pageWidth = pageDimension(page, "page_width", 612);
+  const layoutTwoColumn = (page.raw_blocks || []).some((block) => String(block.layout || "") === "two-column");
+  const promptColumn = questionWindow.promptAnchor && layoutTwoColumn
+    ? blockColumn(questionWindow.promptAnchor.block, questionWindow.promptAnchor.bbox, pageWidth)
+    : null;
+  const y0 = questionWindow.y0 - 12;
+  const y1 = questionWindow.y1 + 12;
+  const seen = new Set<string>();
+  return textBlocksForPage(page).flatMap((item) => {
+    const choiceId = choiceLabelFromText(String(item.block.text || ""));
+    if (!choiceId || !choiceIds.has(choiceId)) return [];
+    const centerY = (item.bbox[1] + item.bbox[3]) / 2;
+    if (centerY < y0 || centerY > y1) return [];
+    const column = blockColumn(item.block, item.bbox, pageWidth);
+    if (promptColumn !== null && column !== promptColumn) return [];
+    const key = `${choiceId}:${Math.round(item.bbox[0])}:${Math.round(item.bbox[1])}`;
+    if (seen.has(key)) return [];
+    seen.add(key);
+    return [{
+      choiceId,
+      pageNumber,
+      bbox: item.bbox,
+      column,
+      text: String(item.block.text || "")
+    }];
+  });
+}
+
+function choiceSlotsForPage(
+  draft: DraftQuestionWithoutStorage,
+  allDrafts: DraftQuestionWithoutStorage[],
+  page: PageWithoutStorage,
+  pageNumber: number
+) {
+  const questionWindow = draftQuestionWindow(draft, allDrafts, page, pageNumber);
+  const pageWidth = pageDimension(page, "page_width", 612);
+  const anchors = choiceAnchorsForPage(draft, page, pageNumber, questionWindow)
+    .sort((a, b) => a.column - b.column || a.bbox[1] - b.bbox[1] || a.bbox[0] - b.bbox[0]);
+  if (anchors.length === 0) return [];
+  const usesColumns = anchors.some((anchor) => anchor.column !== anchors[0].column) ||
+    (page.raw_blocks || []).some((block) => String(block.layout || "") === "two-column");
+
+  return anchors.map((anchor): ChoiceSlot => {
+    const nextAnchor = anchors.find((candidate) =>
+      candidate !== anchor &&
+      candidate.column === anchor.column &&
+      candidate.bbox[1] > anchor.bbox[1] + 4
+    );
+    const columnX0 = usesColumns && anchor.column === 1 ? pageWidth / 2 : 0;
+    const columnX1 = usesColumns && anchor.column === 0 ? pageWidth / 2 : pageWidth;
+    const y0 = Math.max(questionWindow.y0, anchor.bbox[1] - 6);
+    const y1 = Math.min(
+      questionWindow.y1,
+      nextAnchor ? Math.max(y0 + 24, nextAnchor.bbox[1] - 6) : questionWindow.y1
+    );
+    return {
+      ...anchor,
+      windowBbox: [columnX0, y0, columnX1, y1],
+      questionWindow
+    };
+  });
+}
+
+function choiceBlockAssociationScore(
+  slot: ChoiceSlot,
+  block: NonNullable<ReturnType<typeof usableVisualBlock>>,
+  questionWindowOverlap: number
+) {
+  const blockCenterX = (block.bbox[0] + block.bbox[2]) / 2;
+  const blockCenterY = (block.bbox[1] + block.bbox[3]) / 2;
+  const anchorCenterX = (slot.bbox[0] + slot.bbox[2]) / 2;
+  const anchorCenterY = (slot.bbox[1] + slot.bbox[3]) / 2;
+  const blockColumnValue = blockColumn(
+    { column: block.pageWidth ? (blockCenterX < block.pageWidth / 2 ? 0 : 1) : null },
+    block.bbox,
+    block.pageWidth || 612
+  );
+  const choiceWindowOverlap = bboxOverlapRatio(block.bbox, slot.windowBbox);
+  const normalizedVerticalDistance = Math.abs(blockCenterY - anchorCenterY) / Math.max(1, block.pageHeight || 792);
+  const normalizedHorizontalDistance = Math.abs(blockCenterX - anchorCenterX) / Math.max(1, block.pageWidth || 612);
+  let score = normalizedVerticalDistance * 2 + normalizedHorizontalDistance;
+  const reasons = [`choice ${slot.choiceId} visual candidate on source page ${slot.pageNumber}`];
+
+  if (choiceWindowOverlap >= 0.55) {
+    score -= 4.25;
+    reasons.push(`overlaps choice ${slot.choiceId} window by ${Math.round(choiceWindowOverlap * 100)}%`);
+  } else if (choiceWindowOverlap >= 0.2) {
+    score -= 1.4;
+    reasons.push(`partially overlaps choice ${slot.choiceId} window by ${Math.round(choiceWindowOverlap * 100)}%`);
+  } else {
+    score += 3.25;
+    reasons.push(`outside choice ${slot.choiceId} window`);
+  }
+
+  if (blockColumnValue === slot.column) {
+    score -= 1;
+    reasons.push("matches choice column");
+  } else {
+    score += 2.2;
+    reasons.push("different choice column");
+  }
+
+  if (blockCenterX >= slot.bbox[2] - 4) {
+    score -= 0.75;
+    reasons.push("to the right of the choice label");
+  }
+  if (blockCenterY >= anchorCenterY - 18) {
+    score -= 0.5;
+    reasons.push("below or aligned with the choice label");
+  } else {
+    score += 1;
+    reasons.push("above the choice label");
+  }
+
+  if (questionWindowOverlap < 0.25) {
+    score += 5;
+    reasons.push("outside the draft question window");
+  } else {
+    score -= Math.min(1.25, questionWindowOverlap);
+  }
+
+  return { score, reason: reasons.join(", "), choiceWindowOverlap };
+}
+
+function choicePairingConfidence(
+  association: ReturnType<typeof choiceBlockAssociationScore>,
+  nextBestScore: number | null,
+  stolenByAnotherSlot: boolean
+): "high" | "medium" | "low" {
+  const margin = nextBestScore === null ? 99 : nextBestScore - association.score;
+  if (!stolenByAnotherSlot && association.choiceWindowOverlap >= 0.55 && margin >= 0.8) return "high";
+  if (!stolenByAnotherSlot && association.choiceWindowOverlap >= 0.25 && margin >= 0.25) return "medium";
+  return "low";
+}
+
+function buildChoiceVisualCropCandidates(
+  draft: DraftQuestionWithoutStorage,
+  allDrafts: DraftQuestionWithoutStorage[],
+  draftIndex: number,
+  pagesByNumber: Map<number, PageWithoutStorage>
+) {
+  const slots = pageNumbersForDraft(draft).flatMap((pageNumber) => {
+    const page = pagesByNumber.get(pageNumber);
+    return page ? choiceSlotsForPage(draft, allDrafts, page, pageNumber) : [];
+  });
+  if (slots.length === 0) return [];
+
+  const visualItems = pageNumbersForDraft(draft).flatMap((pageNumber) => {
+    const page = pagesByNumber.get(pageNumber);
+    if (!page) return [];
+    const questionWindow = draftQuestionWindow(draft, allDrafts, page, pageNumber);
+    return (page.raw_blocks || [])
+      .map((raw) => ({ pageNumber, raw, block: usableVisualBlock(raw), questionWindow }))
+      .filter((item): item is { pageNumber: number; raw: JsonRecord; block: NonNullable<ReturnType<typeof usableVisualBlock>>; questionWindow: ReturnType<typeof draftQuestionWindow> } => Boolean(item.block))
+      .filter((item) => verticalOverlapRatio(item.block.y0, item.block.y1, item.questionWindow.y0, item.questionWindow.y1) >= 0.2);
+  });
+  if (visualItems.length < Math.min(2, Math.max(1, draft.choices.length))) return [];
+
+  const scoredPairs = slots.flatMap((slot) =>
+    visualItems
+      .filter((item) => item.pageNumber === slot.pageNumber)
+      .map((item) => {
+        const questionWindowOverlap = verticalOverlapRatio(item.block.y0, item.block.y1, slot.questionWindow.y0, slot.questionWindow.y1);
+        const association = choiceBlockAssociationScore(slot, item.block, questionWindowOverlap);
+        return {
+          slot,
+          item,
+          baseScore: association.score,
+          association,
+          blockKey: `${item.pageNumber}:${item.block.kind}:${item.block.blockNumber ?? "none"}:${item.block.bbox.join(",")}`
+        };
+      })
+  );
+  if (scoredPairs.length === 0) return [];
+
+  const bestScoreByBlock = new Map<string, number>();
+  for (const pair of scoredPairs) {
+    bestScoreByBlock.set(pair.blockKey, Math.min(bestScoreByBlock.get(pair.blockKey) ?? Number.POSITIVE_INFINITY, pair.baseScore));
+  }
+  const adjustedPairs = scoredPairs
+    .map((pair) => {
+      const bestForBlock = bestScoreByBlock.get(pair.blockKey) ?? pair.baseScore;
+      const stolenByAnotherSlot = pair.baseScore > bestForBlock + 0.4;
+      return {
+        ...pair,
+        stolenByAnotherSlot,
+        adjustedScore: pair.baseScore + (stolenByAnotherSlot ? 3.5 : 0),
+        reason: stolenByAnotherSlot
+          ? `${pair.association.reason}, visual block fits another option slot better`
+          : pair.association.reason
+      };
+    })
+    .sort((a, b) => a.adjustedScore - b.adjustedScore || a.slot.choiceId.localeCompare(b.slot.choiceId) || a.item.block.y0 - b.item.block.y0);
+
+  const candidates: VisualCropCandidate[] = [];
+  for (const [slotIndex, slot] of slots.entries()) {
+    const matches = adjustedPairs.filter((pair) => pair.slot === slot).sort((a, b) => a.adjustedScore - b.adjustedScore || a.item.block.y0 - b.item.block.y0);
+    if (matches.length === 0) continue;
+    const keep = [matches[0]];
+    if (matches[1] && matches[1].adjustedScore - matches[0].adjustedScore <= 1.1) keep.push(matches[1]);
+    for (const [rank, match] of keep.entries()) {
+      const nextBestScore = matches[rank + 1]?.adjustedScore ?? null;
+      candidates.push({
+        candidateId: `draft-${draftIndex}-choice-${slot.choiceId}-slot-${slotIndex}-page-${match.item.pageNumber}-${match.item.block.kind}-${rank}`,
+        draftIndex,
+        pageNumber: match.item.pageNumber,
+        assetType: "choice_image",
+        bbox: match.item.block.bbox,
+        blockNumber: match.item.block.blockNumber,
+        source: typeof match.item.raw.source === "string" ? match.item.raw.source : "pymupdf",
+        association: match.reason,
+        associationScore: Number(match.adjustedScore.toFixed(3)),
+        associationConfidence: choicePairingConfidence(
+          { ...match.association, score: match.adjustedScore },
+          nextBestScore,
+          match.stolenByAnotherSlot
+        ),
+        questionWindowOverlap: Number(verticalOverlapRatio(match.item.block.y0, match.item.block.y1, slot.questionWindow.y0, slot.questionWindow.y1).toFixed(3)),
+        choiceWindowOverlap: Number(match.association.choiceWindowOverlap.toFixed(3)),
+        target: "choice",
+        choiceId: slot.choiceId,
+        choiceAnchorBbox: slot.bbox,
+        choiceWindowBbox: slot.windowBbox,
+        sourceBlockKind: match.item.block.kind
+      });
+    }
+    if (candidates.length >= 10) break;
+  }
+
+  return candidates.slice(0, 10);
+}
+
 function buildVisualCropCandidates(drafts: DraftQuestionWithoutStorage[], pages: PageWithoutStorage[]) {
   const candidates: VisualCropCandidate[] = [];
   const pagesByNumber = new Map(pages.map((page) => [page.page_number, page]));
@@ -1940,13 +2252,13 @@ function buildVisualCropCandidates(drafts: DraftQuestionWithoutStorage[], pages:
   for (const [draftIndex, draft] of drafts.entries()) {
     if (!draftNeedsVisualEvidence(draft)) continue;
     const assetType = visualAssetTypeForDraft(draft);
-    const likelyVisualChoices = draft.type === "mcq" && (
-      draft.choices.length < 4 ||
-      draft.choices.some((choice) => cleanText(choice.text).length < 8 || /^Choice\s+[A-E]$/i.test(cleanText(choice.text)))
-    );
+    const likelyVisualChoices = draftLikelyVisualChoices(draft);
+    const choiceCandidates = likelyVisualChoices
+      ? buildChoiceVisualCropCandidates(draft, drafts, draftIndex, pagesByNumber)
+      : [];
+    const promptConfidenceFallback = likelyVisualChoices && choiceCandidates.length === 0;
     const blocks = Array.from(
-      { length: Math.max(0, draft.source_page_end - draft.source_page_start + 1) },
-      (_, offset) => draft.source_page_start + offset
+      pageNumbersForDraft(draft)
     )
       .flatMap((pageNumber) => {
         const page = pagesByNumber.get(pageNumber);
@@ -1974,10 +2286,13 @@ function buildVisualCropCandidates(drafts: DraftQuestionWithoutStorage[], pages:
         source: typeof item.raw.source === "string" ? item.raw.source : "pymupdf",
         association: item.association.reason,
         associationScore: Number(item.association.score.toFixed(3)),
-        associationConfidence: visualPairingConfidence(item.association, nextBestScore, likelyVisualChoices),
-        questionWindowOverlap: Number(item.association.windowOverlap.toFixed(3))
+        associationConfidence: promptConfidenceFallback ? "low" : visualPairingConfidence(item.association, nextBestScore, likelyVisualChoices),
+        questionWindowOverlap: Number(item.association.windowOverlap.toFixed(3)),
+        target: "prompt",
+        sourceBlockKind: item.block.kind
       });
     }
+    candidates.push(...choiceCandidates);
   }
 
   return candidates;
@@ -2301,15 +2616,23 @@ export async function finalizePdfPages(
         source: candidate.source,
         block_number: candidate.blockNumber,
         candidate_id: candidate.candidateId,
+        target: candidate.target,
+        choice_id: candidate.choiceId || null,
+        choice_anchor_bbox: candidate.choiceAnchorBbox || null,
+        choice_window_bbox: candidate.choiceWindowBbox || null,
         association: candidate.association,
         association_score: candidate.associationScore,
         association_confidence: candidate.associationConfidence,
-        question_window_overlap: candidate.questionWindowOverlap
+        question_window_overlap: candidate.questionWindowOverlap,
+        choice_window_overlap: candidate.choiceWindowOverlap ?? null,
+        source_block_kind: candidate.sourceBlockKind || null
       },
       keep_for_question: false,
       status: "candidate" as const,
       notes: [
-        "Candidate source page for a visual reference. This is a cropped source candidate, not saved automatically.",
+        candidate.target === "choice" && candidate.choiceId
+          ? `Candidate answer-choice visual evidence for choice ${candidate.choiceId}. This is a cropped source candidate, not saved automatically.`
+          : "Candidate source page for a visual reference. This is a cropped source candidate, not saved automatically.",
         `Auto-associated for review (${candidate.associationConfidence} confidence, score ${candidate.associationScore}): ${candidate.association}.`,
         rendered?.image_url ? "Admin must verify the crop before using it as a question image." : "Crop rendering did not produce an image; use the source page preview to crop manually.",
         ...renderedWarnings
