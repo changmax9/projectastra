@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { createSupabaseAdminClient } from "@/lib/supabase";
 import { analyzePdfUpload, finalizePdfPages, PARSER_VERSION } from "@/lib/pdf";
 import { completePdfImportJob } from "@/lib/data";
+import { enhancePdfVisualEvidence, getPdfVisualAiPreflight } from "@/lib/pdf-visual-ai";
 import { R2_MAX_PDF_BYTES, r2SignedUrl, uploadEvidence } from "@/lib/r2";
 import type { PdfImportAnalysisInput } from "@/lib/data";
 import type { PdfImportJob, PdfUpload } from "@/lib/types";
@@ -185,7 +186,20 @@ async function processJob(job: PdfImportJob) {
       .eq("job_id", job.id)
       .order("page_number", { ascending: true });
     if (pagesError) throw new Error(pagesError.message);
-    const finalAnalysis = await finalizePdfPages(localPdf, persistedPages || [], [], "tesseract-remote-worker", probe.pageCount);
+    let finalAnalysis = await finalizePdfPages(localPdf, persistedPages || [], [], "tesseract-remote-worker", probe.pageCount);
+    await updateJob(job.id, { phase: "visual-enhancement" });
+    const visualAi = await enhancePdfVisualEvidence(localPdf, finalAnalysis);
+    finalAnalysis = visualAi.analysis;
+    if (visualAi.shouldRefinalize) {
+      finalAnalysis = await finalizePdfPages(
+        localPdf,
+        visualAi.analysis.pages,
+        visualAi.warnings,
+        visualAi.analysis.ocrProvider,
+        probe.pageCount
+      );
+      finalAnalysis.warnings = Array.from(new Set([...visualAi.analysis.warnings, ...finalAnalysis.warnings, ...visualAi.warnings]));
+    }
     await uploadAnalysisEvidence(job.pdf_upload_id, job.id, finalAnalysis);
     await completePdfImportJob(job.id, finalAnalysis, job.created_by || workerId);
     await updateJob(job.id, { phase: "needs_review", processed_page_count: finalAnalysis.pageCount, lease_owner: null, lease_expires_at: null });
@@ -209,6 +223,10 @@ async function processJob(job: PdfImportJob) {
 
 async function main() {
   console.log(`Astra PDF worker ${workerId} started.`);
+  const visualAiPreflight = getPdfVisualAiPreflight();
+  for (const warning of visualAiPreflight.warnings) console.warn(warning);
+  if (visualAiPreflight.errors.length > 0) throw new Error(`PDF visual AI configuration is invalid: ${visualAiPreflight.errors.join(" ")}`);
+  if (visualAiPreflight.enabled) console.log(`PDF visual AI ${visualAiPreflight.mode} mode enabled with ${visualAiPreflight.provider}.`);
   if (process.env.PDF_WORKER_SMOKE === "1") {
     const { error } = await supabase.from("pdf_import_jobs").select("id", { head: true, count: "exact" }).limit(1);
     if (error) throw new Error(error.message);

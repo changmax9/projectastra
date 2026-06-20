@@ -6,17 +6,30 @@ const MAX_PDF_BYTES = 500 * 1024 * 1024;
 export const R2_MULTIPART_PART_SIZE = 10 * 1024 * 1024;
 export const R2_MAX_PDF_BYTES = MAX_PDF_BYTES;
 
+function requireHttpUrl(value: string, name: string) {
+  if (value.includes("<") || value.includes(">")) throw new Error(`${name} must be a real http(s) URL, not a placeholder.`);
+  try {
+    const url = new URL(value);
+    if (url.protocol === "http:" || url.protocol === "https:") return value.replace(/\/+$/, "");
+  } catch {
+    // Fall through to the consistent error below.
+  }
+  throw new Error(`${name} must be a valid http(s) URL.`);
+}
+
 function config() {
   const accountId = process.env.R2_ACCOUNT_ID;
   const accessKeyId = process.env.R2_ACCESS_KEY_ID;
   const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
   if (!accountId || !accessKeyId || !secretAccessKey) throw new Error("Cloudflare R2 credentials are not configured.");
+  const endpoint = process.env.R2_ENDPOINT || `https://${accountId}.r2.cloudflarestorage.com`;
+  const evidencePublicUrl = process.env.R2_EVIDENCE_PUBLIC_URL || "";
   return {
     accountId,
     accessKeyId,
     secretAccessKey,
-    endpoint: process.env.R2_ENDPOINT || `https://${accountId}.r2.cloudflarestorage.com`,
-    evidencePublicUrl: (process.env.R2_EVIDENCE_PUBLIC_URL || "").replace(/\/+$/, "")
+    endpoint: requireHttpUrl(endpoint, "R2_ENDPOINT"),
+    evidencePublicUrl: evidencePublicUrl ? requireHttpUrl(evidencePublicUrl, "R2_EVIDENCE_PUBLIC_URL") : ""
   };
 }
 

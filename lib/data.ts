@@ -26,6 +26,7 @@ import type {
   ExamSection,
   ExamSectionProgress,
   ExamStatus,
+  JsonRecord,
   ExamWithQuestions,
   MediaFile,
   PdfDraftReviewStatus,
@@ -2964,6 +2965,75 @@ export async function updatePdfImportDraftStatus(
   draft.saved_question_id = savedQuestionId;
   draft.updated_at = timestamp;
   await saveMockStore();
+}
+
+export async function updatePdfImportDraftAssetFeedback(
+  assetId: string,
+  input: { feedback: string; notes: string },
+  adminId: string
+) {
+  const timestamp = nowIso();
+  const allowed = new Set(["unlabeled", "useful_crop", "wrong_region", "missing_graph", "bad_segmentation"]);
+  const feedback = allowed.has(input.feedback) ? input.feedback : "unlabeled";
+  const reviewerNotes = input.notes.trim().slice(0, 1000);
+  const feedbackText = feedback.replace(/_/g, " ");
+  const feedbackMarker = [
+    `Reviewer feedback: ${feedbackText}.`,
+    reviewerNotes ? `Reviewer notes: ${reviewerNotes}` : ""
+  ].filter(Boolean).join(" ");
+  const mergeNotes = (notes: string) => [
+    notes.replace(/\s*Reviewer feedback:[\s\S]*$/i, "").trim(),
+    feedbackMarker
+  ].filter(Boolean).join(" ");
+
+  if (hasSupabaseEnv()) {
+    const client = adminClient();
+    const { data: asset, error: readError } = await client
+      .from("pdf_import_draft_assets")
+      .select("id,job_id,bbox,notes")
+      .eq("id", assetId)
+      .maybeSingle();
+    if (readError) throw new Error(isMissingPdfImportSchemaError(readError) ? PDF_IMPORT_SCHEMA_SETUP_MESSAGE : readError.message);
+    if (!asset) throw new Error("PDF import draft asset not found.");
+    const bbox = asset.bbox && typeof asset.bbox === "object" && !Array.isArray(asset.bbox) ? asset.bbox as JsonRecord : {};
+    const { error } = await client
+      .from("pdf_import_draft_assets")
+      .update({
+        bbox: {
+          ...bbox,
+          reviewer_feedback: feedback,
+          reviewer_notes: reviewerNotes,
+          reviewer_feedback_by: adminId,
+          reviewer_feedback_at: timestamp
+        },
+        notes: mergeNotes(String(asset.notes || "")),
+        updated_at: timestamp
+      })
+      .eq("id", assetId);
+    if (error) throw new Error(isMissingPdfImportSchemaError(error) ? PDF_IMPORT_SCHEMA_SETUP_MESSAGE : error.message);
+    await logAdminEdit(adminId, "pdf_import_draft_asset", assetId, "feedback", {
+      job_id: asset.job_id,
+      feedback,
+      notes: reviewerNotes
+    });
+    return { jobId: String(asset.job_id || "") };
+  }
+
+  await ensureMockStore();
+  const asset = mockPdfImportDraftAssets.find((item) => item.id === assetId);
+  if (!asset) throw new Error("PDF import draft asset not found.");
+  const bbox = asset.bbox && typeof asset.bbox === "object" && !Array.isArray(asset.bbox) ? asset.bbox : {};
+  asset.bbox = {
+    ...bbox,
+    reviewer_feedback: feedback,
+    reviewer_notes: reviewerNotes,
+    reviewer_feedback_by: adminId,
+    reviewer_feedback_at: timestamp
+  };
+  asset.notes = mergeNotes(asset.notes || "");
+  asset.updated_at = timestamp;
+  await saveMockStore();
+  return { jobId: asset.job_id };
 }
 
 export async function listPublishedReviewGuides(filters: {

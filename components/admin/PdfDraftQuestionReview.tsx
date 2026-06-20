@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useFormState, useFormStatus } from "react-dom";
 import {
+  adminSavePdfDraftAssetFeedbackAction,
   adminRejectPdfDraftQuestionAction,
   adminSavePdfDraftQuestionAction,
   type ActionState
@@ -61,17 +62,23 @@ type CandidateSelectionState = Record<string, {
   caption: string;
   alt: string;
   bbox: string;
+  reviewerFeedback: string;
+  reviewerNotes: string;
 }>;
 
 function initialCandidateSelection(asset: PdfImportDraftAsset) {
   const bbox = asset.bbox && typeof asset.bbox === "object" ? asset.bbox : null;
   const hasGeneratedCrop = Boolean(asset.image_url && bbox && "bbox" in bbox);
+  const reviewerFeedback = bbox && typeof bbox.reviewer_feedback === "string" ? bbox.reviewer_feedback : "unlabeled";
+  const reviewerNotes = bbox && typeof bbox.reviewer_notes === "string" ? bbox.reviewer_notes : "";
   return {
     enabled: false,
     croppedUrl: hasGeneratedCrop ? asset.image_url || "" : "",
     caption: `${asset.asset_type === "unknown" ? "Visual evidence" : asset.asset_type} from PDF page ${asset.page_number}`,
     alt: `Cropped source evidence from PDF page ${asset.page_number}`,
-    bbox: JSON.stringify(asset.bbox || { page_number: asset.page_number, source_image_url: asset.image_url }, null, 2)
+    bbox: JSON.stringify(asset.bbox || { page_number: asset.page_number, source_image_url: asset.image_url }, null, 2),
+    reviewerFeedback,
+    reviewerNotes
   };
 }
 
@@ -85,9 +92,14 @@ function buildQuestionImagesJson(
     const croppedUrl = selection?.croppedUrl.trim();
     if (!selection?.enabled || !croppedUrl) return [];
     const bbox = selection.bbox.trim();
+    const feedback = [
+      selection.reviewerFeedback && selection.reviewerFeedback !== "unlabeled" ? `Reviewer feedback: ${selection.reviewerFeedback.replace(/_/g, " ")}` : "",
+      selection.reviewerNotes.trim() ? `Reviewer notes: ${selection.reviewerNotes.trim()}` : ""
+    ].filter(Boolean).join(" ");
     const caption = [
       selection.caption.trim(),
-      bbox ? `Crop/source bbox: ${bbox.replace(/\s+/g, " ")}` : ""
+      bbox ? `Crop/source bbox: ${bbox.replace(/\s+/g, " ")}` : "",
+      feedback
     ].filter(Boolean).join(" ");
     return [{
       id: `pdf-crop-${asset.id}`,
@@ -97,6 +109,22 @@ function buildQuestionImagesJson(
     }];
   });
   return JSON.stringify([...draft.question_images, ...approvedCrops], null, 2);
+}
+
+function snippet(value: unknown, maxLength = 900) {
+  const text = typeof value === "string" ? value : value ? JSON.stringify(value, null, 2) : "";
+  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
+}
+
+function isAiVisualBlock(block: Record<string, unknown>) {
+  const kind = String(block.kind || "");
+  const source = String(block.source || "").toLowerCase();
+  return (
+    block.ai_visual_evidence === true ||
+    kind === "ai_visual_markdown" ||
+    Boolean(block.raw_provider_output) ||
+    /visual-ai|mistral|openai|claude|gemini/.test(source)
+  );
 }
 
 export function PdfDraftQuestionReview({
@@ -140,6 +168,21 @@ export function PdfDraftQuestionReview({
     })),
     [candidateAssets, candidateSelections]
   );
+  const aiVisualEvidence = useMemo(() =>
+    (sourcePages || []).flatMap((page) =>
+      (page.raw_blocks || [])
+        .filter((block) => isAiVisualBlock(block))
+        .map((block, index) => ({
+          key: `${page.id}-${index}`,
+          pageNumber: page.page_number,
+          kind: String(block.kind || "provider-output"),
+          source: String(block.source || "visual provider"),
+          text: snippet(block.text || block.markdown || block.raw_provider_output),
+          bbox: snippet(block.bbox || block.region || null, 500)
+        }))
+    ),
+    [sourcePages]
+  );
 
   function updateCandidateSelection(assetId: string, patch: Partial<CandidateSelectionState[string]>) {
     setCandidateSelections((current) => {
@@ -152,7 +195,9 @@ export function PdfDraftQuestionReview({
             croppedUrl: "",
             caption: "",
             alt: "",
-            bbox: ""
+            bbox: "",
+            reviewerFeedback: "unlabeled",
+            reviewerNotes: ""
           })),
           ...patch
         }
@@ -222,8 +267,8 @@ export function PdfDraftQuestionReview({
         <span className={`rounded-md border px-3 py-2 ${candidateAssets.length > 0 ? "border-blue-200 bg-blue-50 text-blue-900" : "border-slate-200 bg-slate-50"}`}>
           Visual candidates: {candidateAssets.length}
         </span>
-        <span className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
-          Save status: draft only
+        <span className={`rounded-md border px-3 py-2 ${aiVisualEvidence.length > 0 ? "border-violet-200 bg-violet-50 text-violet-900" : "border-slate-200 bg-slate-50"}`}>
+          AI evidence: {aiVisualEvidence.length}
         </span>
       </div>
 
@@ -255,6 +300,37 @@ export function PdfDraftQuestionReview({
                       <li key={warning}>{warning}</li>
                     ))}
                   </ul>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {aiVisualEvidence.length > 0 ? (
+        <div className="mt-4 rounded-md border border-violet-200 bg-violet-50 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-violet-900">AI visual evidence</p>
+            <span className="text-xs font-medium text-violet-800">Review-only provider output</span>
+          </div>
+          <div className="mt-3 grid gap-3 lg:grid-cols-2">
+            {aiVisualEvidence.map((item) => (
+              <div key={item.key} className="rounded-md border border-violet-100 bg-white p-3 text-xs text-slate-600">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-semibold text-ink">Page {item.pageNumber} · {item.kind}</span>
+                  <span>{item.source}</span>
+                </div>
+                {item.text ? (
+                  <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap rounded-md border border-slate-200 bg-slate-50 p-2 font-mono leading-5">
+                    {item.text}
+                  </pre>
+                ) : (
+                  <p className="mt-2 leading-5">Provider returned a visual region without text.</p>
+                )}
+                {item.bbox ? (
+                  <pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap rounded-md border border-slate-200 bg-white p-2 font-mono leading-5">
+                    {item.bbox}
+                  </pre>
                 ) : null}
               </div>
             ))}
@@ -321,6 +397,44 @@ export function PdfDraftQuestionReview({
                       disabled={disabled}
                     />
                   </label>
+                  <form action={adminSavePdfDraftAssetFeedbackAction} className="space-y-2 rounded-md border border-blue-100 bg-white p-2">
+                    <input type="hidden" name="asset_id" value={asset.id} />
+                    <input type="hidden" name="job_id" value={draft.job_id} />
+                    <label className="block font-medium text-slate-700">
+                      Reviewer feedback
+                      <select
+                        name="reviewer_feedback"
+                        value={selection.reviewerFeedback}
+                        onChange={(event) => updateCandidateSelection(asset.id, { reviewerFeedback: event.target.value })}
+                        className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1"
+                        disabled={disabled}
+                      >
+                        <option value="unlabeled">Unlabeled</option>
+                        <option value="useful_crop">Useful crop</option>
+                        <option value="wrong_region">Wrong region</option>
+                        <option value="missing_graph">Missing graph</option>
+                        <option value="bad_segmentation">Bad segmentation</option>
+                      </select>
+                    </label>
+                    <label className="block font-medium text-slate-700">
+                      Reviewer notes
+                      <textarea
+                        name="reviewer_notes"
+                        value={selection.reviewerNotes}
+                        onChange={(event) => updateCandidateSelection(asset.id, { reviewerNotes: event.target.value })}
+                        rows={2}
+                        className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1"
+                        disabled={disabled}
+                      />
+                    </label>
+                    <button
+                      type="submit"
+                      disabled={disabled}
+                      className="rounded-md border border-blue-200 px-2 py-1 text-xs font-semibold text-blue-800 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Save feedback
+                    </button>
+                  </form>
                 </div>
               </div>
             ))}

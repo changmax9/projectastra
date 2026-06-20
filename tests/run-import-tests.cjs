@@ -407,6 +407,7 @@ assert.doesNotMatch(actionsSource, /revalidatePath\(`\/exam\/\$\{submission\.exa
 assert.doesNotMatch(actionsSource, /revalidatePath\(`\/exam\/\$\{input\.examId\}\/take`\)/, "Save & Exit does not revalidate the current exam route before leaving");
 assert.match(actionsSource, /adminStartPdfImportAction/, "admin can start a PDF import analysis job");
 assert.match(actionsSource, /adminSavePdfDraftQuestionAction/, "PDF import drafts use an explicit save action");
+assert.match(actionsSource, /adminSavePdfDraftAssetFeedbackAction/, "PDF import visual evidence feedback has an explicit save action");
 assert.match(actionsSource, /status: "draft"/, "PDF import drafts save as draft questions");
 assert.match(actionsSource, /needs-admin-review/, "PDF import saved questions stay in the admin review queue");
 assert.match(actionsSource, /createPdfImportJob/, "PDF import start action queues a processing job");
@@ -510,6 +511,13 @@ assert.match(pdfReviewSource, /Not saved automatically/, "PDF import review warn
 assert.match(pdfReviewSource, /Cropped asset URL/, "PDF import review requires a cropped asset URL before adding visual evidence to saved drafts");
 assert.match(pdfReviewSource, /Use cropped asset in saved draft/, "PDF import review has explicit keep controls for cropped visual evidence");
 assert.match(pdfReviewSource, /Crop\/source bbox JSON/, "PDF import review captures crop/source bbox metadata for approved visuals");
+assert.match(pdfReviewSource, /Reviewer feedback/, "PDF import review captures visual evidence feedback labels");
+assert.match(pdfReviewSource, /useful_crop/, "PDF import review can label useful crop evidence");
+assert.match(pdfReviewSource, /wrong_region/, "PDF import review can label wrong-region crop evidence");
+assert.match(pdfReviewSource, /missing_graph/, "PDF import review can label missing graph evidence");
+assert.match(pdfReviewSource, /bad_segmentation/, "PDF import review can label OCR segmentation failures");
+assert.match(pdfReviewSource, /adminSavePdfDraftAssetFeedbackAction/, "PDF import review persists visual evidence feedback");
+assert.match(pdfReviewSource, /Save feedback/, "PDF import review exposes a separate feedback save action");
 assert.doesNotMatch(pdfReviewSource, /page\.confidence > 1/, "PDF import review assumes normalized 0..1 confidence values");
 assert.match(pdfReviewSource, /Scoring notes from source/, "PDF import review carries scoring notes into the save form");
 assert.match(pdfReviewSource, /selection_type/, "PDF import review submits selection type metadata");
@@ -523,6 +531,9 @@ assert.match(dataSource, /auth\.admin\.listUsers/, "Admin account health checks 
 assert.match(dataSource, /adminProfilesMissingAuthCount/, "Admin account health reports admin profile/Auth mismatches");
 assert.match(dataSource, /PDF import draft question not found/, "PDF draft status updates fail loudly when the draft is missing");
 assert.match(dataSource, /draft asset references a missing draft question index/, "PDF import rejects out-of-range draft asset links");
+assert.match(dataSource, /updatePdfImportDraftAssetFeedback/, "PDF import data layer can persist visual evidence reviewer feedback");
+assert.match(dataSource, /reviewer_feedback/, "PDF import asset feedback stores the reviewer label in candidate metadata");
+assert.match(dataSource, /pdf_import_draft_asset/, "PDF import asset feedback is included in admin edit logs");
 assert.match(dataSource, /extraction_method === "text"[\s\S]*extraction_method === "ocr"/, "PDF import extracted-page metrics count only usable text/OCR pages");
 assert.match(dataSource, /createPdfImportJob/, "PDF import data layer can create processing jobs");
 assert.match(dataSource, /completePdfImportJob/, "PDF import data layer can complete queued jobs with analysis results");
@@ -570,6 +581,7 @@ assert.match(pdfProcessRouteSource, /getPdfImportSchemaStatus/, "PDF import proc
 assert.match(pdfProcessRouteSource, /failed state could not be saved/, "PDF import process route handles failed-state persistence errors");
 assert.match(pdfProcessRouteSource, /maxDuration = 10/, "PDF import process route stays short-lived in production");
 assert.match(pdfProcessRouteSource, /isRemotePdfOcrMode/, "PDF import process route only polls status in remote-worker mode");
+assert.doesNotMatch(pdfProcessRouteSource, /pdf-visual-ai|enhancePdfVisualEvidence|MISTRAL_API_KEY|PDF_VISUAL_AI/, "Vercel PDF import route does not import or run visual AI providers");
 
 const pdfOcrModeSource = source("lib/pdf-ocr-mode.ts");
 assert.match(pdfOcrModeSource, /process\.env\.VERCEL \? "remote-worker" : "local"/, "Vercel defaults PDF OCR to the remote worker if the dashboard env is omitted");
@@ -603,9 +615,55 @@ assert.match(remotePdfWorker, /markJobCancelled/, "Remote PDF worker marks unfin
 assert.match(remotePdfWorker, /uploadAnalysisEvidence/, "Remote PDF worker uploads generated evidence to durable storage");
 assert.match(remotePdfWorker, /status: "finalizing"/, "Remote PDF worker finalizes stable drafts only after page batches finish");
 assert.match(remotePdfWorker, /PDF_WORKER_SMOKE/, "Remote PDF worker has a no-claim startup smoke mode");
+assert.match(remotePdfWorker, /enhancePdfVisualEvidence/, "Remote PDF worker owns the visual AI enhancement stage");
+assert.match(remotePdfWorker, /visual-enhancement/, "Remote PDF worker exposes visual enhancement as a distinct phase");
+assert.match(remotePdfWorker, /getPdfVisualAiPreflight/, "Remote PDF worker validates visual AI production configuration at startup");
 
 const envExample = source(".env.example");
 assert.match(envExample, /PDF_WORKER_SMOKE=/, "Example env documents the no-claim worker smoke flag");
+assert.match(envExample, /PDF_VISUAL_AI_MODE=off/, "Example env documents visual AI as disabled by default");
+assert.match(envExample, /PDF_VISUAL_AI_TIMEOUT_MS=60000/, "Example env documents visual AI provider timeouts");
+assert.match(envExample, /PDF_VISUAL_AI_FAIL_CLOSED=0/, "Example env documents fail-open visual AI default");
+assert.match(envExample, /PDF_VISUAL_AI_MISTRAL_MODEL=mistral-ocr-latest/, "Example env documents the Mistral OCR visual evidence adapter");
+assert.match(envExample, /PDF_VISUAL_AI_MISTRAL_INCLUDE_IMAGE_BASE64=0/, "Example env documents optional provider image extraction");
+
+const pdfVisualAiSource = source("lib/pdf-visual-ai.ts");
+assert.match(pdfVisualAiSource, /PDF_VISUAL_AI_MODE/, "Visual AI adapter is env-gated");
+assert.match(pdfVisualAiSource, /"off" \| "audit" \| "assist"/, "Visual AI adapter exposes off, audit, and assist modes");
+assert.match(pdfVisualAiSource, /getPdfVisualAiPreflight/, "Visual AI adapter exposes a production preflight");
+assert.match(pdfVisualAiSource, /PDF_VISUAL_AI_TIMEOUT_MS/, "Visual AI adapter bounds provider request time");
+assert.match(pdfVisualAiSource, /PDF_VISUAL_AI_RETRIES/, "Visual AI adapter retries transient provider failures");
+assert.match(pdfVisualAiSource, /PDF_VISUAL_AI_MAX_IMAGE_BYTES/, "Visual AI adapter limits rendered page and provider image size");
+assert.match(pdfVisualAiSource, /PDF_VISUAL_AI_FAIL_CLOSED/, "Visual AI adapter can fail closed when explicitly requested");
+assert.match(pdfVisualAiSource, /PDF_VISUAL_AI_MISTRAL_API_KEY|MISTRAL_API_KEY/, "Visual AI adapter reads worker-side Mistral credentials");
+assert.match(pdfVisualAiSource, /table_format/, "Visual AI adapter requests structured table output from Mistral OCR");
+assert.match(pdfVisualAiSource, /include_image_base64/, "Visual AI adapter can request provider-extracted images");
+assert.match(pdfVisualAiSource, /pdf-import-ai-evidence/, "Visual AI adapter stores provider image evidence for the R2 evidence uploader");
+assert.match(pdfVisualAiSource, /fixture-visual-ai/, "Visual AI adapter has a deterministic fixture provider");
+assert.match(pdfVisualAiSource, /ai_visual_evidence/, "Visual AI adapter labels provider evidence blocks");
+assert.match(pdfVisualAiSource, /raw_provider_output/, "Visual AI adapter preserves raw provider output for audit");
+assert.match(pdfVisualAiSource, /draft_question_index/, "Visual AI adapter stores provider evidence against draft candidates");
+assert.match(pdfVisualAiSource, /keep_for_question: false/, "Visual AI draft assets are never auto-kept");
+assert.doesNotMatch(pdfVisualAiSource, /question_images/, "Visual AI adapter cannot directly publish saved question images");
+
+const pdfDraftReviewSource = source("components/admin/PdfDraftQuestionReview.tsx");
+assert.match(pdfDraftReviewSource, /AI visual evidence/, "PDF draft review card exposes AI visual evidence separately");
+assert.match(pdfDraftReviewSource, /Review-only provider output/, "PDF draft review card labels provider evidence as review-only");
+assert.match(pdfDraftReviewSource, /ai_visual_evidence/, "PDF draft review card detects AI visual evidence audit blocks");
+
+const visualAiEvalSource = source("scripts/evaluate-visual-ai-ocr.ts");
+assert.match(visualAiEvalSource, /150, 170, 205, 255, 570, 610/, "Visual AI evaluation harness targets the known hard Physics pages");
+assert.match(visualAiEvalSource, /PDF_VISUAL_AI_PROVIDER = "fixture"/, "Visual AI evaluation harness falls back to fixture mode without credentials");
+assert.match(visualAiEvalSource, /pdf-visual-ai-golden\.json/, "Visual AI evaluation harness loads golden page expectations");
+assert.match(visualAiEvalSource, /visual_evidence_recall/, "Visual AI evaluation harness reports visual evidence recall");
+assert.match(visualAiEvalSource, /bad_crop_rate/, "Visual AI evaluation harness reserves reviewer-labeled bad-crop metrics");
+assert.match(visualAiEvalSource, /draft_over_generation/, "Visual AI evaluation harness reports draft over-generation");
+assert.match(visualAiEvalSource, /scoring_guide_rejection/, "Visual AI evaluation harness reports scoring-guide rejection applicability");
+
+const visualAiGolden = source("tests/fixtures/pdf-visual-ai-golden.json");
+assert.match(visualAiGolden, /physics-hard-pages-v1/, "Visual AI golden fixture names the hard-page evaluation set");
+assert.match(visualAiGolden, /\"pages\": \[\s*150,\s*170,\s*205,\s*255,\s*570,\s*610\s*\]/, "Visual AI golden fixture covers the known hard Physics pages");
+assert.match(visualAiGolden, /\"targetQuestionNumbers\": \[3\]/, "Visual AI golden fixture tracks page 610 as a future FRQ recovery target");
 
 const r2Source = source("lib/r2.ts");
 assert.match(r2Source, /AWS4-HMAC-SHA256/, "R2 integration signs S3-compatible requests without exposing credentials");
@@ -633,6 +691,16 @@ assert.match(pdfImportSchemaChecks, /PDF_UPLOADS_REMOTE_STORAGE_REPAIR_SQL/, "PD
 const remoteWorkerCheck = source("scripts/check-remote-pdf-worker.cjs");
 assert.match(remoteWorkerCheck, /checkPdfImportSchema/, "Remote worker checker validates Supabase schema");
 assert.match(remoteWorkerCheck, /repairSqlForResults/, "Remote worker checker prints targeted schema repair SQL");
+assert.match(remoteWorkerCheck, /visualAiPreflight/, "Remote worker checker validates visual AI production configuration");
+
+const pdfImportRepairSql = source("scripts/print-pdf-import-repair-sql.cjs");
+assert.match(pdfImportRepairSql, /repairSqlForResults/, "PDF import repair SQL helper prints targeted dashboard SQL");
+assert.match(pdfImportRepairSql, /process\.stdout\.write/, "PDF import repair SQL helper writes copy-paste SQL to stdout");
+
+const visualFeedbackReport = source("scripts/report-pdf-visual-feedback.cjs");
+assert.match(visualFeedbackReport, /pdf_import_draft_assets/, "Visual feedback report reads persisted PDF draft assets");
+assert.match(visualFeedbackReport, /reviewer_feedback/, "Visual feedback report summarizes reviewer labels");
+assert.match(visualFeedbackReport, /recent_labels/, "Visual feedback report includes recent labeled visual evidence");
 
 const r2Cors = source("infra/r2-source-cors.json");
 assert.match(r2Cors, /https:\/\/projectastra\.uk/, "R2 source CORS includes the apex production domain");
