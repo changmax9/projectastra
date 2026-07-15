@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { CircleHelp, LogOut, Settings, Shield } from "lucide-react";
 import { signOutAction } from "@/app/actions";
+import { AstraLogo } from "@/components/brand/AstraLogo";
 import { getCurrentProfile } from "@/lib/auth";
 import styles from "./BluebookAppHeader.module.css";
 
@@ -11,7 +12,7 @@ export async function BluebookAppHeader({ label = "Student Home" }: { label?: st
     <header className={styles.header} data-ud-check="student-app-header">
       <div className={styles.inner}>
         <Link className={styles.brand} href={profile ? "/dashboard" : "/login"} aria-label="Astra Exams home">
-          <span className={styles.brandMark} aria-hidden="true">A</span>
+          <AstraLogo className={styles.brandMark} />
           <span className={styles.brandText}>
             <strong>Astra Exams</strong>
             <span>{label}</span>

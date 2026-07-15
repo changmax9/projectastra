@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { Coffee, LogOut } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState, useTransition } from "react";
+import { ChevronRight } from "lucide-react";
 import { resumeBluebookAfterBreakAction } from "@/app/actions";
+import { AstraLogo } from "@/components/brand/AstraLogo";
 import type { Submission } from "@/lib/types";
 import styles from "./BluebookBreakScreen.module.css";
 
@@ -22,9 +22,7 @@ export function BluebookBreakScreen({
   submission: Submission;
   studentName: string;
 }) {
-  const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const resumedRef = useRef(false);
   const startedAt = useMemo(
     () => new Date(submission.break_started_at || submission.updated_at).getTime(),
     [submission.break_started_at, submission.updated_at]
@@ -32,47 +30,49 @@ export function BluebookBreakScreen({
   const [now, setNow] = useState(Date.now());
   const remaining = Math.max(0, BREAK_SECONDS - Math.floor((now - startedAt) / 1000));
 
-  const resume = useCallback((resumedEarly: boolean) => {
-    if (resumedRef.current) return;
-    resumedRef.current = true;
-    startTransition(async () => {
-      await resumeBluebookAfterBreakAction(submission.id, resumedEarly);
-    });
-  }, [submission.id]);
-
   useEffect(() => {
-    if (remaining === 0) {
-      resume(false);
-      return;
-    }
+    if (remaining === 0) return undefined;
     const timeout = window.setTimeout(() => setNow(Date.now()), 1000);
     return () => window.clearTimeout(timeout);
-  }, [remaining, resume]);
+  }, [remaining]);
+
+  function resume() {
+    startTransition(async () => {
+      await resumeBluebookAfterBreakAction(submission.id);
+    });
+  }
 
   return (
-    <main className={styles.app}>
-      <div className={styles.brandBar}>Astra Exams</div>
+    <main className={styles.app} data-ud-check="scheduled-break-screen">
       <header className={styles.header}>
-        <span>Multiple Choice Complete</span>
-        <button type="button" onClick={() => router.push("/dashboard")} disabled={isPending}>
-          <LogOut aria-hidden="true" /> Exit Practice
-        </button>
+        <span className={styles.brand}><AstraLogo /> <strong>Astra Exams</strong></span>
+        <span>Scheduled Break</span>
       </header>
-      <div className={styles.testStripe} />
       <section className={styles.content}>
-        <Coffee aria-hidden="true" />
-        <p>Break Time Remaining</p>
-        <h1>{formatTime(remaining)}</h1>
-        <h2>Scheduled Break</h2>
-        <div className={styles.instructions}>
-          <p>You have completed all multiple-choice sections. Free response begins after this break.</p>
-          <p>You may leave your device, but keep the test open. In this practice test, you can resume before the timer reaches zero.</p>
+        <div className={styles.timerPanel}>
+          <p>Remaining Break Time</p>
+          <strong>{formatTime(remaining)}</strong>
         </div>
-        <button type="button" className={styles.resumeButton} onClick={() => resume(true)} disabled={isPending}>
-          {isPending ? "Resuming..." : "Resume Testing"}
-        </button>
+        <div className={styles.instructions}>
+          <p className={styles.eyebrow}>Multiple Choice Complete</p>
+          <h1>Take a Break. Keep This Device Open.</h1>
+          <p>Free response begins after the scheduled break. The resume button will appear when the timer reaches zero.</p>
+          <h2>During the break:</h2>
+          <ol>
+            <li>Do not close this tab or sign out of Astra Exams.</li>
+            <li>Keep your scratch paper and testing materials at your workspace.</li>
+            <li>Do not review questions or discuss the test with anyone.</li>
+          </ol>
+          {remaining === 0 ? (
+            <button type="button" className={styles.resumeButton} onClick={resume} disabled={isPending}>
+              {isPending ? "Resuming..." : "Resume Testing Now"}
+              {!isPending ? <ChevronRight aria-hidden="true" /> : null}
+            </button>
+          ) : (
+            <p className={styles.lockedMessage} aria-live="polite">Testing stays locked until the break ends.</p>
+          )}
+        </div>
       </section>
-      <div className={styles.testStripe} />
       <footer>{studentName}</footer>
     </main>
   );

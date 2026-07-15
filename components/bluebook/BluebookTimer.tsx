@@ -10,6 +10,7 @@ function formatTime(seconds: number) {
 export function BluebookTimer({
   initialElapsedSeconds,
   timeLimitMinutes,
+  storageKey,
   hidden,
   onToggle,
   onFiveMinutes,
@@ -18,6 +19,7 @@ export function BluebookTimer({
 }: {
   initialElapsedSeconds: number;
   timeLimitMinutes: number;
+  storageKey: string;
   hidden: boolean;
   onToggle: () => void;
   onFiveMinutes: () => void;
@@ -25,20 +27,32 @@ export function BluebookTimer({
   className?: string;
 }) {
   const mountedAtRef = useRef(Date.now());
+  const elapsedBaselineRef = useRef(Math.max(0, initialElapsedSeconds));
   const fiveMinuteAlertedRef = useRef(false);
   const expiredRef = useRef(false);
-  const initialRemaining = Math.max(0, timeLimitMinutes * 60 - Math.max(0, initialElapsedSeconds));
+  const timeLimitSeconds = timeLimitMinutes * 60;
+  const initialRemaining = Math.max(0, timeLimitSeconds - Math.max(0, initialElapsedSeconds));
   const [remaining, setRemaining] = useState(initialRemaining);
 
   useEffect(() => {
+    const storedElapsed = Number(window.sessionStorage.getItem(storageKey) || "0");
+    elapsedBaselineRef.current = Math.max(
+      0,
+      initialElapsedSeconds,
+      Number.isFinite(storedElapsed) ? storedElapsed : 0
+    );
+    mountedAtRef.current = Date.now();
+
     const tick = () => {
       const elapsedSinceMount = Math.floor((Date.now() - mountedAtRef.current) / 1000);
-      setRemaining(Math.max(0, initialRemaining - elapsedSinceMount));
+      const elapsed = Math.min(timeLimitSeconds, elapsedBaselineRef.current + elapsedSinceMount);
+      window.sessionStorage.setItem(storageKey, String(elapsed));
+      setRemaining(Math.max(0, timeLimitSeconds - elapsed));
     };
     tick();
     const interval = window.setInterval(tick, 1000);
     return () => window.clearInterval(interval);
-  }, [initialRemaining]);
+  }, [initialElapsedSeconds, storageKey, timeLimitSeconds]);
 
   useEffect(() => {
     if (remaining <= 300 && remaining > 0 && !fiveMinuteAlertedRef.current) {

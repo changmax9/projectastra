@@ -1,5 +1,5 @@
 .page {
-  min-height: calc(100dvh - 64px);
+  min-height: calc(100dvh - 82px);
   background: #f1f2f4;
   color: #202124;
   font-family: Arial, Helvetica, sans-serif;
@@ -30,7 +30,7 @@
 
 @media (max-width: 680px) {
   .page {
-    min-height: calc(100dvh - 58px);
+    min-height: calc(100dvh - 64px);
   }
 
   .main {

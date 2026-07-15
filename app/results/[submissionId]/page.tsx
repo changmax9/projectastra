@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
+import { BluebookCompletionScreen } from "@/components/bluebook/BluebookCompletionScreen";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { AcademicPageShell } from "@/components/layout/AcademicPageShell";
 import { ResultQuestionReview } from "@/components/exam/ResultQuestionReview";
@@ -14,11 +15,25 @@ import { formatFriendlyDuration, percentage, submissionPartLabel, submissionStat
 
 export const dynamic = "force-dynamic";
 
-export default async function ResultPage({ params }: { params: { submissionId: string } }) {
+export default async function ResultPage({
+  params,
+  searchParams
+}: {
+  params: { submissionId: string };
+  searchParams: { submitted?: string };
+}) {
   const profile = await requireProfile();
   const detail = await getSubmissionDetail(params.submissionId);
   if (!detail) notFound();
   if (profile.role !== "admin" && detail.student_id !== profile.id) redirect("/dashboard");
+  if (searchParams.submitted === "1") {
+    return (
+      <BluebookCompletionScreen
+        examTitle={detail.exam?.title || "Practice Test"}
+        submissionId={detail.id}
+      />
+    );
+  }
   const exam = await getExamWithQuestions(detail.exam_id, true);
   if (!exam) notFound();
   const answerByQuestion = new Map(detail.answers.map((answer) => [answer.question_id, answer]));

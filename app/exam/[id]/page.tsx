@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Calculator, Check, ChevronLeft, Clock3, FileText } from "lucide-react";
 import { BluebookExamSetup } from "@/components/bluebook/BluebookExamSetup";
+import { AstraLogo } from "@/components/brand/AstraLogo";
 import { requireProfile } from "@/lib/auth";
 import { getExamWithQuestionSummaries, listStudentSubmissions } from "@/lib/data";
 import type { ExamWithQuestions } from "@/lib/types";
@@ -39,7 +40,7 @@ export default async function ExamStartPage({
 
   return (
     <main className={styles.app}>
-      <div className={styles.brandBar}>Astra Exams</div>
+      <div className={styles.brandBar}><AstraLogo /> <span>Astra Exams</span></div>
       <header className={styles.header} data-ud-check="practice-detail-header">
         <Link href="/dashboard"><ChevronLeft aria-hidden="true" /> Practice Tests</Link>
         <span>Full-Length Practice</span>

@@ -1,6 +1,6 @@
 .page {
-  min-height: calc(100dvh - 64px);
-  background: #f1f2f4;
+  min-height: calc(100dvh - 82px);
+  background: #ffffff;
   color: #202124;
   font-family: Arial, Helvetica, sans-serif;
   letter-spacing: 0;
@@ -9,28 +9,41 @@
 .main {
   width: min(100%, 1040px);
   margin: 0 auto;
-  padding: 40px 24px 64px;
+  padding: 42px 24px 72px;
 }
 
 .welcome {
-  margin-bottom: 34px;
+  border-bottom: 1px solid #d5dbea;
+  background: #e7edf9;
+}
+
+.welcomeInner {
+  width: min(100%, 1120px);
+  margin: 0 auto;
+  padding: 48px 24px 54px;
 }
 
 .welcome h1 {
   margin: 0;
-  font-size: 32px;
-  line-height: 1.16;
+  color: #3155d8;
+  font-size: clamp(40px, 5vw, 58px);
+  font-weight: 500;
+  line-height: 1.08;
 }
 
 .welcome p {
-  margin: 9px 0 0;
-  color: #5c6068;
-  font-size: 15px;
+  margin: 13px 0 0;
+  color: #4f5663;
+  font-size: 16px;
   line-height: 1.5;
 }
 
 .section {
   margin-top: 34px;
+}
+
+.main > .section:first-child {
+  margin-top: 0;
 }
 
 .sectionHeader {
@@ -43,7 +56,7 @@
 
 .sectionHeader h2 {
   margin: 0;
-  font-size: 23px;
+  font-size: 30px;
 }
 
 .sectionHeader p {
@@ -53,40 +66,38 @@
 }
 
 .tabs {
-  display: flex;
-  gap: 22px;
-  border-bottom: 1px solid #bfc2c8;
+  display: inline-flex;
+  overflow: hidden;
+  gap: 0;
+  border: 1px solid #9da1a8;
+  border-radius: 6px;
+  background: #ffffff;
 }
 
 .tab {
-  position: relative;
   display: inline-flex;
-  min-height: 42px;
+  min-width: 118px;
+  min-height: 40px;
   align-items: center;
+  justify-content: center;
+  padding: 0 18px;
   color: #555960;
   font-size: 14px;
   font-weight: 750;
 }
 
 .tab[aria-current="page"] {
-  color: #3155d8;
-}
-
-.tab[aria-current="page"]::after {
-  position: absolute;
-  right: 0;
-  bottom: -1px;
-  left: 0;
-  height: 3px;
-  background: #3155d8;
-  content: "";
+  background: #3f4146;
+  color: #ffffff;
 }
 
 .list {
-  border-right: 1px solid #cfd2d7;
-  border-bottom: 1px solid #cfd2d7;
-  border-left: 1px solid #cfd2d7;
+  overflow: hidden;
+  margin-top: 18px;
+  border: 1px solid #d3d5d9;
+  border-radius: 7px;
   background: #ffffff;
+  box-shadow: 0 8px 22px rgba(32, 33, 36, 0.09);
 }
 
 .testRow,
@@ -96,7 +107,7 @@
   align-items: center;
   gap: 18px;
   border-top: 1px solid #d3d5d9;
-  padding: 18px 20px;
+  padding: 22px 24px;
 }
 
 .testRow:first-child,
@@ -122,8 +133,8 @@
   width: 42px;
   height: 42px;
   place-items: center;
-  background: #202124;
-  color: #ffffff;
+  background: #e9edfb;
+  color: #3155d8;
 }
 
 .practiceRow .iconBox {
@@ -178,7 +189,7 @@
   align-items: center;
   justify-content: center;
   gap: 7px;
-  border: 2px solid #3654d9;
+  border: 1.5px solid #3155d8;
   border-radius: 999px;
   padding: 0 18px;
   color: #3155d8;
@@ -187,8 +198,9 @@
 }
 
 .rowActionPrimary {
-  background: #3654d9;
-  color: #ffffff;
+  border-color: #806600;
+  background: #ffd617;
+  color: #202124;
 }
 
 .rowAction:hover {
@@ -196,7 +208,7 @@
 }
 
 .rowActionPrimary:hover {
-  background: #2945bd;
+  background: #f0c800;
 }
 
 .rowAction svg {
@@ -205,11 +217,13 @@
 }
 
 .empty {
-  border-right: 1px solid #cfd2d7;
-  border-bottom: 1px solid #cfd2d7;
-  border-left: 1px solid #cfd2d7;
+  overflow: hidden;
+  margin-top: 18px;
+  border: 1px solid #cfd2d7;
+  border-radius: 7px;
   padding: 34px 24px;
   background: #ffffff;
+  box-shadow: 0 8px 22px rgba(32, 33, 36, 0.07);
   text-align: center;
 }
 
@@ -269,15 +283,28 @@
 
 @media (max-width: 680px) {
   .page {
-    min-height: calc(100dvh - 58px);
+    min-height: calc(100dvh - 64px);
   }
 
   .main {
     padding: 28px 14px 48px;
   }
 
+  .welcomeInner {
+    padding: 34px 14px 38px;
+  }
+
   .welcome h1 {
-    font-size: 27px;
+    font-size: 38px;
+  }
+
+  .tabs {
+    width: 100%;
+  }
+
+  .tab {
+    min-width: 0;
+    flex: 1;
   }
 
   .sectionHeader {

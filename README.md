@@ -197,7 +197,7 @@ Current review-first behavior:
 
 Imported questions are never published directly. OCR output and generated drafts are untrusted until the admin verifies them against source evidence.
 
-Supabase mode requires migrations through `supabase/migrations/009_remote_pdf_worker.sql`. Verify the connected project before testing:
+Supabase mode requires migrations through `supabase/migrations/010_exam_attempt_write_lock.sql`; migration 010 provides fenced, atomic Bluebook attempt writes. Verify the connected project before testing:
 
 ```bash
 npm run check:supabase:pdf-import

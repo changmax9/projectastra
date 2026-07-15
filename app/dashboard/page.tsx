@@ -31,12 +31,13 @@ export default async function DashboardPage({
     <>
       <BluebookAppHeader label="Student Home" />
       <div className={styles.page}>
+        <header className={styles.welcome} data-ud-check="dashboard-introduction">
+          <div className={styles.welcomeInner}>
+            <h1>Welcome, {displayName}.</h1>
+            <p>Your tests and practice materials are ready.</p>
+          </div>
+        </header>
         <main className={styles.main}>
-          <header className={styles.welcome} data-ud-check="dashboard-introduction">
-            <h1>Welcome, {displayName}</h1>
-            <p>Your active tests and preparation materials are ready below.</p>
-          </header>
-
           <section className={styles.section} data-ud-check="your-tests">
             <div className={styles.sectionHeader}>
               <div>

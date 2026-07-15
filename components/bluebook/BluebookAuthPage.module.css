@@ -37,13 +37,8 @@
 }
 
 .mark {
-  display: grid;
   width: 62px;
   height: 62px;
-  place-items: center;
-  border: 3px solid #ffffff;
-  font-size: 32px;
-  font-weight: 800;
 }
 
 .identity h1 {

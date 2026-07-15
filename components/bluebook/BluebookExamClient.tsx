@@ -10,6 +10,7 @@ import {
   useTransition
 } from "react";
 import { useRouter } from "next/navigation";
+import * as RadixDialog from "@radix-ui/react-dialog";
 import {
   Bookmark,
   Calculator,
@@ -26,17 +27,16 @@ import {
   MoreVertical,
   RotateCcw,
   ScanLine,
-  Sigma,
   X,
   ZoomIn,
   ZoomOut
 } from "lucide-react";
 import {
   completeBluebookSectionAction,
-  saveBluebookSectionProgressAction,
-  syncBluebookResponseAction
+  saveBluebookSectionProgressAction
 } from "@/app/actions";
 import { MathMarkdown } from "@/components/MathMarkdown";
+import { AstraLogo } from "@/components/brand/AstraLogo";
 import { BluebookCalculator } from "@/components/bluebook/BluebookCalculator";
 import { BluebookTimer } from "@/components/bluebook/BluebookTimer";
 import { QuestionImageAsset } from "@/components/exam/QuestionImageAsset";
@@ -49,7 +49,6 @@ type Overlay =
   | "questionMenu"
   | "notes"
   | "calculator"
-  | "reference"
   | "more"
   | "shortcuts"
   | "exit"
@@ -160,22 +159,27 @@ function sectionDirections(section: ExamSection, questionType: Question["type"])
   if (questionType === "frq") {
     return (
       <>
-        <p>The questions in this section require written responses. Read each question and all of its parts carefully.</p>
-        <p>Show your work where requested. Clearly label each part of your response and support your answer with relevant evidence, calculations, or reasoning.</p>
-        <p>You may move among questions in this section until you submit it or time expires.</p>
+        <h2>{section.title}: {section.questionCount} Questions</h2>
+        <ul>
+          <li>Read every question and all of its parts carefully.</li>
+          <li>Clearly label each part and support your response with evidence, calculations, or reasoning.</li>
+          <li>You may move back and forth between questions until time expires.</li>
+          <li>Once the next section begins, you cannot return to these questions.</li>
+        </ul>
       </>
     );
   }
 
   return (
     <>
-      <p>The questions in this section address important skills and course content. Questions may include passages, diagrams, tables, or graphs.</p>
-      <p>Read each question carefully, and then choose the best answer from the choices provided.</p>
-      <p>
-        {section.calculatorAllowed
-          ? "A calculator and reference information are available from the tools at the top of the screen."
-          : "A calculator is not permitted in this section."}
-      </p>
+      <h2>{section.title}: {section.questionCount} Questions</h2>
+      <ul>
+        <li>Read each question carefully, including any passage, diagram, table, or graph.</li>
+        <li>Choose the best answer from the choices provided.</li>
+        <li>You may move back and forth between questions until time expires.</li>
+        <li>Once the next section begins, you cannot return to these questions.</li>
+      </ul>
+      <p>{section.calculatorAllowed ? "A calculator is available in the testing tools." : "A calculator is not permitted in this section."}</p>
     </>
   );
 }
@@ -217,6 +221,7 @@ export function BluebookExamClient({
   );
   const currentProgress = submission.sections_progress?.find((progress) => progress.section === section.section);
   const initialElapsedSeconds = currentProgress?.timeSpentSeconds ?? submission.time_spent_seconds ?? 0;
+  const timerStorageKey = `astra-timer:${submission.id}:${section.section}`;
 
   const [session, dispatch] = useReducer(sessionReducer, {
     screen: "question",
@@ -245,15 +250,22 @@ export function BluebookExamClient({
   });
   const [notesByQuestion, setNotesByQuestion] = useState<Record<string, string>>({});
   const [highlightColor, setHighlightColor] = useState<"yellow" | "blue" | "pink">("yellow");
-  const [dirtyQuestionId, setDirtyQuestionId] = useState<string | null>(null);
+  const [dirtyQuestionVersions, setDirtyQuestionVersions] = useState<Record<string, number>>({});
   const [syncError, setSyncError] = useState<string | null>(null);
   const [lineReaderY, setLineReaderY] = useState(260);
   const [isPending, startTransition] = useTransition();
   const questionEnteredAtRef = useRef(Date.now());
-  const sectionMountedAtRef = useRef(Date.now());
-  const autoSubmittingRef = useRef(false);
+  const sectionElapsedBaselineRef = useRef(Math.max(0, initialElapsedSeconds));
+  const sectionBaselineAtRef = useRef(Date.now());
+  const submittingRef = useRef(false);
+  const automaticSubmissionRef = useRef(false);
+  const responsesRef = useRef(responses);
+  const sessionRef = useRef(session);
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const contentRootRef = useRef<HTMLDivElement>(null);
   const highlightRangesRef = useRef<Record<string, Range[]>>({ yellow: [], blue: [], pink: [] });
+  responsesRef.current = responses;
+  sessionRef.current = session;
 
   const currentQuestion = questions[session.currentIndex] || null;
   const currentResponse = currentQuestion ? responses[currentQuestion.id] || emptyResponse : emptyResponse;
@@ -278,7 +290,10 @@ export function BluebookExamClient({
       ...previous,
       [questionId]: { ...(previous[questionId] || emptyResponse), ...patch }
     }));
-    setDirtyQuestionId(questionId);
+    setDirtyQuestionVersions((current) => ({
+      ...current,
+      [questionId]: (current[questionId] || 0) + 1
+    }));
   }, []);
 
   const commitCurrentQuestionTime = useCallback(() => {
@@ -295,7 +310,10 @@ export function BluebookExamClient({
           }
         };
       });
-      setDirtyQuestionId(currentQuestion.id);
+      setDirtyQuestionVersions((current) => ({
+        ...current,
+        [currentQuestion.id]: (current[currentQuestion.id] || 0) + 1
+      }));
     }
     questionEnteredAtRef.current = Date.now();
   }, [currentQuestion]);
@@ -303,27 +321,6 @@ export function BluebookExamClient({
   useEffect(() => {
     questionEnteredAtRef.current = Date.now();
   }, [session.currentIndex, session.screen]);
-
-  useEffect(() => {
-    if (!dirtyQuestionId) return;
-    const response = responses[dirtyQuestionId];
-    if (!response) return;
-    const timeout = window.setTimeout(async () => {
-      const result = await syncBluebookResponseAction({
-        submissionId: submission.id,
-        questionId: dirtyQuestionId,
-        selectedChoice: response.selectedChoice,
-        answerText: response.answerText,
-        flagged: response.flagged,
-        timeSpentSeconds: response.timeSpentSeconds,
-        eliminatedChoiceIds: response.eliminatedChoiceIds
-      });
-      if (result?.error) setSyncError(result.error);
-      else setSyncError(null);
-      setDirtyQuestionId((current) => current === dirtyQuestionId ? null : current);
-    }, 650);
-    return () => window.clearTimeout(timeout);
-  }, [dirtyQuestionId, responses, submission.id]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -373,70 +370,167 @@ export function BluebookExamClient({
     goToQuestion(session.currentIndex + 1);
   }, [commitCurrentQuestionTime, goToQuestion, questions.length, session.currentIndex]);
 
-  const sectionElapsedSeconds = useCallback(() => {
-    return Math.max(
+  useEffect(() => {
+    const now = Date.now();
+    const localElapsed = sectionElapsedBaselineRef.current
+      + Math.max(0, Math.floor((now - sectionBaselineAtRef.current) / 1000));
+    const storedElapsed = typeof window === "undefined"
+      ? 0
+      : Number(window.sessionStorage.getItem(timerStorageKey) || "0");
+    sectionElapsedBaselineRef.current = Math.max(
+      localElapsed,
       initialElapsedSeconds,
-      initialElapsedSeconds + Math.floor((Date.now() - sectionMountedAtRef.current) / 1000)
+      Number.isFinite(storedElapsed) ? storedElapsed : 0
     );
-  }, [initialElapsedSeconds]);
+    sectionBaselineAtRef.current = now;
+  }, [initialElapsedSeconds, timerStorageKey]);
+
+  const sectionElapsedSeconds = useCallback(() => {
+    const storedElapsed = typeof window === "undefined"
+      ? 0
+      : Number(window.sessionStorage.getItem(timerStorageKey) || "0");
+    const localElapsed = sectionElapsedBaselineRef.current
+      + Math.max(0, Math.floor((Date.now() - sectionBaselineAtRef.current) / 1000));
+    return Math.max(localElapsed, Number.isFinite(storedElapsed) ? storedElapsed : 0);
+  }, [timerStorageKey]);
 
   const responseSnapshot = useCallback(() => {
-    const activeElapsed = currentQuestion && session.screen === "question"
+    const latestSession = sessionRef.current;
+    const latestResponses = responsesRef.current;
+    const activeQuestion = questions[latestSession.currentIndex] || null;
+    const activeElapsed = activeQuestion && latestSession.screen === "question"
       ? Math.max(0, Math.floor((Date.now() - questionEnteredAtRef.current) / 1000))
       : 0;
     return questions.map((question) => {
-      const response = responses[question.id] || emptyResponse;
+      const response = latestResponses[question.id] || emptyResponse;
       return {
         questionId: question.id,
         selectedChoice: response.selectedChoice,
         answerText: response.answerText,
         flagged: response.flagged,
-        timeSpentSeconds: response.timeSpentSeconds + (question.id === currentQuestion?.id ? activeElapsed : 0),
+        timeSpentSeconds: response.timeSpentSeconds + (question.id === activeQuestion?.id ? activeElapsed : 0),
         eliminatedChoiceIds: response.eliminatedChoiceIds
       };
     });
-  }, [currentQuestion, questions, responses, session.screen]);
+  }, [questions]);
+
+  const queueProgressSave = useCallback(() => {
+    const request = saveQueueRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        if (submittingRef.current) return { ok: true, ignored: true };
+        const result = await saveBluebookSectionProgressAction({
+          submissionId: submission.id,
+          expectedSectionIndex: testFlow.sectionNumber - 1,
+          currentQuestionIndex: sessionRef.current.currentIndex,
+          timeSpentSeconds: sectionElapsedSeconds(),
+          responses: responseSnapshot()
+        });
+        setSyncError(result?.error || null);
+        return result;
+      })
+      .catch(() => {
+        const error = "Your progress could not be synced. Check your connection and try again.";
+        setSyncError(error);
+        return { error };
+      });
+    saveQueueRef.current = request.then(() => undefined, () => undefined);
+    return request;
+  }, [responseSnapshot, sectionElapsedSeconds, submission.id, testFlow.sectionNumber]);
+
+  useEffect(() => {
+    const dirtyEntries = Object.entries(dirtyQuestionVersions);
+    if (!dirtyEntries.length) return;
+    const timeout = window.setTimeout(async () => {
+      const result = await queueProgressSave();
+      if (result?.error) return;
+      setDirtyQuestionVersions((current) => {
+        const next = { ...current };
+        for (const [questionId, version] of dirtyEntries) {
+          if (next[questionId] === version) delete next[questionId];
+        }
+        return next;
+      });
+    }, 650);
+    return () => window.clearTimeout(timeout);
+  }, [dirtyQuestionVersions, queueProgressSave]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => void queueProgressSave(), 10_000);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") void queueProgressSave();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [queueProgressSave]);
 
   const exitPractice = useCallback(() => {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     startTransition(async () => {
-      const result = await saveBluebookSectionProgressAction({
-        submissionId: submission.id,
-        currentQuestionIndex: session.currentIndex,
-        timeSpentSeconds: sectionElapsedSeconds(),
-        responses: responseSnapshot()
-      });
-      if (result?.error) {
-        setSyncError(result.error);
+      try {
+        await saveQueueRef.current;
+        const result = await saveBluebookSectionProgressAction({
+          submissionId: submission.id,
+          expectedSectionIndex: testFlow.sectionNumber - 1,
+          currentQuestionIndex: sessionRef.current.currentIndex,
+          timeSpentSeconds: sectionElapsedSeconds(),
+          responses: responseSnapshot()
+        });
+        if (result?.error) {
+          submittingRef.current = false;
+          setSyncError(result.error);
+          dispatch({ type: "CLOSE" });
+          return;
+        }
+        router.push("/dashboard");
+      } catch {
+        submittingRef.current = false;
+        setSyncError("Your progress could not be saved. Please try again.");
         dispatch({ type: "CLOSE" });
-        return;
       }
-      router.push("/dashboard");
     });
-  }, [responseSnapshot, router, sectionElapsedSeconds, session.currentIndex, submission.id]);
+  }, [responseSnapshot, router, sectionElapsedSeconds, submission.id, testFlow.sectionNumber]);
 
   const finishSection = useCallback((automatic = false) => {
-    if (autoSubmittingRef.current) return;
-    autoSubmittingRef.current = automatic;
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    automaticSubmissionRef.current = automatic;
     startTransition(async () => {
-      const result = await completeBluebookSectionAction({
-        submissionId: submission.id,
-        timeSpentSeconds: sectionElapsedSeconds(),
-        responses: responseSnapshot()
-      });
-      if (result?.error) {
-        autoSubmittingRef.current = false;
-        setSyncError(result.error);
+      try {
+        await saveQueueRef.current;
+        const result = await completeBluebookSectionAction({
+          submissionId: submission.id,
+          expectedSectionIndex: testFlow.sectionNumber - 1,
+          timeSpentSeconds: sectionElapsedSeconds(),
+          responses: responseSnapshot()
+        });
+        if (result?.error) {
+          submittingRef.current = false;
+          automaticSubmissionRef.current = false;
+          setSyncError(result.error);
+          dispatch({ type: "CLOSE" });
+          return;
+        }
+        if (result.completed) {
+          window.sessionStorage.removeItem(timerStorageKey);
+          router.replace(`/results/${result.submissionId}?submitted=1`);
+          return;
+        }
+        window.sessionStorage.removeItem(timerStorageKey);
         dispatch({ type: "CLOSE" });
-        return;
+        router.refresh();
+      } catch {
+        submittingRef.current = false;
+        automaticSubmissionRef.current = false;
+        setSyncError("This section could not be submitted. Please try again.");
+        dispatch({ type: "CLOSE" });
       }
-      if (result.completed) {
-        router.replace(`/results/${result.submissionId}`);
-        return;
-      }
-      dispatch({ type: "CLOSE" });
-      router.refresh();
     });
-  }, [responseSnapshot, router, sectionElapsedSeconds, submission.id]);
+  }, [responseSnapshot, router, sectionElapsedSeconds, submission.id, testFlow.sectionNumber, timerStorageKey]);
 
   const applyHighlight = useCallback(() => {
     const selection = window.getSelection();
@@ -507,7 +601,7 @@ export function BluebookExamClient({
         if (session.lineReaderEnabled) setLineReaderY(event.clientY - 24);
       }}
     >
-      <div className={styles.brandBar}>Astra Exams</div>
+      <div className={styles.brandBar}><AstraLogo /> <span>Astra Exams</span></div>
       <header className={styles.header}>
         <button
           type="button"
@@ -525,6 +619,7 @@ export function BluebookExamClient({
           className={styles.timer}
           initialElapsedSeconds={initialElapsedSeconds}
           timeLimitMinutes={section.timeLimitMinutes || exam.time_limit_minutes}
+          storageKey={timerStorageKey}
           hidden={session.timerHidden}
           onToggle={() => dispatch({ type: "TOGGLE_TIMER" })}
           onFiveMinutes={() => {
@@ -541,18 +636,10 @@ export function BluebookExamClient({
               <span>Calculator</span>
             </button>
           ) : null}
-          {section.calculatorAllowed ? (
-            <button type="button" aria-label="Reference" onClick={() => dispatch({ type: "OPEN", overlay: "reference" })}>
-              <Sigma aria-hidden="true" />
-              <span>Reference</span>
-            </button>
-          ) : null}
-          {!section.calculatorAllowed ? (
-            <button type="button" aria-label="Annotate" onClick={() => dispatch({ type: "OPEN", overlay: "notes" })}>
-              <Highlighter aria-hidden="true" />
-              <span>Annotate</span>
-            </button>
-          ) : null}
+          <button type="button" aria-label="Highlights and notes" onClick={() => dispatch({ type: "OPEN", overlay: "notes" })}>
+            <Highlighter aria-hidden="true" />
+            <span>Annotate</span>
+          </button>
           <button type="button" aria-label="More" onClick={() => dispatch({ type: "OPEN", overlay: "more" })}>
             <MoreVertical aria-hidden="true" />
             <span>More</span>
@@ -693,6 +780,7 @@ export function BluebookExamClient({
                 className={cn(styles.navButton, styles.backButton)}
                 onClick={() => goToQuestion(session.currentIndex - 1)}
                 disabled={session.currentIndex === 0}
+                aria-label="Previous question"
               >
                 <ChevronLeft aria-hidden="true" /> Back
               </button>
@@ -704,14 +792,19 @@ export function BluebookExamClient({
               >
                 Question {session.currentIndex + 1} of {questions.length} <ChevronUp aria-hidden="true" />
               </button>
-              <button type="button" className={cn(styles.navButton, styles.nextButton)} onClick={goNext}>
+              <button
+                type="button"
+                className={cn(styles.navButton, styles.nextButton)}
+                onClick={goNext}
+                aria-label={session.currentIndex === questions.length - 1 ? "Review this section" : "Next question"}
+              >
                 {session.currentIndex === questions.length - 1 ? "Review" : "Next"}
                 <ChevronRight aria-hidden="true" />
               </button>
             </>
           ) : (
             <>
-              <button type="button" className={cn(styles.navButton, styles.backButton)} onClick={() => goToQuestion(session.currentIndex)}>
+              <button type="button" className={cn(styles.navButton, styles.backButton)} onClick={() => goToQuestion(session.currentIndex)} aria-label="Back to questions">
                 <ChevronLeft aria-hidden="true" /> Back to Questions
               </button>
               <span className={styles.reviewSummary}>{unansweredCount} unanswered</span>
@@ -719,6 +812,7 @@ export function BluebookExamClient({
                 type="button"
                 className={cn(styles.navButton, styles.nextButton)}
                 onClick={() => dispatch({ type: "OPEN", overlay: "submit" })}
+                aria-label={continueLabel}
               >
                 {continueLabel} <ChevronRight aria-hidden="true" />
               </button>
@@ -737,7 +831,7 @@ export function BluebookExamClient({
             <div className={styles.directionsContent}>
               {sectionDirections(section, currentQuestion.type)}
             </div>
-            <button type="button" className={styles.closeDirections} onClick={() => dispatch({ type: "CLOSE" })}>Close</button>
+            <button type="button" className={styles.closeDirections} onClick={() => dispatch({ type: "CLOSE" })}>Continue</button>
           </section>
         </div>
       ) : null}
@@ -792,14 +886,16 @@ export function BluebookExamClient({
         </FloatingTool>
       ) : null}
 
-      {session.overlay === "reference" ? (
-        <BluebookDialog title="Reference" onClose={() => dispatch({ type: "CLOSE" })} wide>
-          <ReferenceSheet subject={exam.subject} />
-        </BluebookDialog>
-      ) : null}
-
       {session.overlay === "more" ? (
         <div className={styles.moreMenu} role="menu">
+          {section.calculatorAllowed ? (
+            <button type="button" onClick={() => dispatch({ type: "OPEN", overlay: "calculator" })} role="menuitem">
+              <Calculator /> <span>Calculator</span>
+            </button>
+          ) : null}
+          <button type="button" onClick={() => dispatch({ type: "OPEN", overlay: "notes" })} role="menuitem">
+            <Highlighter /> <span>Highlights & Notes</span>
+          </button>
           <button type="button" onClick={() => dispatch({ type: "TOGGLE_LINE_READER" })} role="menuitem">
             <ScanLine /> <span>{session.lineReaderEnabled ? "Turn Off" : "Turn On"} Line Reader</span>
           </button>
@@ -878,7 +974,7 @@ export function BluebookExamClient({
         </BluebookDialog>
       ) : null}
 
-      {isPending && autoSubmittingRef.current ? (
+      {isPending && automaticSubmissionRef.current ? (
         <div className={styles.submittingOverlay} role="status">
           <div>{isFinalSection ? "Time is up. Submitting your test..." : "Time is up. Continuing your test..."}</div>
         </div>
@@ -1023,36 +1119,6 @@ function QuestionGrid({
   );
 }
 
-function ReferenceSheet({ subject }: { subject: string }) {
-  return (
-    <div className={styles.referenceSheet}>
-      <h3>{subject} Reference Information</h3>
-      <div className={styles.formulaGrid}>
-        <section>
-          <h4>Geometry</h4>
-          <p><em>A</em> = πr²</p>
-          <p><em>C</em> = 2πr</p>
-          <p><em>V</em> = lwh</p>
-          <p><em>V</em> = πr²h</p>
-        </section>
-        <section>
-          <h4>Algebra</h4>
-          <p>x = (−b ± √(b² − 4ac)) / 2a</p>
-          <p>a² + b² = c²</p>
-          <p>y = mx + b</p>
-        </section>
-        <section>
-          <h4>Science</h4>
-          <p>v = v₀ + at</p>
-          <p>F = ma</p>
-          <p>KE = ½mv²</p>
-          <p>p = mv</p>
-        </section>
-      </div>
-    </div>
-  );
-}
-
 function BluebookDialog({
   title,
   children,
@@ -1065,21 +1131,20 @@ function BluebookDialog({
   wide?: boolean;
 }) {
   return (
-    <div className={styles.dialogBackdrop} role="presentation" onMouseDown={onClose}>
-      <section
-        className={cn(styles.dialog, wide && styles.dialogWide)}
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <header>
-          <h2>{title}</h2>
-          <button type="button" onClick={onClose} aria-label="Close"><X /></button>
-        </header>
-        <div className={styles.dialogBody}>{children}</div>
-      </section>
-    </div>
+    <RadixDialog.Root open onOpenChange={(open) => !open && onClose()}>
+      <RadixDialog.Portal>
+        <RadixDialog.Overlay className={styles.dialogBackdrop} />
+        <RadixDialog.Content className={cn(styles.dialog, wide && styles.dialogWide)}>
+          <header>
+            <RadixDialog.Title>{title}</RadixDialog.Title>
+            <RadixDialog.Close asChild>
+              <button type="button" aria-label="Close"><X /></button>
+            </RadixDialog.Close>
+          </header>
+          <div className={styles.dialogBody}>{children}</div>
+        </RadixDialog.Content>
+      </RadixDialog.Portal>
+    </RadixDialog.Root>
   );
 }
 

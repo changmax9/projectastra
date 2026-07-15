@@ -1,176 +1,194 @@
 .app {
   display: grid;
-  grid-template-rows: 30px 72px 4px minmax(0, 1fr) 4px 64px;
+  grid-template-rows: 70px minmax(0, 1fr) 64px;
   min-height: 100dvh;
   overflow: hidden;
-  background: #ffffff;
-  color: #202124;
+  background: #1f2023;
+  color: #ffffff;
   font-family: Arial, Helvetica, sans-serif;
   letter-spacing: 0;
-}
-.brandBar {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-bottom: 1px solid #d3d5d9;
-  font-size: 13px;
-  font-weight: 700;
 }
 
 .header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 38px;
-  font-size: 19px;
-  font-weight: 700;
-}
-
-.header button {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-height: 40px;
-  border: 1.5px solid #3654d9;
-  border-radius: 999px;
-  padding: 0 18px;
-  background: #ffffff;
-  color: #3654d9;
+  border-bottom: 1px solid #47494e;
+  padding: 0 48px;
+  color: #d5d7dc;
   font-size: 13px;
   font-weight: 700;
-  cursor: pointer;
 }
 
-.header button:disabled {
-  opacity: 0.55;
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: #ffffff;
 }
 
-.header svg {
-  width: 17px;
-  height: 17px;
-}
-
-.testStripe {
-  background:
-    repeating-linear-gradient(
-      90deg,
-      #303238 0 20px,
-      transparent 20px 24px,
-      #aeb1b7 24px 42px,
-      transparent 42px 46px,
-      #ffd617 46px 62px,
-      transparent 62px 66px,
-      #18a8df 66px 84px,
-      transparent 84px 90px
-    );
+.brand svg {
+  width: 28px;
+  height: 28px;
 }
 
 .content {
-  display: flex;
+  display: grid;
   min-height: 0;
-  flex-direction: column;
+  grid-template-columns: minmax(280px, 0.8fr) minmax(420px, 1.2fr);
   align-items: center;
-  justify-content: center;
+  gap: clamp(54px, 8vw, 130px);
   overflow: auto;
-  padding: 48px 24px;
+  padding: 56px clamp(42px, 8vw, 140px);
+}
+
+.timerPanel {
+  width: min(100%, 420px);
+  justify-self: end;
+  border: 2px solid #f2f3f5;
+  border-radius: 7px;
+  padding: 28px 24px 30px;
   text-align: center;
 }
 
-.content > svg {
-  width: 36px;
-  height: 36px;
-  margin-bottom: 18px;
-}
-
-.content > p {
+.timerPanel p {
   margin: 0;
-  color: #52565e;
-  font-size: 14px;
-  font-weight: 700;
+  font-size: 18px;
+  font-weight: 750;
 }
 
-.content h1 {
-  margin: 8px 0 24px;
-  font-size: clamp(52px, 9vw, 84px);
+.timerPanel strong {
+  display: block;
+  margin-top: 13px;
+  font-size: clamp(62px, 8vw, 98px);
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
 
-.content h2 {
-  margin: 0;
-  font-size: 30px;
+.instructions {
+  max-width: 720px;
 }
 
-.instructions {
-  max-width: 590px;
-  margin: 20px 0 28px;
-  color: #4d5158;
-  font-size: 16px;
+.eyebrow {
+  margin: 0 0 10px !important;
+  color: #ffd617;
+  font-size: 12px !important;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.instructions h1 {
+  max-width: 650px;
+  margin: 0;
+  font-size: clamp(38px, 5vw, 62px);
+  font-weight: 600;
+  line-height: 1.13;
+}
+
+.instructions > p:not(.eyebrow, .lockedMessage) {
+  max-width: 650px;
+  margin: 24px 0 0;
+  color: #e1e2e5;
+  font-size: 18px;
   line-height: 1.55;
 }
 
-.instructions p {
-  margin: 0 0 10px;
+.instructions h2 {
+  margin: 30px 0 14px;
+  font-size: 19px;
+}
+
+.instructions ol {
+  display: grid;
+  gap: 13px;
+  margin: 0;
+  padding-left: 28px;
+  color: #e1e2e5;
+  font-size: 16px;
+  line-height: 1.5;
 }
 
 .resumeButton {
-  min-height: 48px;
+  display: inline-flex;
+  min-height: 50px;
+  align-items: center;
+  gap: 8px;
+  margin-top: 30px;
   border: 1.5px solid #806600;
   border-radius: 999px;
   padding: 0 26px;
-  background: #ffd719;
+  background: #ffd617;
   color: #202124;
   font-size: 15px;
   font-weight: 800;
   cursor: pointer;
 }
 
+.resumeButton svg {
+  width: 18px;
+  height: 18px;
+}
+
 .resumeButton:disabled {
-  opacity: 0.58;
+  opacity: 0.62;
   cursor: wait;
+}
+
+.lockedMessage {
+  margin: 28px 0 0;
+  border-left: 3px solid #ffd617;
+  padding: 8px 12px;
+  color: #cfd1d5;
+  font-size: 13px;
 }
 
 .app footer {
   display: flex;
   align-items: center;
-  padding: 0 38px;
+  border-top: 1px solid #47494e;
+  padding: 0 48px;
+  color: #ffffff;
   font-size: 14px;
   font-weight: 650;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 760px) {
   .app {
-    grid-template-rows: 24px 66px 4px minmax(0, 1fr) 4px 54px;
+    grid-template-rows: 58px minmax(0, 1fr) 50px;
   }
 
-  .brandBar {
-    font-size: 11px;
+  .header,
+  .app footer {
+    padding-right: 16px;
+    padding-left: 16px;
   }
 
-  .header {
-    padding: 0 16px;
-    font-size: 15px;
-  }
-
-  .header button {
-    min-height: 38px;
-    padding: 0 13px;
-  }
-
-  .header button span {
+  .header strong {
     display: none;
   }
 
   .content {
-    padding: 34px 20px;
+    grid-template-columns: 1fr;
+    align-items: start;
+    gap: 32px;
+    padding: 34px 20px 44px;
   }
 
-  .content h2 {
-    font-size: 26px;
+  .timerPanel {
+    width: 100%;
+    justify-self: stretch;
+    padding: 20px;
   }
 
-  .app footer {
-    padding: 0 16px;
-    font-size: 12px;
+  .timerPanel strong {
+    font-size: 60px;
+  }
+
+  .instructions h1 {
+    font-size: 38px;
+  }
+
+  .instructions > p:not(.eyebrow, .lockedMessage) {
+    font-size: 16px;
   }
 }

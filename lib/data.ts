@@ -378,6 +378,11 @@ type StudentAnswerRow = Omit<Answer, "submission_id"> & {
   attempt_id: string;
 };
 
+type AttemptWriteContext = {
+  expectedSectionIndex: number;
+  token: string;
+};
+
 interface QuestionListPageOptions {
   page?: number;
   pageSize?: number;
@@ -551,6 +556,8 @@ function mapAttemptRow(row: ExamAttemptRow, sectionsProgress: ExamSectionProgres
     section_time_limit_minutes: null,
     current_step: row.current_step,
     current_section_index: row.current_section_index,
+    write_lock_token: row.write_lock_token,
+    write_lock_acquired_at: row.write_lock_acquired_at,
     break_started_at: row.break_started_at,
     break_completed_at: row.break_completed_at,
     break_skipped: row.break_skipped,
@@ -697,6 +704,34 @@ async function upsertSectionProgressRows(attemptId: string, examId: string, prog
   if (error) throw new Error(error.message);
 }
 
+async function commitAttemptWriteWithLock(input: {
+  submissionId: string;
+  context: AttemptWriteContext;
+  attemptPatch: Record<string, unknown>;
+  progress: ExamSectionProgress[];
+}) {
+  const { data, error } = await adminClient().rpc("commit_exam_attempt_write", {
+    p_attempt_id: input.submissionId,
+    p_expected_section_index: input.context.expectedSectionIndex,
+    p_token: input.context.token,
+    p_attempt_patch: input.attemptPatch,
+    p_progress_rows: input.progress.map((item) => ({
+      section: item.section,
+      section_title: item.sectionTitle,
+      status: item.status,
+      started_at: item.startedAt,
+      submitted_at: item.submittedAt,
+      time_limit_minutes: item.timeLimitMinutes,
+      time_spent_seconds: item.timeSpentSeconds,
+      current_question_index: item.currentQuestionIndex,
+      score_correct: item.scoreCorrect,
+      score_total: item.scoreTotal
+    }))
+  });
+  if (error) throw new Error(error.message);
+  return data ? (data as ExamAttemptRow) : null;
+}
+
 async function getSupabaseSubmission(submissionId: string) {
   const { data, error } = await adminClient().from("exam_attempts").select("*").eq("id", submissionId).single();
   if (error || !data) return null;
@@ -730,25 +765,49 @@ async function upsertStudentAnswer(answer: Answer) {
   return mapStudentAnswerRow(data as StudentAnswerRow);
 }
 
-async function upsertStudentAnswers(answers: Answer[]) {
+async function writeStudentAnswerRowsWithLock(
+  attemptId: string,
+  context: AttemptWriteContext,
+  answerRows: Array<Record<string, unknown>>
+) {
+  const { data, error } = await adminClient().rpc("write_exam_attempt_answers", {
+    p_attempt_id: attemptId,
+    p_expected_section_index: context.expectedSectionIndex,
+    p_token: context.token,
+    p_answers: answerRows
+  });
+  if (error) throw new Error(error.message);
+  if (data !== true) {
+    throw new Error("This testing session changed while it was being saved. Please try again.");
+  }
+}
+
+async function upsertStudentAnswers(answers: Answer[], context?: AttemptWriteContext) {
   if (answers.length === 0) return;
+  const answerRows = answers.map((answer) => ({
+    attempt_id: answer.submission_id,
+    question_id: answer.question_id,
+    answer_text: answer.answer_text,
+    selected_choice: answer.selected_choice,
+    is_correct: answer.is_correct,
+    auto_score: answer.auto_score,
+    manual_score: answer.manual_score,
+    final_score: answer.final_score,
+    time_spent_seconds: answer.time_spent_seconds,
+    flagged: answer.flagged,
+    eliminated_choice_ids: answer.eliminated_choice_ids || [],
+    updated_at: answer.updated_at
+  }));
+  if (context) {
+    const attemptIds = new Set(answers.map((answer) => answer.submission_id));
+    if (attemptIds.size !== 1) throw new Error("A locked answer write must target one testing session.");
+    await writeStudentAnswerRowsWithLock(answers[0].submission_id, context, answerRows);
+    return;
+  }
   const { error } = await adminClient()
     .from("student_answers")
     .upsert(
-      answers.map((answer) => ({
-        attempt_id: answer.submission_id,
-        question_id: answer.question_id,
-        answer_text: answer.answer_text,
-        selected_choice: answer.selected_choice,
-        is_correct: answer.is_correct,
-        auto_score: answer.auto_score,
-        manual_score: answer.manual_score,
-        final_score: answer.final_score,
-        time_spent_seconds: answer.time_spent_seconds,
-        flagged: answer.flagged,
-        eliminated_choice_ids: answer.eliminated_choice_ids || [],
-        updated_at: answer.updated_at
-      })),
+      answerRows,
       { onConflict: "attempt_id,question_id" }
     );
   if (error) throw new Error(error.message);
@@ -1570,16 +1629,108 @@ export async function getSubmission(submissionId: string) {
   return submission ? normalizeSubmissionRecord(submission) : null;
 }
 
+const ATTEMPT_WRITE_LOCK_TIMEOUT_MS = 60_000;
+
+export async function claimSubmissionSectionWrite(input: {
+  submissionId: string;
+  expectedSectionIndex: number;
+  token: string;
+}) {
+  const expectedSectionIndex = Math.max(0, Math.floor(input.expectedSectionIndex));
+  const acquiredAt = nowIso();
+  const staleBefore = new Date(Date.now() - ATTEMPT_WRITE_LOCK_TIMEOUT_MS).toISOString();
+
+  if (hasSupabaseEnv()) {
+    const { data, error } = await adminClient().rpc("claim_exam_attempt_write_lock", {
+      p_attempt_id: input.submissionId,
+      p_expected_section_index: expectedSectionIndex,
+      p_token: input.token
+    });
+    if (error) throw new Error(error.message);
+    return data === true;
+  }
+
+  await ensureMockStore();
+  const submission = mockSubmissions.find((item) => item.id === input.submissionId);
+  if (!submission) return false;
+  if (
+    submission.write_lock_token
+    && submission.write_lock_acquired_at
+    && submission.write_lock_acquired_at < staleBefore
+  ) {
+    submission.write_lock_token = null;
+    submission.write_lock_acquired_at = null;
+  }
+  if (
+    submission.status === "in_progress"
+    && submission.current_step === "section"
+    && Number(submission.current_section_index || 0) === expectedSectionIndex
+    && submission.write_lock_token === input.token
+  ) {
+    submission.write_lock_acquired_at = acquiredAt;
+    submission.updated_at = acquiredAt;
+    await saveMockStore();
+    return true;
+  }
+  if (
+    submission.status !== "in_progress"
+    || submission.current_step !== "section"
+    || Number(submission.current_section_index || 0) !== expectedSectionIndex
+    || submission.write_lock_token
+  ) {
+    return false;
+  }
+  submission.write_lock_token = input.token;
+  submission.write_lock_acquired_at = acquiredAt;
+  submission.updated_at = acquiredAt;
+  await saveMockStore();
+  return true;
+}
+
+export async function releaseSubmissionSectionWrite(submissionId: string, token: string) {
+  if (hasSupabaseEnv()) {
+    const { error } = await adminClient()
+      .from("exam_attempts")
+      .update({ write_lock_token: null, write_lock_acquired_at: null, updated_at: nowIso() })
+      .eq("id", submissionId)
+      .eq("write_lock_token", token);
+    if (error) throw new Error(error.message);
+    return;
+  }
+
+  await ensureMockStore();
+  const submission = mockSubmissions.find((item) => item.id === submissionId);
+  if (!submission || submission.write_lock_token !== token) return;
+  submission.write_lock_token = null;
+  submission.write_lock_acquired_at = null;
+  submission.updated_at = nowIso();
+  await saveMockStore();
+}
+
 export async function updateSubmissionProgress(input: {
   submissionId: string;
   currentQuestionIndex: number;
   timeSpentSeconds: number;
+  expectedSectionIndex?: number;
+  writeLockToken?: string;
 }) {
   const timestamp = nowIso();
   const currentQuestionIndex = Math.max(0, Math.floor(input.currentQuestionIndex || 0));
   const timeSpentSeconds = Math.max(0, Math.floor(input.timeSpentSeconds || 0));
 
   const submission = await getSubmission(input.submissionId);
+  const expectedSectionIndex = input.expectedSectionIndex == null
+    ? null
+    : Math.max(0, Math.floor(input.expectedSectionIndex));
+  if (
+    expectedSectionIndex != null
+    && (
+      submission?.current_step !== "section"
+      || Number(submission.current_section_index || 0) !== expectedSectionIndex
+    )
+  ) {
+    return submission;
+  }
   const exam = submission ? await getExamWithQuestionSummaries(submission.exam_id, true) : null;
   const progress = submission && exam
     ? ensureSectionsProgress(exam, submission)
@@ -1601,17 +1752,42 @@ export async function updateSubmissionProgress(input: {
     : timeSpentSeconds;
 
   if (hasSupabaseEnv()) {
-    const { data, error } = await adminClient()
+    if (expectedSectionIndex != null && input.writeLockToken) {
+      const data = await commitAttemptWriteWithLock({
+        submissionId: input.submissionId,
+        context: {
+          expectedSectionIndex,
+          token: input.writeLockToken
+        },
+        attemptPatch: {
+          current_question_index: currentQuestionIndex,
+          time_spent_seconds: totalTimeSpentSeconds,
+          updated_at: timestamp
+        },
+        progress
+      });
+      if (!data) return getSubmission(input.submissionId);
+      return mapAttemptRow(data, progress);
+    }
+    let query = adminClient()
       .from("exam_attempts")
       .update({
         current_question_index: currentQuestionIndex,
         time_spent_seconds: totalTimeSpentSeconds,
         updated_at: timestamp
       })
-      .eq("id", input.submissionId)
+      .eq("id", input.submissionId);
+    if (expectedSectionIndex != null) {
+      query = query
+        .eq("current_step", "section")
+        .eq("current_section_index", expectedSectionIndex);
+    }
+    if (input.writeLockToken) query = query.eq("write_lock_token", input.writeLockToken);
+    const { data, error } = await query
       .select("*")
-      .single();
+      .maybeSingle();
     if (error) throw new Error(error.message);
+    if (!data) return getSubmission(input.submissionId);
     await upsertSectionProgressRows(input.submissionId, (data as ExamAttemptRow).exam_id, progress);
     return mapAttemptRow(data as ExamAttemptRow, progress);
   }
@@ -1619,6 +1795,18 @@ export async function updateSubmissionProgress(input: {
   await ensureMockStore();
   const storedSubmission = mockSubmissions.find((item) => item.id === input.submissionId);
   if (!storedSubmission) return null;
+  if (
+    expectedSectionIndex != null
+    && (
+      storedSubmission.current_step !== "section"
+      || Number(storedSubmission.current_section_index || 0) !== expectedSectionIndex
+    )
+  ) {
+    return normalizeSubmissionRecord(storedSubmission);
+  }
+  if (input.writeLockToken && storedSubmission.write_lock_token !== input.writeLockToken) {
+    return normalizeSubmissionRecord(storedSubmission);
+  }
   storedSubmission.current_question_index = currentQuestionIndex;
   storedSubmission.time_spent_seconds = totalTimeSpentSeconds;
   storedSubmission.sections_progress = progress;
@@ -1651,7 +1839,7 @@ interface SaveAnswerInput {
   eliminatedChoiceIds?: string[];
 }
 
-export async function saveAnswers(inputs: SaveAnswerInput[]) {
+export async function saveAnswers(inputs: SaveAnswerInput[], context?: AttemptWriteContext) {
   if (inputs.length === 0) return [];
   const timestamp = nowIso();
   const deduped = Array.from(
@@ -1678,6 +1866,19 @@ export async function saveAnswers(inputs: SaveAnswerInput[]) {
       eliminated_choice_ids: input.eliminatedChoiceIds ?? [],
       updated_at: timestamp
     }));
+    if (context) {
+      const attemptIds = new Set(deduped.map((input) => input.submissionId));
+      if (attemptIds.size !== 1) throw new Error("A locked answer write must target one testing session.");
+      const attemptId = deduped[0].submissionId;
+      await writeStudentAnswerRowsWithLock(attemptId, context, answerRows);
+      const { data, error } = await adminClient()
+        .from("student_answers")
+        .select("*")
+        .eq("attempt_id", attemptId)
+        .in("question_id", deduped.map((input) => input.questionId));
+      if (error) throw new Error(error.message);
+      return ((data || []) as StudentAnswerRow[]).map(mapStudentAnswerRow);
+    }
     const { data, error } = await adminClient()
       .from("student_answers")
       .upsert(answerRows, { onConflict: "attempt_id,question_id" })
@@ -1703,6 +1904,20 @@ export async function saveAnswers(inputs: SaveAnswerInput[]) {
   }
 
   await ensureMockStore();
+  if (context) {
+    const attemptIds = new Set(deduped.map((input) => input.submissionId));
+    if (attemptIds.size !== 1) throw new Error("A locked answer write must target one testing session.");
+    const submission = mockSubmissions.find((item) => item.id === deduped[0].submissionId);
+    if (
+      !submission
+      || submission.status !== "in_progress"
+      || submission.current_step !== "section"
+      || Number(submission.current_section_index || 0) !== context.expectedSectionIndex
+      || submission.write_lock_token !== context.token
+    ) {
+      throw new Error("This testing session changed while it was being saved. Please try again.");
+    }
+  }
   const saved: Answer[] = [];
   for (const input of deduped) {
     const payload = {
@@ -1860,7 +2075,12 @@ export async function submitSubmission(submissionId: string, timeSpentOverrideSe
   return normalizeSubmissionRecord(mockSubmissions[submissionIndex] || submission);
 }
 
-export async function submitCurrentSection(submissionId: string, timeSpentOverrideSeconds?: number) {
+export async function submitCurrentSection(
+  submissionId: string,
+  timeSpentOverrideSeconds?: number,
+  expectedSectionIndex?: number,
+  writeLockToken?: string
+) {
   const submission = await getSubmission(submissionId);
   if (!submission) throw new Error("Submission not found.");
   const examSummary = await getExamWithQuestionSummaries(submission.exam_id, true);
@@ -1869,6 +2089,18 @@ export async function submitCurrentSection(submissionId: string, timeSpentOverri
   if (!sections.length) return submitSubmission(submissionId, timeSpentOverrideSeconds);
 
   const currentIndex = Math.min(Math.max(0, Number(submission.current_section_index || 0)), sections.length - 1);
+  const requestedIndex = expectedSectionIndex == null
+    ? currentIndex
+    : Math.min(Math.max(0, Math.floor(expectedSectionIndex)), sections.length - 1);
+  if (submission.current_step !== "section" || currentIndex !== requestedIndex) return submission;
+  if (
+    writeLockToken
+      ? submission.write_lock_token !== writeLockToken
+      : Boolean(submission.write_lock_token)
+  ) return submission;
+  const writeContext = writeLockToken
+    ? { expectedSectionIndex: requestedIndex, token: writeLockToken }
+    : undefined;
   const section = sections[currentIndex];
   const sectionExam = await getExamWithSectionQuestions(submission.exam_id, section.section, true);
   if (!sectionExam) throw new Error("Exam section not found.");
@@ -1884,7 +2116,7 @@ export async function submitCurrentSection(submissionId: string, timeSpentOverri
       flagged: false
     }));
   if (missingAnswers.length > 0) {
-    answers = [...answers, ...(await saveAnswers(missingAnswers))];
+    answers = [...answers, ...(await saveAnswers(missingAnswers, writeContext))];
   }
   const submittedAt = nowIso();
   const progress = ensureSectionsProgress(examSummary, submission);
@@ -1964,9 +2196,37 @@ export async function submitCurrentSection(submissionId: string, timeSpentOverri
   }
 
   if (hasSupabaseEnv()) {
+    await upsertStudentAnswers(answerUpdates, writeContext);
+    if (writeContext) {
+      const data = await commitAttemptWriteWithLock({
+        submissionId,
+        context: writeContext,
+        attemptPatch: {
+          status,
+          submitted_at: submittedAtForAttempt,
+          total_score: finalScore.correct,
+          max_score: finalScore.total,
+          percentage: percentage(finalScore.correct, finalScore.total),
+          current_step: nextStep,
+          current_section_index: nextIndex,
+          current_question_index: 0,
+          time_spent_seconds: totalTimeSpentSeconds,
+          break_started_at: breakStartedAt,
+          break_completed_at: breakCompletedAt,
+          break_skipped: breakSkipped,
+          updated_at: submittedAt
+        },
+        progress
+      });
+      if (!data) {
+        const latest = await getSubmission(submissionId);
+        if (!latest) throw new Error("Submission not found.");
+        return latest;
+      }
+      return mapAttemptRow(data, progress);
+    }
     const supabase = adminClient();
-    await upsertStudentAnswers(answerUpdates);
-    const { data, error } = await supabase
+    let attemptUpdate = supabase
       .from("exam_attempts")
       .update({
         status,
@@ -1984,18 +2244,36 @@ export async function submitCurrentSection(submissionId: string, timeSpentOverri
         updated_at: submittedAt
       })
       .eq("id", submissionId)
+      .eq("current_step", "section")
+      .eq("current_section_index", requestedIndex);
+    attemptUpdate = attemptUpdate.is("write_lock_token", null);
+    const { data, error } = await attemptUpdate
       .select("*")
-      .single();
+      .maybeSingle();
     if (error) throw new Error(error.message);
+    if (!data) {
+      const latest = await getSubmission(submissionId);
+      if (!latest) throw new Error("Submission not found.");
+      return latest;
+    }
     await upsertSectionProgressRows(submissionId, submission.exam_id, progress);
     return mapAttemptRow(data as ExamAttemptRow, progress);
   }
 
+  const submissionIndex = mockSubmissions.findIndex((item) => item.id === submissionId);
+  const storedSubmission = submissionIndex >= 0 ? mockSubmissions[submissionIndex] : null;
+  if (
+    !storedSubmission
+    || storedSubmission.current_step !== "section"
+    || Number(storedSubmission.current_section_index || 0) !== requestedIndex
+    || (writeLockToken ? storedSubmission.write_lock_token !== writeLockToken : Boolean(storedSubmission.write_lock_token))
+  ) {
+    return normalizeSubmissionRecord(storedSubmission || submission);
+  }
   for (const updated of answerUpdates) {
     const index = mockAnswers.findIndex((answer) => answer.id === updated.id);
     if (index >= 0) mockAnswers[index] = { ...updated };
   }
-  const submissionIndex = mockSubmissions.findIndex((item) => item.id === submissionId);
   if (submissionIndex >= 0) {
     mockSubmissions[submissionIndex] = {
       ...mockSubmissions[submissionIndex],

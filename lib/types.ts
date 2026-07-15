@@ -138,6 +138,8 @@ export interface Submission {
   section_time_limit_minutes?: number | null;
   current_step?: ExamAttemptStep;
   current_section_index?: number;
+  write_lock_token?: string | null;
+  write_lock_acquired_at?: string | null;
   break_started_at?: string | null;
   break_completed_at?: string | null;
   break_skipped?: boolean;

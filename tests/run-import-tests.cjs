@@ -480,6 +480,10 @@ assert.match(appHeader, /getCurrentProfile/, "AppHeader reads the server auth pr
 assert.match(appHeader, /href="\/dashboard"/, "logged-in header links to dashboard");
 assert.match(appHeader, /href="\/login"/, "logged-out header links to login");
 assert.match(appHeader, /signOutAction/, "logged-in header exposes sign out");
+assert.match(appHeader, /AstraLogo/, "shared Astra branding is used in the legacy application header");
+assert.doesNotMatch(appHeader, /Astra Glass/, "legacy product naming is removed from the application header");
+assert.equal(fs.existsSync(path.join(root, "app", "favicon.ico")), true, "Astra provides a browser favicon");
+assert.equal(fs.existsSync(path.join(root, "app", "icon.svg")), true, "Astra provides a scalable application icon");
 
 const homePage = source("app/page.tsx");
 assert.match(homePage, /getCurrentProfile/, "app entry reads auth state");
@@ -499,23 +503,29 @@ assert.match(bluebookExamSetup, /Before You Start/, "exam launch includes setup 
 assert.match(bluebookExamSetup, /checks\.every\(Boolean\)/, "all setup checks are required before launch");
 assert.match(bluebookExamSetup, /launchBluebookPracticeAction/, "setup launches through the Bluebook practice action");
 assert.match(bluebookExamSetup, /one continuous test/, "setup explains that all sections belong to one continuous attempt");
-
-const takeExamClient = source("components/exam/TakeExamClient.tsx");
-assert.doesNotMatch(takeExamClient, /window\.confirm|window\.alert/, "exam flow does not use native browser dialogs");
-assert.match(takeExamClient, /role="dialog"/, "exam confirmations use an in-app modal dialog");
-assert.match(takeExamClient, /Save & Exit/, "exam page exposes Save & Exit");
-assert.match(takeExamClient, /saveExamProgressAction/, "Save & Exit persists attempt progress");
-assert.match(takeExamClient, /maxSelections=\{currentMaxSelections\}/, "Select Two questions pass a max-selection limit");
-assert.match(takeExamClient, /timeSpentSeconds: elapsedSeconds\(\)/, "Submit uses the current elapsed time");
-assert.match(takeExamClient, /onChange=\{handleChoiceChange\}/, "choice clicks update local state through a stable handler");
-assert.doesNotMatch(takeExamClient, /updateResponse\(currentQuestion\.id, \{ selectedChoice: choiceId \}, true\)/, "choice clicks do not immediately persist and refresh the route");
+assert.match(bluebookExamSetup, /Step \{step\} of 2/, "exam setup is a full stepped readiness flow");
 
 const bluebookExamClientSource = source("components/bluebook/BluebookExamClient.tsx");
 assert.match(bluebookExamClientSource, /"Continue Test"/, "nonfinal Bluebook sections continue inside the same test");
 assert.match(bluebookExamClientSource, /"Start Break"/, "the MCQ boundary enters the scheduled break");
 assert.match(bluebookExamClientSource, /"Submit Test"/, "only the final Bluebook section submits the test");
 assert.match(bluebookExamClientSource, /router\.refresh\(\)/, "section transitions refresh the active test in place");
-assert.match(bluebookExamClientSource, /router\.replace\(`\/results\/\$\{result\.submissionId\}`\)/, "whole-test completion alone opens results");
+assert.match(bluebookExamClientSource, /router\.replace\(`\/results\/\$\{result\.submissionId\}\?submitted=1`\)/, "whole-test completion opens the submission confirmation before results");
+assert.match(bluebookExamClientSource, /dirtyQuestionVersions/, "rapid answer changes are tracked independently by question and version");
+assert.match(bluebookExamClientSource, /setInterval\(\(\) => void queueProgressSave\(\), 10_000\)/, "active test progress is checkpointed on a stable interval during continuous typing");
+assert.match(bluebookExamClientSource, /sectionElapsedBaselineRef/, "server checkpoints update the timer baseline without double-counting local elapsed time");
+assert.match(bluebookExamClientSource, /submittingRef\.current = true/, "section completion is protected against duplicate requests");
+assert.match(bluebookExamClientSource, /saveQueueRef/, "autosave, checkpoints, exit, and submission share a serialized save queue");
+assert.match(bluebookExamClientSource, /Your progress could not be synced/, "transport-level save failures surface a recoverable error");
+assert.match(bluebookExamClientSource, /expectedSectionIndex: testFlow\.sectionNumber - 1/, "stale checkpoints cannot overwrite a later section");
+assert.match(bluebookExamClientSource, /Highlights & Notes/, "mobile testing tools retain access to annotation from the More menu");
+const bluebookTimerSource = source("components/bluebook/BluebookTimer.tsx");
+assert.match(bluebookTimerSource, /sessionStorage\.getItem\(storageKey\)/, "the local section timer survives a refresh on the same device");
+const bluebookBreakSource = source("components/bluebook/BluebookBreakScreen.tsx");
+assert.match(bluebookBreakSource, /remaining === 0/, "resume appears only after the scheduled break timer ends");
+assert.match(bluebookBreakSource, /resumeBluebookAfterBreakAction\(submission\.id\)/, "the break client cannot request an early-resume override");
+const completionScreenSource = source("components/bluebook/BluebookCompletionScreen.tsx");
+assert.match(completionScreenSource, /View Results/, "the completion state hands students off to their results");
 const bluebookTakePageSource = source("app/exam/[id]/take/page.tsx");
 assert.match(bluebookTakePageSource, /key=\{`\$\{submission\.id\}:\$\{activeSection\?\.id/, "each new section resets local question, review, and timer state inside the same attempt");
 
@@ -529,10 +539,10 @@ assert.match(choiceListSource, /eliminatedChoiceIds\?: string\[\]/, "ChoiceList 
 assert.match(choiceListSource, /onToggleEliminated\?: \(choiceId: string\) => void/, "ChoiceList accepts onToggleEliminated");
 assert.match(choiceListSource, /event\.stopPropagation\(\)/, "eliminator clicks do not trigger answer selection");
 assert.match(choiceListSource, /line-through/, "eliminated choices receive a cancel-out visual treatment");
-assert.match(takeExamClient, /eliminatedChoiceIds/, "exam client tracks eliminated choices locally");
-const responseSnapshotBlock = takeExamClient.slice(
-  takeExamClient.indexOf("const responseSnapshot"),
-  takeExamClient.indexOf("const elapsedSeconds")
+assert.match(bluebookExamClientSource, /eliminatedChoiceIds/, "exam client tracks eliminated choices locally");
+const responseSnapshotBlock = bluebookExamClientSource.slice(
+  bluebookExamClientSource.indexOf("const responseSnapshot"),
+  bluebookExamClientSource.indexOf("const queueProgressSave")
 );
 assert.match(responseSnapshotBlock, /eliminatedChoiceIds/, "eliminated choices are included in progress snapshots for resume persistence");
 const submitScoringBlock = source("lib/data.ts").slice(
@@ -546,15 +556,40 @@ assert.doesNotMatch(actionsSource, /revalidatePath\(`\/exam\/\$\{submission\.exa
 assert.doesNotMatch(actionsSource, /revalidatePath\(`\/exam\/\$\{input\.examId\}\/take`\)/, "Save & Exit does not revalidate the current exam route before leaving");
 const completeBluebookSectionBlock = actionsSource.slice(
   actionsSource.indexOf("export async function completeBluebookSectionAction"),
-  actionsSource.indexOf("export async function submitExamAction")
+  actionsSource.indexOf("export async function resumeBluebookAfterBreakAction")
 );
 assert.match(completeBluebookSectionBlock, /await submitCurrentSection\(/, "every Bluebook section advances through the full-test state machine");
+assert.match(completeBluebookSectionBlock, /expectedSectionIndex/, "duplicate Bluebook section submissions are rejected against their original section");
+assert.ok(
+  completeBluebookSectionBlock.indexOf("claimBluebookSectionWriteWithRetry") >= 0
+    && completeBluebookSectionBlock.indexOf("claimBluebookSectionWriteWithRetry") < completeBluebookSectionBlock.indexOf("await saveAnswers"),
+  "section completion acquires the attempt write lock before changing answers or scores"
+);
 assert.doesNotMatch(completeBluebookSectionBlock, /sections_progress\?\.length/, "legacy attempts cannot accidentally submit the whole test after one section");
 assert.doesNotMatch(completeBluebookSectionBlock, /redirect\(/, "nonfinal section completion does not navigate out of the test shell");
 
 const dataSourceForExamFlow = source("lib/data.ts");
 assert.match(dataSourceForExamFlow, /resolveExamSectionTransition/, "data transitions share the tested full-test flow resolver");
 assert.match(dataSourceForExamFlow, /cumulativeSectionTimeSeconds\(progress\)/, "attempt time accumulates across all sections");
+assert.match(dataSourceForExamFlow, /\.eq\("current_section_index", requestedIndex\)/, "section advancement uses a database compare-and-set guard");
+assert.match(dataSourceForExamFlow, /write_lock_token/, "attempt writes use a cross-request mutex around answers, scoring, and progress");
+const attemptWriteLockMigrationPath = path.join(root, "supabase", "migrations", "010_exam_attempt_write_lock.sql");
+assert.equal(fs.existsSync(attemptWriteLockMigrationPath), true, "the production schema includes the attempt write lock");
+const attemptWriteLockMigration = fs.readFileSync(attemptWriteLockMigrationPath, "utf8");
+assert.match(attemptWriteLockMigration, /claim_exam_attempt_write_lock/, "lock claims are atomic in the database");
+assert.match(attemptWriteLockMigration, /write_exam_attempt_answers/, "answer writes validate the current fencing token");
+assert.match(attemptWriteLockMigration, /commit_exam_attempt_write/, "attempt and section progress commit in one database transaction");
+assert.match(attemptWriteLockMigration, /for update/, "locked writes serialize against stale lease recovery");
+assert.match(attemptWriteLockMigration, /write_lock_token is distinct from p_token/, "expired lock holders cannot resume writing");
+assert.match(dataSourceForExamFlow, /rpc\("write_exam_attempt_answers"/, "Bluebook answer writes use the fenced database function");
+assert.match(dataSourceForExamFlow, /rpc\("commit_exam_attempt_write"/, "Bluebook progress uses the atomic database commit");
+assert.match(actionsSource, /claimBluebookSectionWriteWithRetry/, "checkpoint and completion wait through short cross-tab lock contention");
+assert.match(actionsSource, /Your progress is being saved in another tab/, "a failed final checkpoint cannot be mistaken for a successful exit save");
+assert.doesNotMatch(actionsSource, /syncBluebookResponseAction/, "the obsolete unfenced Bluebook answer endpoint is removed");
+assert.doesNotMatch(actionsSource, /saveAnswerAction|saveExamProgressAction|submitSectionWithResponsesAction|submitExamWithResponsesAction|submitExamAction/, "legacy unfenced exam actions are not exposed");
+assert.match(actionsSource, /Date\.now\(\) - breakStartedAt < BLUEBOOK_BREAK_DURATION_MS/, "the server enforces the full scheduled break");
+assert.equal(fs.existsSync(path.join(root, "components", "exam", "TakeExamClient.tsx")), false, "the legacy exam client is removed");
+assert.equal(fs.existsSync(path.join(root, "components", "exam", "BreakScreenClient.tsx")), false, "the legacy skippable break client is removed");
 assert.match(actionsSource, /adminStartPdfImportAction/, "admin can start a PDF import analysis job");
 assert.match(actionsSource, /adminSavePdfDraftQuestionAction/, "PDF import drafts use an explicit save action");
 assert.match(actionsSource, /status: "draft"/, "PDF import drafts save as draft questions");

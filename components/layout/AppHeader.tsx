@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { BookOpen, Gauge, GraduationCap, LogOut, Settings, Shield } from "lucide-react";
+import { BookOpen, Gauge, LogOut, Settings, Shield } from "lucide-react";
 import { getCurrentProfile } from "@/lib/auth";
 import { signOutAction } from "@/app/actions";
+import { AstraLogo } from "@/components/brand/AstraLogo";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 
@@ -24,12 +25,10 @@ export async function AppHeader() {
     <header className="sticky top-0 z-30 px-3 py-3 sm:px-5">
       <div className="glass-panel mx-auto flex max-w-7xl items-center justify-between gap-4 rounded-full px-3 py-2 text-astra-navy sm:px-4">
         <Link href="/" className="flex min-w-0 items-center gap-3">
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-full border border-white/70 bg-astra-navy text-white shadow-inner">
-            <GraduationCap className="size-5 text-astra-gold" />
-          </span>
+          <AstraLogo className="size-10 shrink-0" />
           <span className="min-w-0">
-            <span className="block font-mono text-sm font-black uppercase tracking-[0.18em]">Astra Glass</span>
-            <span className="hidden text-xs text-slate-600 sm:block">AP exam command center</span>
+            <span className="block text-sm font-black">Astra Exams</span>
+            <span className="hidden text-xs text-slate-600 sm:block">AP practice testing</span>
           </span>
         </Link>
 

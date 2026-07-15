@@ -1,8 +1,8 @@
 .header {
-  min-height: 64px;
-  border-bottom: 1px solid #203caa;
-  background: #3155d8;
-  color: #ffffff;
+  min-height: 82px;
+  border-bottom: 1px solid #d5dbea;
+  background: #e7edf9;
+  color: #202124;
   font-family: Arial, Helvetica, sans-serif;
   letter-spacing: 0;
 }
@@ -10,7 +10,7 @@
 .inner {
   display: flex;
   width: min(100%, 1120px);
-  min-height: 64px;
+  min-height: 82px;
   margin: 0 auto;
   padding: 0 24px;
   align-items: center;
@@ -23,18 +23,14 @@
   min-width: 0;
   align-items: center;
   gap: 13px;
-  color: #ffffff;
+  color: #3155d8;
 }
 
 .brandMark {
-  display: grid;
-  width: 34px;
-  height: 34px;
+  display: block;
+  width: 42px;
+  height: 42px;
   flex: 0 0 auto;
-  place-items: center;
-  border: 2px solid #ffffff;
-  font-size: 18px;
-  font-weight: 800;
 }
 
 .brandText {
@@ -51,7 +47,7 @@
 .brandText span {
   overflow: hidden;
   margin-top: 3px;
-  color: #dce4ff;
+  color: #5b6270;
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -74,7 +70,7 @@
   border: 0;
   border-radius: 4px;
   background: transparent;
-  color: #ffffff;
+  color: #202124;
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
@@ -90,7 +86,7 @@
 
 .utility:hover,
 .signOut:hover {
-  background: rgba(255, 255, 255, 0.14);
+  background: rgba(49, 85, 216, 0.1);
 }
 
 .utility svg,
@@ -103,7 +99,7 @@
   overflow: hidden;
   max-width: 190px;
   margin: 0 7px 0 4px;
-  color: #ffffff;
+  color: #202124;
   font-size: 12px;
   font-weight: 700;
   text-overflow: ellipsis;
@@ -112,13 +108,18 @@
 
 @media (max-width: 680px) {
   .inner {
-    min-height: 58px;
+    min-height: 64px;
     padding: 0 14px;
     gap: 10px;
   }
 
   .header {
-    min-height: 58px;
+    min-height: 64px;
+  }
+
+  .brandMark {
+    width: 36px;
+    height: 36px;
   }
 
   .brandText span,

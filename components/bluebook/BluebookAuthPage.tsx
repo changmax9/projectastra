@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AstraLogo } from "@/components/brand/AstraLogo";
 import { AuthForm } from "@/components/forms/AuthForm";
 import { BluebookDeviceCheck } from "./BluebookDeviceCheck";
 import styles from "./BluebookAuthPage.module.css";
@@ -12,7 +13,7 @@ export function BluebookAuthPage({ mode }: { mode: "login" | "register" }) {
       <section className={styles.main}>
         <div className={styles.stack}>
           <div className={styles.identity}>
-            <span className={styles.mark} aria-hidden="true">A</span>
+            <AstraLogo className={styles.mark} tone="light" />
             <h1>Astra Exams</h1>
             <p>{mode === "login" ? "Take a Test or Start Practicing" : "Create Your Practice Account"}</p>
           </div>

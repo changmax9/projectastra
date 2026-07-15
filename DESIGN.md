@@ -70,7 +70,7 @@ Supporting references: `branch-web-product.md`, `content-model.md`, `design-cont
 - Taste dials: restrained expression, high clarity, compact density, low motion, high trust.
 - Category defaults avoided: glass panels, gradient backgrounds, floating nav pills, KPI cards, nested cards, marketing hero composition, excessive roundness.
 - Layout-family budget: one app shell, one centered authentication panel, flat grouped lists, one setup dialog.
-- Visual memory feature: Astra's four-color testing stripe paired with a centered app title and split utility header.
+- Visual memory feature: Astra's blue angular `A` mark with a yellow progress bar and cyan readiness corner, supported by the four-color testing stripe inside the runtime.
 - Type personality: neutral system sans for controls and status; serif is reserved for exam content only.
 - Asset/reference policy: Use live College Board documentation and public Bluebook screenshots for workflow/layout reference; do not copy logos or ship their images.
 - Anti-default locks: no decorative gradients, no blur, no decorative blobs, no nested cards, no radius above 8px in the student shell, no viewport-scaled type.
@@ -100,7 +100,8 @@ Supporting references: `branch-web-product.md`, `content-model.md`, `design-cont
 - `TestRow`: `available`, `in_progress`, or `completed`; stable title/meta/action geometry.
 - `PracticeSelector`: grouped published tests with a compact native filter/search strategy.
 - `DeviceCheck`: local browser readiness report with pass/advisory state and a clear close action.
-- `ExamSetupDialog`: three required confirmations, test facts, cancel, and pending launch.
+- `ExamSetupFlow`: full-screen two-step readiness and launch sequence with a fixed utility header, stable progress footer, and explicit back/next states.
+- `CompletionScreen`: successful whole-test submission, results handoff, and return-home recovery.
 - `AuthForm`: pending, field validation, server error, registration success.
 
 ## Review Log
@@ -109,12 +110,22 @@ Supporting references: `branch-web-product.md`, `content-model.md`, `design-cont
 - 2026-07-15: Critique removed the remaining KPI/dashboard hierarchy in favor of `Your Tests` and `Practice and Prepare`; active attempts now return through test detail and setup before resuming.
 - 2026-07-15: Mobile repair made Exam Setup a fixed-header/fixed-footer dialog with a scrollable checklist so the disabled reason, cancel action, and primary action remain visible at 390px.
 - 2026-07-15: Corrected the runtime contract so section boundaries stay inside one continuous test attempt. Nonfinal sections continue in place, the only scheduled break sits between MCQ and FRQ, and only the last section submits the test.
+- 2026-07-15: Replaced the placeholder lettermark with an original Astra vector mark, browser favicon, and shared brand asset; normalized stale `Astra Glass` surfaces back to `Astra Exams`.
+- 2026-07-15: Rebuilt setup as a full-screen stepped flow, made section directions a dark-shell document state, locked the scheduled break until its timer ends, and added a dedicated successful-submission handoff.
+- 2026-07-15: Added per-question save versioning, ten-second attempt checkpoints, and session timer recovery so rapid navigation and refreshes do not silently discard work or reset the local timer.
+- 2026-07-15: Browser QA caught and fixed checkpoint feedback that double-counted elapsed time after a server refresh; elapsed time now advances from a resettable baseline, and manual section completion is guarded against duplicate requests.
+- 2026-07-15: Mobile runtime QA constrained the footer to fixed 44px navigation controls and verified a structured calculus table, scheduled break, and whole-test completion screen at phone and desktop sizes.
+- 2026-07-15: Consolidated autosave, checkpoint, exit, and submission into one client save queue; added a short-lived server attempt lock, retryable contention handling, and section compare-and-set so stale or duplicate requests cannot overwrite answers, scores, or the next section.
+- 2026-07-15: Hardened cross-tab persistence with database fencing: lock claims are atomic, every answer batch validates the current token, and attempt plus section progress commit in one transaction before the lock is released. A throwaway PostgreSQL run verified stale-token rejection and atomic transition behavior.
+- 2026-07-15: Removed the unrouted legacy exam and skippable-break clients plus their unfenced Server Actions; the Bluebook state machine is now the only student testing path, and the server independently enforces the full ten-minute scheduled break.
 
 ## Verification Record
 
-- Desktop: 1280 x 800 sign-in, device check, console, practice library, test detail, setup, directions, and question runtime inspected in the browser.
-- Mobile: 390 x 844 sign-in, console, practice library, test detail, and setup inspected; 320 x 700 console checked with zero horizontal overflow.
-- Interaction: Device Check opens and closes with Escape; Exam Setup launch is disabled until all three confirmations are checked; successful launch reaches the section runtime.
+- Desktop: 1440 x 900 console, setup, directions, question runtime, scheduled break, and successful completion inspected in a real browser.
+- Mobile: 390 x 844 console, test detail, both setup steps, directions, structured table question, runtime, scheduled break, and completion inspected with no overlapping controls.
+- Interaction: Exam Setup remains disabled until all three confirmations are checked; the same attempt continues across sections; the break cannot end early; completion hands off to results.
+- Timing: Across three ten-second checkpoint cycles, 65.5 seconds of browser wall time increased stored elapsed time by 64 seconds, confirming server refreshes no longer double-count the timer.
+- Persistence: During 12 seconds of continuous answer/review changes, the stable checkpoint persisted state without a debounce pause; a later answer change survived a reload after the queued autosave completed.
 - Semantic zones: `data-ud-check` markers cover authentication, app header/footer, test groups, filters, detail, section list, device check, and setup.
 - Engineering gates: `npm run lint`, `npm test`, `npm run build`, and `git diff --check` pass; final page console contains no warnings or errors.
 

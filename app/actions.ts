@@ -3,11 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import {
   addQuestionToExam,
+  claimSubmissionSectionWrite,
   completeSubmissionBreak,
   createOrContinueSubmission,
   createPdfImportJob,
@@ -30,13 +32,11 @@ import {
   removeQuestionFromExam,
   requestPdfImportCancellation,
   retryPdfImportJob,
-  recoverMockSubmission,
+  releaseSubmissionSectionWrite,
   reorderExamQuestion,
-  saveAnswer,
   saveAnswers,
   saveMediaFile,
   savePdfUpload,
-  submitSubmission,
   submitCurrentSection,
   updatePdfMetadata,
   updatePdfImportDraftStatus,
@@ -81,6 +81,26 @@ async function withActionTiming<T>(label: string, action: () => Promise<T>): Pro
     }
   }
 }
+
+async function claimBluebookSectionWriteWithRetry(input: {
+  submissionId: string;
+  expectedSectionIndex: number;
+  token: string;
+}) {
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    try {
+      if (await claimSubmissionSectionWrite(input)) return true;
+    } catch (error) {
+      if (attempt === 11) throw error;
+    }
+    if (attempt < 11) {
+      await new Promise((resolve) => setTimeout(resolve, 100 + attempt * 20));
+    }
+  }
+  return false;
+}
+
+const BLUEBOOK_BREAK_DURATION_MS = 10 * 60 * 1000;
 
 function getRequestOrigin() {
   const headerStore = headers();
@@ -257,74 +277,9 @@ export async function launchBluebookPracticeAction(formData: FormData) {
   redirect(`/exam/${examId}/take?submission=${submission.id}`);
 }
 
-export async function saveAnswerAction(input: {
-  submissionId: string;
-  questionId: string;
-  selectedChoice?: string | null;
-  answerText?: string | null;
-  flagged?: boolean;
-  timeSpentSeconds?: number | null;
-  eliminatedChoiceIds?: string[];
-}) {
-  return withActionTiming("saveAnswerAction", async () => {
-    const profile = await requireProfile();
-    try {
-      const submission = await getSubmission(input.submissionId);
-      if (!submission) return { error: "Submission not found." };
-      if (profile.role !== "admin" && submission.student_id !== profile.id) {
-        return { error: "You can only edit your own answers." };
-      }
-      if (submission.status !== "in_progress") {
-        return { error: "This exam has already been submitted." };
-      }
-
-      await saveAnswer(input);
-      return { ok: true, savedAt: nowIso() };
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : "Save failed. Please try again." };
-    }
-  });
-}
-
-export async function syncBluebookResponseAction(input: {
-  submissionId: string;
-  questionId: string;
-  selectedChoice?: string | null;
-  answerText?: string | null;
-  flagged: boolean;
-  timeSpentSeconds?: number | null;
-  eliminatedChoiceIds: string[];
-}) {
-  return withActionTiming("syncBluebookResponseAction", async () => {
-    const profile = await requireProfile();
-    try {
-      const submission = await getSubmission(input.submissionId);
-      if (!submission) return { error: "Testing session not found." };
-      if (profile.role !== "admin" && submission.student_id !== profile.id) {
-        return { error: "You can only update your own testing session." };
-      }
-      if (submission.status !== "in_progress" || submission.current_step === "completed") {
-        return { error: "This testing session is no longer active." };
-      }
-
-      await saveAnswer({
-        submissionId: input.submissionId,
-        questionId: input.questionId,
-        selectedChoice: input.selectedChoice ?? null,
-        answerText: input.answerText ?? null,
-        flagged: input.flagged,
-        timeSpentSeconds: input.timeSpentSeconds ?? null,
-        eliminatedChoiceIds: input.eliminatedChoiceIds
-      });
-      return { ok: true, syncedAt: nowIso() };
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : "Your answer could not be synced." };
-    }
-  });
-}
-
 export async function saveBluebookSectionProgressAction(input: {
   submissionId: string;
+  expectedSectionIndex: number;
   currentQuestionIndex: number;
   timeSpentSeconds: number;
   responses: Array<{
@@ -347,25 +302,58 @@ export async function saveBluebookSectionProgressAction(input: {
       if (submission.status !== "in_progress" || submission.current_step === "completed") {
         return { error: "This testing session is no longer active." };
       }
-
-      await saveAnswers(
-        input.responses.map((response) => ({
-          submissionId: submission.id,
-          questionId: response.questionId,
-          selectedChoice: response.selectedChoice ?? null,
-          answerText: response.answerText ?? null,
-          flagged: response.flagged,
-          timeSpentSeconds: response.timeSpentSeconds ?? null,
-          eliminatedChoiceIds: response.eliminatedChoiceIds
-        }))
-      );
-      await updateSubmissionProgress({
+      if (
+        submission.current_step !== "section"
+        || Number(submission.current_section_index || 0) !== Math.max(0, Math.floor(input.expectedSectionIndex))
+      ) {
+        return { ok: true, ignored: true };
+      }
+      const expectedSectionIndex = Math.max(0, Math.floor(input.expectedSectionIndex));
+      const writeLockToken = randomUUID();
+      const claimed = await claimBluebookSectionWriteWithRetry({
         submissionId: submission.id,
-        currentQuestionIndex: Math.max(0, input.currentQuestionIndex),
-        timeSpentSeconds: Math.max(0, input.timeSpentSeconds)
+        expectedSectionIndex,
+        token: writeLockToken
       });
-      revalidatePath("/dashboard");
-      return { ok: true, syncedAt: nowIso() };
+      if (!claimed) {
+        const latest = await getSubmission(submission.id);
+        if (
+          latest
+          && (
+            latest.current_step !== "section"
+            || Number(latest.current_section_index || 0) !== expectedSectionIndex
+          )
+        ) {
+          return { ok: true, ignored: true };
+        }
+        return { error: "Your progress is being saved in another tab. Please try again." };
+      }
+
+      try {
+        await saveAnswers(
+          input.responses.map((response) => ({
+            submissionId: submission.id,
+            questionId: response.questionId,
+            selectedChoice: response.selectedChoice ?? null,
+            answerText: response.answerText ?? null,
+            flagged: response.flagged,
+            timeSpentSeconds: response.timeSpentSeconds ?? null,
+            eliminatedChoiceIds: response.eliminatedChoiceIds
+          })),
+          { expectedSectionIndex, token: writeLockToken }
+        );
+        await updateSubmissionProgress({
+          submissionId: submission.id,
+          currentQuestionIndex: Math.max(0, input.currentQuestionIndex),
+          timeSpentSeconds: Math.max(0, input.timeSpentSeconds),
+          expectedSectionIndex,
+          writeLockToken
+        });
+        revalidatePath("/dashboard");
+        return { ok: true, syncedAt: nowIso() };
+      } finally {
+        await releaseSubmissionSectionWrite(submission.id, writeLockToken).catch(() => undefined);
+      }
     } catch (error) {
       return { error: error instanceof Error ? error.message : "Testing progress could not be saved." };
     }
@@ -374,6 +362,7 @@ export async function saveBluebookSectionProgressAction(input: {
 
 export async function completeBluebookSectionAction(input: {
   submissionId: string;
+  expectedSectionIndex: number;
   timeSpentSeconds: number;
   responses: Array<{
     questionId: string;
@@ -393,179 +382,95 @@ export async function completeBluebookSectionAction(input: {
         return { error: "You can only submit your own testing session." };
       }
       if (submission.status !== "in_progress" || submission.current_step === "completed") {
-        return { error: "This testing session is no longer active." };
+        return {
+          ok: true,
+          ignored: true,
+          nextStep: "completed" as const,
+          currentSectionIndex: Number(submission.current_section_index || 0),
+          completed: true,
+          submissionId: submission.id
+        };
+      }
+      const expectedSectionIndex = Math.max(0, Math.floor(input.expectedSectionIndex));
+      if (
+        submission.current_step !== "section"
+        || Number(submission.current_section_index || 0) !== expectedSectionIndex
+      ) {
+        return {
+          ok: true,
+          ignored: true,
+          nextStep: submission.current_step,
+          currentSectionIndex: Number(submission.current_section_index || 0),
+          completed: false,
+          submissionId: submission.id
+        };
+      }
+      const writeLockToken = randomUUID();
+      const claimed = await claimBluebookSectionWriteWithRetry({
+        submissionId: submission.id,
+        expectedSectionIndex,
+        token: writeLockToken
+      });
+      if (!claimed) {
+        const latest = await getSubmission(submission.id);
+        if (
+          latest
+          && (
+            latest.current_step !== "section"
+            || Number(latest.current_section_index || 0) !== expectedSectionIndex
+          )
+        ) {
+          return {
+            ok: true,
+            ignored: true,
+            nextStep: latest.current_step,
+            currentSectionIndex: Number(latest.current_section_index || 0),
+            completed: latest.current_step === "completed" || latest.status !== "in_progress",
+            submissionId: latest.id
+          };
+        }
+        return { error: "This section is already being saved in another tab. Please try again." };
       }
 
-      await saveAnswers(
-        input.responses.map((response) => ({
-          submissionId: submission.id,
-          questionId: response.questionId,
-          selectedChoice: response.selectedChoice ?? null,
-          answerText: response.answerText ?? null,
-          flagged: response.flagged,
-          timeSpentSeconds: response.timeSpentSeconds ?? null,
-          eliminatedChoiceIds: response.eliminatedChoiceIds
-        }))
-      );
+      try {
+        await saveAnswers(
+          input.responses.map((response) => ({
+            submissionId: submission.id,
+            questionId: response.questionId,
+            selectedChoice: response.selectedChoice ?? null,
+            answerText: response.answerText ?? null,
+            flagged: response.flagged,
+            timeSpentSeconds: response.timeSpentSeconds ?? null,
+            eliminatedChoiceIds: response.eliminatedChoiceIds
+          })),
+          { expectedSectionIndex, token: writeLockToken }
+        );
 
-      const updated = await submitCurrentSection(submission.id, Math.max(0, input.timeSpentSeconds));
-      revalidatePath("/dashboard");
-      revalidatePath(`/exam/${updated.exam_id}/take`);
-      return {
-        ok: true,
-        nextStep: updated.current_step,
-        currentSectionIndex: updated.current_section_index || 0,
-        completed: updated.current_step === "completed" || updated.status !== "in_progress",
-        submissionId: updated.id
-      };
+        const updated = await submitCurrentSection(
+          submission.id,
+          Math.max(0, input.timeSpentSeconds),
+          expectedSectionIndex,
+          writeLockToken
+        );
+        revalidatePath("/dashboard");
+        revalidatePath(`/exam/${updated.exam_id}/take`);
+        return {
+          ok: true,
+          nextStep: updated.current_step,
+          currentSectionIndex: updated.current_section_index || 0,
+          completed: updated.current_step === "completed" || updated.status !== "in_progress",
+          submissionId: updated.id
+        };
+      } finally {
+        await releaseSubmissionSectionWrite(submission.id, writeLockToken).catch(() => undefined);
+      }
     } catch (error) {
       return { error: error instanceof Error ? error.message : "This section could not be submitted." };
     }
   });
 }
 
-export async function submitExamAction(submissionId: string) {
-  const profile = await requireProfile();
-  const submission = await getSubmission(submissionId);
-  if (!submission) throw new Error("Submission not found.");
-  if (profile.role !== "admin" && submission.student_id !== profile.id) {
-    throw new Error("You can only submit your own exam.");
-  }
-
-  const submitted = await submitSubmission(submissionId);
-  revalidatePath("/dashboard");
-  redirect(`/results/${submitted.id}`);
-}
-
-export async function submitExamWithResponsesAction(input: {
-  submissionId: string;
-  examId: string;
-  startedAt: string;
-  section?: string | null;
-  timeSpentSeconds?: number;
-  responses: Array<{
-    questionId: string;
-    selectedChoice?: string | null;
-    answerText?: string | null;
-    flagged?: boolean;
-    timeSpentSeconds?: number | null;
-    eliminatedChoiceIds?: string[];
-  }>;
-}) {
-  return withActionTiming("submitExamAction", async () => {
-    const profile = await requireProfile();
-    let submittedId = "";
-    try {
-      let submission = await getSubmission(input.submissionId);
-
-      if (!submission) {
-        const exam = await getExamWithQuestionSummaries(input.examId, true);
-        const section = input.section
-          ? exam?.sections?.find((item) => item.section === input.section || item.id === input.section) || null
-          : null;
-        submission = await recoverMockSubmission({
-          id: input.submissionId,
-          examId: input.examId,
-          studentId: profile.id,
-          startedAt: input.startedAt,
-          section
-        });
-      }
-
-      if (!submission) return { error: "Submission not found." };
-      if (profile.role !== "admin" && submission.student_id !== profile.id) {
-        return { error: "You can only submit your own exam." };
-      }
-
-      await saveAnswers(
-        input.responses.map((response) => ({
-          submissionId: submission.id,
-          questionId: response.questionId,
-          selectedChoice: response.selectedChoice ?? null,
-          answerText: response.answerText ?? null,
-          flagged: response.flagged ?? false,
-          timeSpentSeconds: response.timeSpentSeconds ?? null,
-          eliminatedChoiceIds: response.eliminatedChoiceIds ?? []
-        }))
-      );
-
-      await updateSubmissionProgress({
-        submissionId: submission.id,
-        currentQuestionIndex: 0,
-        timeSpentSeconds: input.timeSpentSeconds ?? submission.time_spent_seconds
-      });
-
-      const submitted = await submitSubmission(submission.id, input.timeSpentSeconds);
-      submittedId = submitted.id;
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : "Submit failed. Please try again." };
-    }
-    revalidatePath("/dashboard");
-    redirect(`/results/${submittedId}`);
-  });
-}
-
-export async function submitSectionWithResponsesAction(input: {
-  submissionId: string;
-  examId: string;
-  timeSpentSeconds?: number;
-  responses: Array<{
-    questionId: string;
-    selectedChoice?: string | null;
-    answerText?: string | null;
-    flagged?: boolean;
-    timeSpentSeconds?: number | null;
-    eliminatedChoiceIds?: string[];
-  }>;
-}) {
-  return withActionTiming("endSectionAction", async () => {
-    const profile = await requireProfile();
-    let destination = "";
-    try {
-      const submission = await getSubmission(input.submissionId);
-      if (!submission) return { error: "Submission not found." };
-      if (profile.role !== "admin" && submission.student_id !== profile.id) {
-        return { error: "You can only submit your own exam." };
-      }
-
-      await saveAnswers(
-        input.responses.map((response) => ({
-          submissionId: submission.id,
-          questionId: response.questionId,
-          selectedChoice: response.selectedChoice ?? null,
-          answerText: response.answerText ?? null,
-          flagged: response.flagged ?? false,
-          timeSpentSeconds: response.timeSpentSeconds ?? null,
-          eliminatedChoiceIds: response.eliminatedChoiceIds ?? []
-        }))
-      );
-
-      const updated = await submitCurrentSection(submission.id, input.timeSpentSeconds);
-      destination =
-        updated.current_step === "completed" || updated.status === "completed"
-          ? `/results/${updated.id}`
-          : `/exam/${updated.exam_id}/take?submission=${updated.id}`;
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : "Submit failed. Please try again." };
-    }
-    revalidatePath("/dashboard");
-    redirect(destination);
-  });
-}
-
-export async function completeBreakAction(submissionId: string, skipped = true) {
-  const profile = await requireProfile();
-  const submission = await getSubmission(submissionId);
-  if (!submission) throw new Error("Submission not found.");
-  if (profile.role !== "admin" && submission.student_id !== profile.id) {
-    throw new Error("You can only resume your own exam.");
-  }
-  const updated = await completeSubmissionBreak(submissionId, skipped);
-  revalidatePath("/dashboard");
-  redirect(`/exam/${updated.exam_id}/take?submission=${updated.id}`);
-}
-
-export async function resumeBluebookAfterBreakAction(submissionId: string, resumedEarly: boolean) {
+export async function resumeBluebookAfterBreakAction(submissionId: string) {
   const profile = await requireProfile();
   const submission = await getSubmission(submissionId);
   if (!submission) throw new Error("Testing session not found.");
@@ -575,61 +480,16 @@ export async function resumeBluebookAfterBreakAction(submissionId: string, resum
   if (submission.current_step !== "break") {
     throw new Error("This testing session is not on a break.");
   }
+  const breakStartedAt = submission.break_started_at
+    ? new Date(submission.break_started_at).getTime()
+    : Number.NaN;
+  if (!Number.isFinite(breakStartedAt) || Date.now() - breakStartedAt < BLUEBOOK_BREAK_DURATION_MS) {
+    throw new Error("The scheduled break is still in progress.");
+  }
 
-  const updated = await completeSubmissionBreak(submissionId, resumedEarly);
+  const updated = await completeSubmissionBreak(submissionId, false);
   revalidatePath("/dashboard");
   redirect(`/exam/${updated.exam_id}/take?submission=${updated.id}`);
-}
-
-export async function saveExamProgressAction(input: {
-  submissionId: string;
-  examId: string;
-  currentQuestionIndex: number;
-  timeSpentSeconds: number;
-  responses: Array<{
-    questionId: string;
-    selectedChoice?: string | null;
-    answerText?: string | null;
-    flagged?: boolean;
-    timeSpentSeconds?: number | null;
-    eliminatedChoiceIds?: string[];
-  }>;
-}) {
-  return withActionTiming("saveExamProgressAction", async () => {
-    const profile = await requireProfile();
-    try {
-      const submission = await getSubmission(input.submissionId);
-      if (!submission) return { error: "Submission not found." };
-      if (profile.role !== "admin" && submission.student_id !== profile.id) {
-        return { error: "You can only save your own exam." };
-      }
-      if (submission.status !== "in_progress") {
-        return { error: "This exam has already been submitted." };
-      }
-
-      await saveAnswers(
-        input.responses.map((response) => ({
-          submissionId: submission.id,
-          questionId: response.questionId,
-          selectedChoice: response.selectedChoice ?? null,
-          answerText: response.answerText ?? null,
-          flagged: response.flagged ?? false,
-          timeSpentSeconds: response.timeSpentSeconds ?? null,
-          eliminatedChoiceIds: response.eliminatedChoiceIds ?? []
-        }))
-      );
-
-      await updateSubmissionProgress({
-        submissionId: submission.id,
-        currentQuestionIndex: input.currentQuestionIndex,
-        timeSpentSeconds: input.timeSpentSeconds
-      });
-      revalidatePath("/dashboard");
-      return { ok: true };
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : "Save failed. Please try again." };
-    }
-  });
 }
 
 export async function adminSaveExamAction(formData: FormData) {
