@@ -40,7 +40,7 @@ import { MathMarkdown } from "@/components/MathMarkdown";
 import { BluebookCalculator } from "@/components/bluebook/BluebookCalculator";
 import { BluebookTimer } from "@/components/bluebook/BluebookTimer";
 import { QuestionImageAsset } from "@/components/exam/QuestionImageAsset";
-import type { Answer, ExamSection, ExamWithQuestions, Question, Submission } from "@/lib/types";
+import type { Answer, ExamAttemptStep, ExamSection, ExamWithQuestions, Question, Submission } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import styles from "./BluebookExamClient.module.css";
 
@@ -78,6 +78,13 @@ interface SessionState {
   zoom: number;
   colorTheme: ColorTheme;
   focusedPane: FocusedPane;
+}
+
+interface BluebookTestFlow {
+  sectionNumber: number;
+  sectionCount: number;
+  nextStep: ExamAttemptStep;
+  nextSectionTitle: string | null;
 }
 
 type SessionAction =
@@ -181,12 +188,14 @@ export function BluebookExamClient({
   exam,
   submission,
   initialAnswers,
-  studentName
+  studentName,
+  testFlow
 }: {
   exam: ExamWithQuestions;
   submission: Submission;
   initialAnswers: Answer[];
   studentName: string;
+  testFlow: BluebookTestFlow;
 }) {
   const router = useRouter();
   const questions = useMemo(
@@ -197,7 +206,6 @@ export function BluebookExamClient({
     () => exam.sections?.[0] || fallbackSection(exam, questions),
     [exam, questions]
   );
-  const sectionNumber = Math.max(1, (submission.current_section_index || 0) + 1);
   const initialIndex = Math.min(
     Math.max(0, submission.current_question_index || 0),
     Math.max(0, questions.length - 1)
@@ -419,9 +427,16 @@ export function BluebookExamClient({
         autoSubmittingRef.current = false;
         setSyncError(result.error);
         dispatch({ type: "CLOSE" });
+        return;
       }
+      if (result.completed) {
+        router.replace(`/results/${result.submissionId}`);
+        return;
+      }
+      dispatch({ type: "CLOSE" });
+      router.refresh();
     });
-  }, [responseSnapshot, sectionElapsedSeconds, submission.id]);
+  }, [responseSnapshot, router, sectionElapsedSeconds, submission.id]);
 
   const applyHighlight = useCallback(() => {
     const selection = window.getSelection();
@@ -472,7 +487,18 @@ export function BluebookExamClient({
     : session.colorTheme === "dark"
       ? styles.darkTheme
       : "";
-  const sectionLabel = `Section ${sectionNumber}: ${section.title}`;
+  const sectionLabel = `Section ${testFlow.sectionNumber} of ${testFlow.sectionCount}: ${section.title}`;
+  const isFinalSection = testFlow.nextStep === "completed";
+  const continueLabel = isFinalSection
+    ? "Submit Test"
+    : testFlow.nextStep === "break"
+      ? "Start Break"
+      : "Continue Test";
+  const submitDialogTitle = isFinalSection
+    ? "Submit This Test?"
+    : testFlow.nextStep === "break"
+      ? "Finish Multiple Choice?"
+      : "Continue to the Next Section?";
 
   return (
     <main
@@ -694,7 +720,7 @@ export function BluebookExamClient({
                 className={cn(styles.navButton, styles.nextButton)}
                 onClick={() => dispatch({ type: "OPEN", overlay: "submit" })}
               >
-                Submit Section <ChevronRight aria-hidden="true" />
+                {continueLabel} <ChevronRight aria-hidden="true" />
               </button>
             </>
           )}
@@ -834,14 +860,19 @@ export function BluebookExamClient({
       ) : null}
 
       {session.overlay === "submit" ? (
-        <BluebookDialog title="Submit This Section?" onClose={() => dispatch({ type: "CLOSE" })}>
+        <BluebookDialog title={submitDialogTitle} onClose={() => dispatch({ type: "CLOSE" })}>
           <p className={styles.dialogCopy}>
-            After you submit, you cannot return to this section. {unansweredCount ? `${unansweredCount} question${unansweredCount === 1 ? " is" : "s are"} unanswered.` : "All questions have an answer."}
+            {isFinalSection
+              ? "This submits your entire test."
+              : testFlow.nextStep === "break"
+                ? "Your multiple-choice sections are complete. A scheduled break begins next, followed by free response."
+                : `Your test continues directly to ${testFlow.nextSectionTitle || "the next section"}.`}{" "}
+            You cannot return to this section after continuing. {unansweredCount ? `${unansweredCount} question${unansweredCount === 1 ? " is" : "s are"} unanswered.` : "All questions have an answer."}
           </p>
           <div className={styles.dialogActions}>
             <button type="button" onClick={() => dispatch({ type: "CLOSE" })} disabled={isPending}>Keep Working</button>
             <button type="button" className={styles.primaryDialogButton} onClick={() => finishSection(false)} disabled={isPending}>
-              {isPending ? "Submitting..." : "Submit Section"}
+              {isPending ? "Continuing..." : continueLabel}
             </button>
           </div>
         </BluebookDialog>
@@ -849,7 +880,7 @@ export function BluebookExamClient({
 
       {isPending && autoSubmittingRef.current ? (
         <div className={styles.submittingOverlay} role="status">
-          <div>Time is up. Submitting your section...</div>
+          <div>{isFinalSection ? "Time is up. Submitting your test..." : "Time is up. Continuing your test..."}</div>
         </div>
       ) : null}
     </main>

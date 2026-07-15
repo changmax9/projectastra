@@ -91,7 +91,7 @@ Supporting references: `branch-web-product.md`, `content-model.md`, `design-cont
 2. Home console: utility header, `Your Tests`, `Practice and Prepare`, recent results and review links.
 3. Practice detail: test identity, timing, section sequence, resume state.
 4. Exam Setup: device/session checks and consequences before creating or resuming an attempt.
-5. Test runtime: directions, timed module, review, section submission, break, completion.
+5. Test runtime: one continuous attempt containing all timed sections, with a single scheduled break between the final MCQ section and the first FRQ section, followed by whole-test submission.
 
 ## Components And States
 
@@ -108,6 +108,7 @@ Supporting references: `branch-web-product.md`, `content-model.md`, `design-cont
 - 2026-07-15: Replaced the inherited glass-dashboard direction with a Bluebook-referenced student application contract. Startup console, readiness, and launch are now first-class parts of the exam state machine.
 - 2026-07-15: Critique removed the remaining KPI/dashboard hierarchy in favor of `Your Tests` and `Practice and Prepare`; active attempts now return through test detail and setup before resuming.
 - 2026-07-15: Mobile repair made Exam Setup a fixed-header/fixed-footer dialog with a scrollable checklist so the disabled reason, cancel action, and primary action remain visible at 390px.
+- 2026-07-15: Corrected the runtime contract so section boundaries stay inside one continuous test attempt. Nonfinal sections continue in place, the only scheduled break sits between MCQ and FRQ, and only the last section submits the test.
 
 ## Verification Record
 

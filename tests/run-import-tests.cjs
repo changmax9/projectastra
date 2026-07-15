@@ -30,12 +30,63 @@ Module._resolveFilename = function resolveAlias(request, parent, isMain, options
 
 const { parseAdminQuestionImportJson } = require(path.join(buildRoot, "lib", "ap-question-format.js"));
 const {
+  cumulativeSectionTimeSeconds,
+  resolveExamSectionTransition
+} = require(path.join(buildRoot, "lib", "exam-flow.js"));
+const {
   normalizeMarkdownStructure,
   normalizeMathDelimiters,
   normalizeMathMarkdown
 } = require(path.join(buildRoot, "lib", "math-markdown.js"));
 const { normalizeQuestionImportItem } = require(path.join(buildRoot, "lib", "question-import.js"));
 const { analyzePdfUpload } = require(path.join(buildRoot, "lib", "pdf.js"));
+
+const fullTestFamilies = ["mcq", "mcq", "frq", "frq"];
+assert.deepEqual(
+  resolveExamSectionTransition({
+    currentSectionIndex: 0,
+    sectionFamilies: fullTestFamilies,
+    breakAlreadyHandled: false
+  }),
+  { nextSectionIndex: 1, nextStep: "section", shouldStartBreak: false, isTestComplete: false },
+  "the first MCQ section continues directly inside the same test"
+);
+assert.deepEqual(
+  resolveExamSectionTransition({
+    currentSectionIndex: 1,
+    sectionFamilies: fullTestFamilies,
+    breakAlreadyHandled: false
+  }),
+  { nextSectionIndex: 2, nextStep: "break", shouldStartBreak: true, isTestComplete: false },
+  "the only scheduled break starts between the final MCQ and first FRQ section"
+);
+assert.deepEqual(
+  resolveExamSectionTransition({
+    currentSectionIndex: 2,
+    sectionFamilies: fullTestFamilies,
+    breakAlreadyHandled: true
+  }),
+  { nextSectionIndex: 3, nextStep: "section", shouldStartBreak: false, isTestComplete: false },
+  "FRQ sections continue directly without another break"
+);
+assert.deepEqual(
+  resolveExamSectionTransition({
+    currentSectionIndex: 3,
+    sectionFamilies: fullTestFamilies,
+    breakAlreadyHandled: true
+  }),
+  { nextSectionIndex: 3, nextStep: "completed", shouldStartBreak: false, isTestComplete: true },
+  "only the final section completes the whole test"
+);
+assert.equal(
+  cumulativeSectionTimeSeconds([
+    { timeSpentSeconds: 120 },
+    { timeSpentSeconds: 90 },
+    { timeSpentSeconds: 30 }
+  ]),
+  240,
+  "whole-test elapsed time accumulates every completed and active section"
+);
 
 function source(relPath) {
   return fs.readFileSync(path.join(root, relPath), "utf8");
@@ -447,6 +498,7 @@ const bluebookExamSetup = source("components/bluebook/BluebookExamSetup.tsx");
 assert.match(bluebookExamSetup, /Before You Start/, "exam launch includes setup checks");
 assert.match(bluebookExamSetup, /checks\.every\(Boolean\)/, "all setup checks are required before launch");
 assert.match(bluebookExamSetup, /launchBluebookPracticeAction/, "setup launches through the Bluebook practice action");
+assert.match(bluebookExamSetup, /one continuous test/, "setup explains that all sections belong to one continuous attempt");
 
 const takeExamClient = source("components/exam/TakeExamClient.tsx");
 assert.doesNotMatch(takeExamClient, /window\.confirm|window\.alert/, "exam flow does not use native browser dialogs");
@@ -457,6 +509,15 @@ assert.match(takeExamClient, /maxSelections=\{currentMaxSelections\}/, "Select T
 assert.match(takeExamClient, /timeSpentSeconds: elapsedSeconds\(\)/, "Submit uses the current elapsed time");
 assert.match(takeExamClient, /onChange=\{handleChoiceChange\}/, "choice clicks update local state through a stable handler");
 assert.doesNotMatch(takeExamClient, /updateResponse\(currentQuestion\.id, \{ selectedChoice: choiceId \}, true\)/, "choice clicks do not immediately persist and refresh the route");
+
+const bluebookExamClientSource = source("components/bluebook/BluebookExamClient.tsx");
+assert.match(bluebookExamClientSource, /"Continue Test"/, "nonfinal Bluebook sections continue inside the same test");
+assert.match(bluebookExamClientSource, /"Start Break"/, "the MCQ boundary enters the scheduled break");
+assert.match(bluebookExamClientSource, /"Submit Test"/, "only the final Bluebook section submits the test");
+assert.match(bluebookExamClientSource, /router\.refresh\(\)/, "section transitions refresh the active test in place");
+assert.match(bluebookExamClientSource, /router\.replace\(`\/results\/\$\{result\.submissionId\}`\)/, "whole-test completion alone opens results");
+const bluebookTakePageSource = source("app/exam/[id]/take/page.tsx");
+assert.match(bluebookTakePageSource, /key=\{`\$\{submission\.id\}:\$\{activeSection\?\.id/, "each new section resets local question, review, and timer state inside the same attempt");
 
 const choiceListSource = source("components/exam/ChoiceList.tsx");
 assert.match(choiceListSource, /type="button"/, "choice buttons cannot submit parent forms");
@@ -483,6 +544,17 @@ assert.doesNotMatch(submitScoringBlock, /eliminated_choice_ids|eliminatedChoiceI
 const actionsSource = source("app/actions.ts");
 assert.doesNotMatch(actionsSource, /revalidatePath\(`\/exam\/\$\{submission\.exam_id\}\/take`\)/, "background answer saves do not revalidate the current exam route");
 assert.doesNotMatch(actionsSource, /revalidatePath\(`\/exam\/\$\{input\.examId\}\/take`\)/, "Save & Exit does not revalidate the current exam route before leaving");
+const completeBluebookSectionBlock = actionsSource.slice(
+  actionsSource.indexOf("export async function completeBluebookSectionAction"),
+  actionsSource.indexOf("export async function submitExamAction")
+);
+assert.match(completeBluebookSectionBlock, /await submitCurrentSection\(/, "every Bluebook section advances through the full-test state machine");
+assert.doesNotMatch(completeBluebookSectionBlock, /sections_progress\?\.length/, "legacy attempts cannot accidentally submit the whole test after one section");
+assert.doesNotMatch(completeBluebookSectionBlock, /redirect\(/, "nonfinal section completion does not navigate out of the test shell");
+
+const dataSourceForExamFlow = source("lib/data.ts");
+assert.match(dataSourceForExamFlow, /resolveExamSectionTransition/, "data transitions share the tested full-test flow resolver");
+assert.match(dataSourceForExamFlow, /cumulativeSectionTimeSeconds\(progress\)/, "attempt time accumulates across all sections");
 assert.match(actionsSource, /adminStartPdfImportAction/, "admin can start a PDF import analysis job");
 assert.match(actionsSource, /adminSavePdfDraftQuestionAction/, "PDF import drafts use an explicit save action");
 assert.match(actionsSource, /status: "draft"/, "PDF import drafts save as draft questions");

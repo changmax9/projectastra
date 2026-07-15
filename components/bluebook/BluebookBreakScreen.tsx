@@ -53,7 +53,7 @@ export function BluebookBreakScreen({
     <main className={styles.app}>
       <div className={styles.brandBar}>Astra Exams</div>
       <header className={styles.header}>
-        <span>Scheduled Break</span>
+        <span>Multiple Choice Complete</span>
         <button type="button" onClick={() => router.push("/dashboard")} disabled={isPending}>
           <LogOut aria-hidden="true" /> Exit Practice
         </button>
@@ -63,10 +63,10 @@ export function BluebookBreakScreen({
         <Coffee aria-hidden="true" />
         <p>Break Time Remaining</p>
         <h1>{formatTime(remaining)}</h1>
-        <h2>Take a Break</h2>
+        <h2>Scheduled Break</h2>
         <div className={styles.instructions}>
-          <p>You may leave your device, but do not close it. Your next section will begin when the break ends.</p>
-          <p>In this practice test, you can resume before the timer reaches zero.</p>
+          <p>You have completed all multiple-choice sections. Free response begins after this break.</p>
+          <p>You may leave your device, but keep the test open. In this practice test, you can resume before the timer reaches zero.</p>
         </div>
         <button type="button" className={styles.resumeButton} onClick={() => resume(true)} disabled={isPending}>
           {isPending ? "Resuming..." : "Resume Testing"}

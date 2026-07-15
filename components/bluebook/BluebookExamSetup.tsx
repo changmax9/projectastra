@@ -75,7 +75,7 @@ export function BluebookExamSetup({
                 </label>
                 <label className={styles.check}>
                   <input type="checkbox" checked={checks[2]} onChange={(event) => setCheck(2, event.target.checked)} />
-                  <span><strong>I understand section submission is final.</strong><span>After submitting a section, I cannot return to its questions.</span></span>
+                  <span><strong>I understand this is one continuous test.</strong><span>It continues through all sections, and I cannot return to a section after moving on.</span></span>
                 </label>
               </section>
             </div>

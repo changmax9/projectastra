@@ -1,5 +1,6 @@
 import { createSupabaseAdminClient, hasSupabaseEnv } from "@/lib/supabase";
 import { inferSubjectFromCourse, normalizeExamType, normalizeSection, parseQuestionNumberFromTags, parseYearFromText } from "@/lib/ap-taxonomy";
+import { cumulativeSectionTimeSeconds, resolveExamSectionTransition, type ExamSectionFamily } from "@/lib/exam-flow";
 import { normalizeMarkdownStructure } from "@/lib/math-markdown";
 import {
   mockAnswers,
@@ -201,10 +202,10 @@ function sectionRows(exam: ExamWithQuestions, section: string) {
   return exam.exam_questions.filter((row) => row.question.section === section);
 }
 
-function isFrqSection(exam: ExamWithQuestions, section: ExamSection) {
+export function getExamSectionFamily(exam: ExamWithQuestions, section: ExamSection): ExamSectionFamily {
   const rows = sectionRows(exam, section.section);
-  if (rows.length > 0) return rows.every((row) => row.question.type === "frq");
-  return /FRQ|Free Response/i.test(`${section.section} ${section.title}`);
+  if (rows.length > 0) return rows.every((row) => row.question.type === "frq") ? "frq" : "mcq";
+  return /FRQ|Free Response/i.test(`${section.section} ${section.title}`) ? "frq" : "mcq";
 }
 
 function buildSectionsProgress(exam: ExamWithQuestions): ExamSectionProgress[] {
@@ -226,14 +227,18 @@ function ensureSectionsProgress(exam: ExamWithQuestions, submission: Submission)
   const playable = getPlayableExamSections(exam);
   if (!playable.length) return [];
   const existing = submission.sections_progress || [];
+  const activeIndex = Math.min(
+    Math.max(0, Number(submission.current_section_index || 0)),
+    Math.max(0, playable.length - 1)
+  );
   return playable.map((section, index) => {
     const current = existing.find((progress) => progress.section === section.section);
     return {
       section: section.section,
       sectionTitle: section.title,
-      status: current?.status || (index === 0 ? "in_progress" : "not_started"),
-      startedAt: current?.startedAt ?? (index === 0 ? submission.started_at : null),
-      submittedAt: current?.submittedAt ?? null,
+      status: current?.status || (index < activeIndex ? "completed" : index === activeIndex ? "in_progress" : "not_started"),
+      startedAt: current?.startedAt ?? (index <= activeIndex ? submission.started_at : null),
+      submittedAt: current?.submittedAt ?? (index < activeIndex ? submission.updated_at : null),
       timeLimitMinutes: section.timeLimitMinutes,
       timeSpentSeconds: current?.timeSpentSeconds ?? 0,
       currentQuestionIndex: current?.currentQuestionIndex ?? 0,
@@ -1575,7 +1580,12 @@ export async function updateSubmissionProgress(input: {
   const timeSpentSeconds = Math.max(0, Math.floor(input.timeSpentSeconds || 0));
 
   const submission = await getSubmission(input.submissionId);
-  const progress = submission?.sections_progress ? [...submission.sections_progress] : [];
+  const exam = submission ? await getExamWithQuestionSummaries(submission.exam_id, true) : null;
+  const progress = submission && exam
+    ? ensureSectionsProgress(exam, submission)
+    : submission?.sections_progress
+      ? [...submission.sections_progress]
+      : [];
   if (submission?.current_step === "section" && progress.length > 0) {
     const index = Math.min(Math.max(0, Number(submission.current_section_index || 0)), progress.length - 1);
     progress[index] = {
@@ -1586,13 +1596,16 @@ export async function updateSubmissionProgress(input: {
       timeSpentSeconds
     };
   }
+  const totalTimeSpentSeconds = progress.length
+    ? cumulativeSectionTimeSeconds(progress)
+    : timeSpentSeconds;
 
   if (hasSupabaseEnv()) {
     const { data, error } = await adminClient()
       .from("exam_attempts")
       .update({
         current_question_index: currentQuestionIndex,
-        time_spent_seconds: timeSpentSeconds,
+        time_spent_seconds: totalTimeSpentSeconds,
         updated_at: timestamp
       })
       .eq("id", input.submissionId)
@@ -1607,7 +1620,7 @@ export async function updateSubmissionProgress(input: {
   const storedSubmission = mockSubmissions.find((item) => item.id === input.submissionId);
   if (!storedSubmission) return null;
   storedSubmission.current_question_index = currentQuestionIndex;
-  storedSubmission.time_spent_seconds = timeSpentSeconds;
+  storedSubmission.time_spent_seconds = totalTimeSpentSeconds;
   storedSubmission.sections_progress = progress;
   storedSubmission.updated_at = timestamp;
   await saveMockStore();
@@ -1917,18 +1930,20 @@ export async function submitCurrentSection(submissionId: string, timeSpentOverri
     scoreTotal: sectionTotal
   };
 
-  const nextIndex = currentIndex + 1;
-  const nextSection = sections[nextIndex] || null;
-  const shouldBreak =
-    nextSection &&
-    !submission.break_completed_at &&
-    !submission.break_skipped &&
-    !isFrqSection(examSummary, section) &&
-    isFrqSection(examSummary, nextSection);
+  const transition = resolveExamSectionTransition({
+    currentSectionIndex: currentIndex,
+    sectionFamilies: sections.map((item) => getExamSectionFamily(examSummary, item)),
+    breakAlreadyHandled: Boolean(submission.break_completed_at || submission.break_skipped)
+  });
+  const nextIndex = transition.nextSectionIndex;
+  const nextSection = transition.isTestComplete ? null : sections[nextIndex] || null;
+  const shouldBreak = transition.shouldStartBreak;
   const finalScore = mcqScoreFromProgress(progress);
-  let nextStep: Submission["current_step"] = nextSection ? "section" : "completed";
-  let status: SubmissionStatus = nextSection ? "in_progress" : "completed";
-  let submittedAtForAttempt: string | null = nextSection ? null : submittedAt;
+  const totalTimeSpentSeconds = cumulativeSectionTimeSeconds(progress);
+  const hasFrq = examSummary.exam_questions.some((row) => row.question.type === "frq");
+  let nextStep: Submission["current_step"] = transition.nextStep;
+  let status: SubmissionStatus = transition.isTestComplete ? (hasFrq ? "submitted" : "graded") : "in_progress";
+  let submittedAtForAttempt: string | null = transition.isTestComplete ? submittedAt : null;
   let breakStartedAt = submission.break_started_at ?? null;
   let breakCompletedAt = submission.break_completed_at ?? null;
   let breakSkipped = Boolean(submission.break_skipped);
@@ -1962,7 +1977,7 @@ export async function submitCurrentSection(submissionId: string, timeSpentOverri
         current_step: nextStep,
         current_section_index: nextIndex,
         current_question_index: 0,
-        time_spent_seconds: timeSpent,
+        time_spent_seconds: totalTimeSpentSeconds,
         break_started_at: breakStartedAt,
         break_completed_at: breakCompletedAt,
         break_skipped: breakSkipped,
@@ -1992,7 +2007,7 @@ export async function submitCurrentSection(submissionId: string, timeSpentOverri
       current_step: nextStep,
       current_section_index: nextIndex,
       current_question_index: 0,
-      time_spent_seconds: timeSpent,
+      time_spent_seconds: totalTimeSpentSeconds,
       break_started_at: breakStartedAt,
       break_completed_at: breakCompletedAt,
       break_skipped: breakSkipped,

@@ -81,7 +81,7 @@ export default async function ExamStartPage({
         ) : null}
 
         <div className={styles.launchArea}>
-          <p>Once a section is submitted, you cannot return to it.</p>
+          <p>The test continues through all sections. Once you move on from a section, you cannot return to it.</p>
           <BluebookExamSetup
             examId={exam.id}
             title={exam.title}

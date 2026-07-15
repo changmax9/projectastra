@@ -386,7 +386,6 @@ export async function completeBluebookSectionAction(input: {
 }) {
   return withActionTiming("completeBluebookSectionAction", async () => {
     const profile = await requireProfile();
-    let destination = "";
     try {
       const submission = await getSubmission(input.submissionId);
       if (!submission) return { error: "Testing session not found." };
@@ -409,19 +408,19 @@ export async function completeBluebookSectionAction(input: {
         }))
       );
 
-      const updated = submission.sections_progress?.length
-        ? await submitCurrentSection(submission.id, Math.max(0, input.timeSpentSeconds))
-        : await submitSubmission(submission.id, Math.max(0, input.timeSpentSeconds));
-      destination =
-        updated.current_step === "completed" || updated.status === "completed" || updated.status === "submitted"
-          ? `/results/${updated.id}`
-          : `/exam/${updated.exam_id}/take?submission=${updated.id}`;
+      const updated = await submitCurrentSection(submission.id, Math.max(0, input.timeSpentSeconds));
+      revalidatePath("/dashboard");
+      revalidatePath(`/exam/${updated.exam_id}/take`);
+      return {
+        ok: true,
+        nextStep: updated.current_step,
+        currentSectionIndex: updated.current_section_index || 0,
+        completed: updated.current_step === "completed" || updated.status !== "in_progress",
+        submissionId: updated.id
+      };
     } catch (error) {
       return { error: error instanceof Error ? error.message : "This section could not be submitted." };
     }
-
-    revalidatePath("/dashboard");
-    redirect(destination);
   });
 }
 

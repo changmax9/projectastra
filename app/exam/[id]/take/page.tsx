@@ -2,12 +2,14 @@ import { notFound, redirect } from "next/navigation";
 import { requireProfile } from "@/lib/auth";
 import {
   completeSubmissionBreak,
+  getExamSectionFamily,
   getExamWithQuestionSummaries,
   getExamWithSectionQuestions,
   getPlayableExamSections,
   getSubmission,
   listAnswersForSubmission
 } from "@/lib/data";
+import { resolveExamSectionTransition } from "@/lib/exam-flow";
 import { BluebookExamClient } from "@/components/bluebook/BluebookExamClient";
 import { BluebookBreakScreen } from "@/components/bluebook/BluebookBreakScreen";
 
@@ -45,9 +47,17 @@ export default async function TakeExamPage({
   const examSummary = await getExamWithQuestionSummaries(params.id);
   if (!examSummary) notFound();
   const playableSections = getPlayableExamSections(examSummary);
+  const activeSectionIndex = playableSections.length
+    ? Math.min(Math.max(0, submission.current_section_index || 0), playableSections.length - 1)
+    : 0;
   const activeSection = playableSections.length
-    ? playableSections[Math.min(Math.max(0, submission.current_section_index || 0), playableSections.length - 1)]
+    ? playableSections[activeSectionIndex]
     : null;
+  const sectionTransition = resolveExamSectionTransition({
+    currentSectionIndex: activeSectionIndex,
+    sectionFamilies: playableSections.map((section) => getExamSectionFamily(examSummary, section)),
+    breakAlreadyHandled: Boolean(submission.break_completed_at || submission.break_skipped)
+  });
   const [exam, answers] = await Promise.all([
     getExamWithSectionQuestions(params.id, activeSection?.section || null),
     listAnswersForSubmission(submission.id)
@@ -71,10 +81,19 @@ export default async function TakeExamPage({
 
   return (
     <BluebookExamClient
+      key={`${submission.id}:${activeSection?.id || activeSectionIndex}`}
       exam={studentSafeExam}
       submission={submission}
       initialAnswers={answers}
       studentName={profile.full_name || profile.email.split("@")[0]}
+      testFlow={{
+        sectionNumber: activeSectionIndex + 1,
+        sectionCount: Math.max(1, playableSections.length),
+        nextStep: sectionTransition.nextStep,
+        nextSectionTitle: sectionTransition.isTestComplete
+          ? null
+          : playableSections[sectionTransition.nextSectionIndex]?.title || null
+      }}
     />
   );
 }
