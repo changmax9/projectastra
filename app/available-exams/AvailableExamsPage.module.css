@@ -1,0 +1,39 @@
+.page {
+  min-height: calc(100dvh - 64px);
+  background: #f1f2f4;
+  color: #202124;
+  font-family: Arial, Helvetica, sans-serif;
+  letter-spacing: 0;
+}
+
+.main {
+  width: min(100%, 1080px);
+  margin: 0 auto;
+  padding: 34px 24px 64px;
+}
+
+.back {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 14px;
+  color: #3155d8;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.back svg {
+  width: 18px;
+  height: 18px;
+}
+
+@media (max-width: 680px) {
+  .page {
+    min-height: calc(100dvh - 58px);
+  }
+
+  .main {
+    padding: 22px 14px 48px;
+  }
+}

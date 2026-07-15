@@ -8,8 +8,8 @@ import {
   getSubmission,
   listAnswersForSubmission
 } from "@/lib/data";
-import { TakeExamClient } from "@/components/exam/TakeExamClient";
-import { BreakScreenClient } from "@/components/exam/BreakScreenClient";
+import { BluebookExamClient } from "@/components/bluebook/BluebookExamClient";
+import { BluebookBreakScreen } from "@/components/bluebook/BluebookBreakScreen";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +34,12 @@ export default async function TakeExamPage({
       const updated = await completeSubmissionBreak(submission.id, false);
       redirect(`/exam/${params.id}/take?submission=${updated.id}`);
     }
-    return <BreakScreenClient submission={submission} />;
+    return (
+      <BluebookBreakScreen
+        submission={submission}
+        studentName={profile.full_name || profile.email.split("@")[0]}
+      />
+    );
   }
 
   const examSummary = await getExamWithQuestionSummaries(params.id);
@@ -64,5 +69,12 @@ export default async function TakeExamPage({
     }))
   };
 
-  return <TakeExamClient exam={studentSafeExam} submission={submission} initialAnswers={answers} />;
+  return (
+    <BluebookExamClient
+      exam={studentSafeExam}
+      submission={submission}
+      initialAnswers={answers}
+      studentName={profile.full_name || profile.email.split("@")[0]}
+    />
+  );
 }

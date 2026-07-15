@@ -441,21 +441,32 @@ button {
   margin: 0.75rem 0;
 }
 
+.math-markdown {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.math-markdown table,
 .exam-prose table {
   border-collapse: collapse;
   display: block;
   margin: 1rem 0;
+  max-width: 100%;
   overflow-x: auto;
   width: 100%;
 }
 
+.math-markdown th,
+.math-markdown td,
 .exam-prose th,
 .exam-prose td {
   border: 1px solid #cbd5e1;
   padding: 0.45rem 0.6rem;
   text-align: left;
+  white-space: nowrap;
 }
 
+.math-markdown th,
 .exam-prose th {
   background: #f8fafc;
   font-weight: 700;

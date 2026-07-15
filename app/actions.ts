@@ -129,7 +129,7 @@ export async function registerAction(_: ActionState, formData: FormData): Promis
 
 export async function signOutAction() {
   clearAuthCookie();
-  redirect("/");
+  redirect("/login");
 }
 
 export async function updateAccountSettingsAction(_: ActionState, formData: FormData): Promise<ActionState> {
@@ -242,6 +242,21 @@ export async function startExamAction(formData: FormData) {
   redirect(`/exam/${examId}/take?submission=${submission.id}`);
 }
 
+export async function launchBluebookPracticeAction(formData: FormData) {
+  const profile = await requireProfile();
+  const examId = String(formData.get("exam_id") || "");
+  if (!examId) throw new Error("Missing exam id.");
+
+  const exam = await getExamWithQuestionSummaries(examId);
+  if (!exam || exam.status !== "published") {
+    throw new Error("This practice test is not available.");
+  }
+
+  const submission = await createOrContinueSubmission(examId, profile.id);
+  revalidatePath("/dashboard");
+  redirect(`/exam/${examId}/take?submission=${submission.id}`);
+}
+
 export async function saveAnswerAction(input: {
   submissionId: string;
   questionId: string;
@@ -268,6 +283,145 @@ export async function saveAnswerAction(input: {
     } catch (error) {
       return { error: error instanceof Error ? error.message : "Save failed. Please try again." };
     }
+  });
+}
+
+export async function syncBluebookResponseAction(input: {
+  submissionId: string;
+  questionId: string;
+  selectedChoice?: string | null;
+  answerText?: string | null;
+  flagged: boolean;
+  timeSpentSeconds?: number | null;
+  eliminatedChoiceIds: string[];
+}) {
+  return withActionTiming("syncBluebookResponseAction", async () => {
+    const profile = await requireProfile();
+    try {
+      const submission = await getSubmission(input.submissionId);
+      if (!submission) return { error: "Testing session not found." };
+      if (profile.role !== "admin" && submission.student_id !== profile.id) {
+        return { error: "You can only update your own testing session." };
+      }
+      if (submission.status !== "in_progress" || submission.current_step === "completed") {
+        return { error: "This testing session is no longer active." };
+      }
+
+      await saveAnswer({
+        submissionId: input.submissionId,
+        questionId: input.questionId,
+        selectedChoice: input.selectedChoice ?? null,
+        answerText: input.answerText ?? null,
+        flagged: input.flagged,
+        timeSpentSeconds: input.timeSpentSeconds ?? null,
+        eliminatedChoiceIds: input.eliminatedChoiceIds
+      });
+      return { ok: true, syncedAt: nowIso() };
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : "Your answer could not be synced." };
+    }
+  });
+}
+
+export async function saveBluebookSectionProgressAction(input: {
+  submissionId: string;
+  currentQuestionIndex: number;
+  timeSpentSeconds: number;
+  responses: Array<{
+    questionId: string;
+    selectedChoice?: string | null;
+    answerText?: string | null;
+    flagged: boolean;
+    timeSpentSeconds?: number | null;
+    eliminatedChoiceIds: string[];
+  }>;
+}) {
+  return withActionTiming("saveBluebookSectionProgressAction", async () => {
+    const profile = await requireProfile();
+    try {
+      const submission = await getSubmission(input.submissionId);
+      if (!submission) return { error: "Testing session not found." };
+      if (profile.role !== "admin" && submission.student_id !== profile.id) {
+        return { error: "You can only update your own testing session." };
+      }
+      if (submission.status !== "in_progress" || submission.current_step === "completed") {
+        return { error: "This testing session is no longer active." };
+      }
+
+      await saveAnswers(
+        input.responses.map((response) => ({
+          submissionId: submission.id,
+          questionId: response.questionId,
+          selectedChoice: response.selectedChoice ?? null,
+          answerText: response.answerText ?? null,
+          flagged: response.flagged,
+          timeSpentSeconds: response.timeSpentSeconds ?? null,
+          eliminatedChoiceIds: response.eliminatedChoiceIds
+        }))
+      );
+      await updateSubmissionProgress({
+        submissionId: submission.id,
+        currentQuestionIndex: Math.max(0, input.currentQuestionIndex),
+        timeSpentSeconds: Math.max(0, input.timeSpentSeconds)
+      });
+      revalidatePath("/dashboard");
+      return { ok: true, syncedAt: nowIso() };
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : "Testing progress could not be saved." };
+    }
+  });
+}
+
+export async function completeBluebookSectionAction(input: {
+  submissionId: string;
+  timeSpentSeconds: number;
+  responses: Array<{
+    questionId: string;
+    selectedChoice?: string | null;
+    answerText?: string | null;
+    flagged: boolean;
+    timeSpentSeconds?: number | null;
+    eliminatedChoiceIds: string[];
+  }>;
+}) {
+  return withActionTiming("completeBluebookSectionAction", async () => {
+    const profile = await requireProfile();
+    let destination = "";
+    try {
+      const submission = await getSubmission(input.submissionId);
+      if (!submission) return { error: "Testing session not found." };
+      if (profile.role !== "admin" && submission.student_id !== profile.id) {
+        return { error: "You can only submit your own testing session." };
+      }
+      if (submission.status !== "in_progress" || submission.current_step === "completed") {
+        return { error: "This testing session is no longer active." };
+      }
+
+      await saveAnswers(
+        input.responses.map((response) => ({
+          submissionId: submission.id,
+          questionId: response.questionId,
+          selectedChoice: response.selectedChoice ?? null,
+          answerText: response.answerText ?? null,
+          flagged: response.flagged,
+          timeSpentSeconds: response.timeSpentSeconds ?? null,
+          eliminatedChoiceIds: response.eliminatedChoiceIds
+        }))
+      );
+
+      const updated = submission.sections_progress?.length
+        ? await submitCurrentSection(submission.id, Math.max(0, input.timeSpentSeconds))
+        : await submitSubmission(submission.id, Math.max(0, input.timeSpentSeconds));
+      destination =
+        updated.current_step === "completed" || updated.status === "completed" || updated.status === "submitted"
+          ? `/results/${updated.id}`
+          : `/exam/${updated.exam_id}/take?submission=${updated.id}`;
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : "This section could not be submitted." };
+    }
+
+    revalidatePath("/dashboard");
+    redirect(destination);
   });
 }
 
@@ -408,6 +562,22 @@ export async function completeBreakAction(submissionId: string, skipped = true) 
     throw new Error("You can only resume your own exam.");
   }
   const updated = await completeSubmissionBreak(submissionId, skipped);
+  revalidatePath("/dashboard");
+  redirect(`/exam/${updated.exam_id}/take?submission=${updated.id}`);
+}
+
+export async function resumeBluebookAfterBreakAction(submissionId: string, resumedEarly: boolean) {
+  const profile = await requireProfile();
+  const submission = await getSubmission(submissionId);
+  if (!submission) throw new Error("Testing session not found.");
+  if (profile.role !== "admin" && submission.student_id !== profile.id) {
+    throw new Error("You can only resume your own testing session.");
+  }
+  if (submission.current_step !== "break") {
+    throw new Error("This testing session is not on a break.");
+  }
+
+  const updated = await completeSubmissionBreak(submissionId, resumedEarly);
   revalidatePath("/dashboard");
   redirect(`/exam/${updated.exam_id}/take?submission=${updated.id}`);
 }

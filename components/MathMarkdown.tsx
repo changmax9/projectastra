@@ -4,7 +4,7 @@ import type { PluggableList } from "unified";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
-import { normalizeMathDelimiters } from "@/lib/math-markdown";
+import { normalizeMathMarkdown } from "@/lib/math-markdown";
 import { cn } from "@/lib/utils";
 
 export function MathMarkdown({
@@ -25,7 +25,7 @@ export function MathMarkdown({
         rehypePlugins={[...rehypePlugins, rehypeKatex]}
         components={components}
       >
-        {normalizeMathDelimiters(content)}
+        {normalizeMathMarkdown(content)}
       </ReactMarkdown>
     </div>
   );

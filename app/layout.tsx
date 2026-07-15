@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "AP Mock Exam Platform",
-  description: "AP-style mock exams, review guides, and performance tracking."
+  title: "Astra Exams",
+  description: "Timed AP practice tests, review guides, and saved progress."
 };
 
 export default function RootLayout({

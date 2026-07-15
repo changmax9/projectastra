@@ -1,0 +1,176 @@
+.app {
+  display: grid;
+  grid-template-rows: 30px 72px 4px minmax(0, 1fr) 4px 64px;
+  min-height: 100dvh;
+  overflow: hidden;
+  background: #ffffff;
+  color: #202124;
+  font-family: Arial, Helvetica, sans-serif;
+  letter-spacing: 0;
+}
+.brandBar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid #d3d5d9;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 38px;
+  font-size: 19px;
+  font-weight: 700;
+}
+
+.header button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 40px;
+  border: 1.5px solid #3654d9;
+  border-radius: 999px;
+  padding: 0 18px;
+  background: #ffffff;
+  color: #3654d9;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.header button:disabled {
+  opacity: 0.55;
+}
+
+.header svg {
+  width: 17px;
+  height: 17px;
+}
+
+.testStripe {
+  background:
+    repeating-linear-gradient(
+      90deg,
+      #303238 0 20px,
+      transparent 20px 24px,
+      #aeb1b7 24px 42px,
+      transparent 42px 46px,
+      #ffd617 46px 62px,
+      transparent 62px 66px,
+      #18a8df 66px 84px,
+      transparent 84px 90px
+    );
+}
+
+.content {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  padding: 48px 24px;
+  text-align: center;
+}
+
+.content > svg {
+  width: 36px;
+  height: 36px;
+  margin-bottom: 18px;
+}
+
+.content > p {
+  margin: 0;
+  color: #52565e;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.content h1 {
+  margin: 8px 0 24px;
+  font-size: clamp(52px, 9vw, 84px);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.content h2 {
+  margin: 0;
+  font-size: 30px;
+}
+
+.instructions {
+  max-width: 590px;
+  margin: 20px 0 28px;
+  color: #4d5158;
+  font-size: 16px;
+  line-height: 1.55;
+}
+
+.instructions p {
+  margin: 0 0 10px;
+}
+
+.resumeButton {
+  min-height: 48px;
+  border: 1.5px solid #806600;
+  border-radius: 999px;
+  padding: 0 26px;
+  background: #ffd719;
+  color: #202124;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.resumeButton:disabled {
+  opacity: 0.58;
+  cursor: wait;
+}
+
+.app footer {
+  display: flex;
+  align-items: center;
+  padding: 0 38px;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+@media (max-width: 640px) {
+  .app {
+    grid-template-rows: 24px 66px 4px minmax(0, 1fr) 4px 54px;
+  }
+
+  .brandBar {
+    font-size: 11px;
+  }
+
+  .header {
+    padding: 0 16px;
+    font-size: 15px;
+  }
+
+  .header button {
+    min-height: 38px;
+    padding: 0 13px;
+  }
+
+  .header button span {
+    display: none;
+  }
+
+  .content {
+    padding: 34px 20px;
+  }
+
+  .content h2 {
+    font-size: 26px;
+  }
+
+  .app footer {
+    padding: 0 16px;
+    font-size: 12px;
+  }
+}

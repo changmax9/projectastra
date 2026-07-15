@@ -1,5 +1,6 @@
 import { createSupabaseAdminClient, hasSupabaseEnv } from "@/lib/supabase";
 import { inferSubjectFromCourse, normalizeExamType, normalizeSection, parseQuestionNumberFromTags, parseYearFromText } from "@/lib/ap-taxonomy";
+import { normalizeMarkdownStructure } from "@/lib/math-markdown";
 import {
   mockAnswers,
   mockExamQuestions,
@@ -149,7 +150,12 @@ function normalizeQuestionRecord(question: Question): Question {
     selection_type: question.selection_type || (isSelectTwo ? "multiple" : "single"),
     required_selections: question.required_selections ?? (isSelectTwo ? 2 : 1),
     max_selections: question.max_selections ?? (isSelectTwo ? 2 : 1),
-    explanation,
+    question_text: normalizeMarkdownStructure(question.question_text || ""),
+    choices: (question.choices || []).map((choice) => ({
+      ...choice,
+      text: normalizeMarkdownStructure(choice.text)
+    })),
+    explanation: normalizeMarkdownStructure(explanation || ""),
     status: question.status || "draft"
   };
 }
@@ -1112,11 +1118,14 @@ export async function upsertQuestion(input: Partial<Question> & Omit<QuestionImp
     selection_type: input.selection_type || (input.tags?.includes("multi-select") ? "multiple" : "single"),
     required_selections: input.required_selections ?? (input.tags?.includes("multi-select") ? 2 : 1),
     max_selections: input.max_selections ?? (input.tags?.includes("multi-select") ? 2 : 1),
-    question_text: input.question_text,
+    question_text: normalizeMarkdownStructure(input.question_text),
     question_images: input.question_images || [],
-    choices: input.choices || [],
+    choices: (input.choices || []).map((choice) => ({
+      ...choice,
+      text: normalizeMarkdownStructure(choice.text)
+    })),
     correct_answer: input.correct_answer ?? null,
-    explanation: input.explanation,
+    explanation: normalizeMarkdownStructure(input.explanation),
     source_pdf: input.source_pdf ?? null,
     tags: input.tags || [],
     status: input.status || "draft",

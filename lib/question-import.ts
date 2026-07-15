@@ -1,4 +1,5 @@
 import type { QuestionChoice, QuestionImage, QuestionImportItem } from "@/lib/types";
+import { normalizeMarkdownStructure } from "@/lib/math-markdown";
 
 const CHOICE_MARKER_RE = /\s\(([A-D])\)(?=\s)/g;
 const PLACEHOLDER_CHOICE_RE = /^choice\s+[A-D]$/i;
@@ -12,7 +13,9 @@ function cleanExtractedText(value: string) {
     .replace(/\bSTOP\s+END OF SECTION I\s+\d+\s*$/i, "")
     .replace(/\bUse the attached prompt image for diagrams, formulas, and any visual answer choices\.?$/i, "")
     .replace(/([A-Za-z])-\s+([a-z])/g, "$1$2")
-    .replace(/\s+/g, " ")
+    .replace(/[ \t]+/g, " ")
+    .replace(/ *\n */g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
 
@@ -62,9 +65,13 @@ export function normalizeQuestionImportItem(item: QuestionImportItem): QuestionI
 
   return {
     ...item,
-    question_text: split?.stem || cleanExtractedText(item.question_text),
+    question_text: normalizeMarkdownStructure(split?.stem || cleanExtractedText(item.question_text)),
     question_images: item.question_images || [],
-    choices
+    choices: choices.map((choice) => ({
+      ...choice,
+      text: normalizeMarkdownStructure(choice.text)
+    })),
+    explanation: normalizeMarkdownStructure(item.explanation)
   };
 }
 

@@ -1,164 +1,168 @@
 import Link from "next/link";
-import { BookOpen, ClipboardList, GraduationCap, Trophy } from "lucide-react";
-import { AvailableExamsBrowser } from "@/components/exam/AvailableExamsBrowser";
-import { AppHeader } from "@/components/layout/AppHeader";
-import { AcademicPageShell } from "@/components/layout/AcademicPageShell";
-import { DashboardPanel } from "@/components/ui-custom/DashboardPanel";
-import { EmptyState } from "@/components/ui-custom/StateBlock";
-import { MetricCard } from "@/components/ui-custom/MetricCard";
-import { PageHeader } from "@/components/ui-custom/PageHeader";
-import { StatusBadge } from "@/components/ui-custom/StatusBadge";
-import { Button } from "@/components/ui/button";
+import { ArrowRight, BookOpenCheck, ClipboardList, FileCheck2, FileClock, FolderOpen, Shield } from "lucide-react";
+import { BluebookAppHeader } from "@/components/bluebook/BluebookAppHeader";
 import { requireProfile } from "@/lib/auth";
 import { getStudentDashboard } from "@/lib/data";
 import {
   formatFriendlyDuration,
   isResumableSubmission,
   submissionCurrentSectionLabel,
-  submissionPartLabel,
   submissionScoreLabel,
   submissionStatusLabel
 } from "@/lib/utils";
+import styles from "./BluebookDashboard.module.css";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage({
   searchParams
 }: {
-  searchParams: {
-    subject?: string;
-    course?: string;
-    year?: string;
-    section?: string;
-    examType?: string;
-    topic?: string;
-    difficulty?: string;
-    search?: string;
-  };
+  searchParams: { tests?: string };
 }) {
   const profile = await requireProfile();
   const data = await getStudentDashboard(profile.id);
-  const inProgress = data.submissions.filter((submission) => isResumableSubmission(submission.status));
+  const active = data.submissions.filter((submission) => isResumableSubmission(submission.status));
+  const past = data.submissions.filter((submission) => !isResumableSubmission(submission.status));
+  const showingPast = searchParams.tests === "past";
+  const visibleSubmissions = showingPast ? past : active;
+  const displayName = profile.full_name?.trim().split(/\s+/)[0] || profile.email.split("@")[0];
 
   return (
     <>
-      <AppHeader />
-      <AcademicPageShell className="flex flex-col gap-8">
-        <PageHeader
-          eyebrow="Student portal"
-          title={profile.full_name || profile.email}
-          description="Continue timed practice, monitor completed work, and keep your AP preparation organized by subject and exam set."
-          actions={
-            profile.role === "admin" ? (
-              <div className="flex flex-wrap gap-2">
-                <Button asChild>
-                  <Link href="/admin/questions">Question Bank</Link>
-                </Button>
-                <Button asChild variant="outline">
-                  <Link href="/admin/exams">Manage Exams</Link>
-                </Button>
+      <BluebookAppHeader label="Student Home" />
+      <div className={styles.page}>
+        <main className={styles.main}>
+          <header className={styles.welcome} data-ud-check="dashboard-introduction">
+            <h1>Welcome, {displayName}</h1>
+            <p>Your active tests and preparation materials are ready below.</p>
+          </header>
+
+          <section className={styles.section} data-ud-check="your-tests">
+            <div className={styles.sectionHeader}>
+              <div>
+                <h2>Your Tests</h2>
+                <p>Resume a saved test or review work you have completed.</p>
               </div>
-            ) : null
-          }
-        />
+            </div>
+            <nav className={styles.tabs} aria-label="Your test status">
+              <Link className={styles.tab} href="/dashboard" aria-current={!showingPast ? "page" : undefined}>
+                Active ({active.length})
+              </Link>
+              <Link className={styles.tab} href="/dashboard?tests=past" aria-current={showingPast ? "page" : undefined}>
+                Past ({past.length})
+              </Link>
+            </nav>
 
-        <div className="grid gap-4 md:grid-cols-3">
-          <MetricCard label="Available exams" value={data.examDetails.length} helper="Published exam sets" icon={ClipboardList} />
-          <MetricCard label="In progress" value={inProgress.length} helper="Saved attempts ready to resume" icon={GraduationCap} tone="gold" />
-          <MetricCard
-            label="Latest score"
-            value={data.latestSubmission ? `${data.latestSubmission.percentage}%` : "—"}
-            helper={data.latestSubmission ? `${data.latestSubmission.total_score}/${data.latestSubmission.max_score} points` : "Submit an exam to see results"}
-            icon={Trophy}
-            tone="blue"
-          />
-        </div>
-
-        <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
-          <section className="flex flex-col gap-6">
-            <AvailableExamsBrowser exams={data.examDetails} submissions={data.submissions} searchParams={searchParams} />
-
-            <DashboardPanel title="Attempt history" description="Resume active work or review completed reports.">
-              <div className="flex flex-col gap-3">
-                {data.submissions.map((submission) => {
+            {visibleSubmissions.length > 0 ? (
+              <div className={styles.list}>
+                {visibleSubmissions.map((submission) => {
                   const resumable = isResumableSubmission(submission.status);
-                  const href = resumable
-                    ? `/exam/${submission.exam_id}/take?submission=${submission.id}`
-                    : `/results/${submission.id}`;
-                  const partLabel = submissionPartLabel(submission);
-                  const currentSectionLabel = submissionCurrentSectionLabel(submission);
-                  const statusKey = submission.status;
+                  const currentSection = submissionCurrentSectionLabel(submission);
                   return (
-                    <Link
-                      key={submission.id}
-                      href={href}
-                      className="group rounded-[1.5rem] border border-white/70 bg-white/78 p-4 shadow-inner transition hover:border-sky-200/90 hover:bg-white"
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-4">
-                        <div className="min-w-0">
-                          <p className="font-semibold text-astra-navy">{submission.exam?.title || "Exam"}</p>
-                          {resumable && currentSectionLabel ? (
-                            <p className="mt-1 text-sm font-medium text-astra-slate">Current section: {currentSectionLabel}</p>
-                          ) : partLabel ? (
-                            <p className="mt-1 text-sm font-medium text-astra-slate">{partLabel}</p>
-                          ) : null}
-                          <p className="mt-1 text-sm text-slate-500">
-                            {submission.exam?.course ? `${submission.exam.course} · ` : ""}
-                            {formatFriendlyDuration(submission.time_spent_seconds)}
-                            {!resumable ? ` · ${submissionScoreLabel(submission)}` : ""}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <StatusBadge status={statusKey}>{submissionStatusLabel(statusKey)}</StatusBadge>
-                          <span className="rounded-full bg-astra-navy px-4 py-2 text-sm font-semibold text-white shadow-[0_14px_28px_-22px_rgba(6,18,37,0.86)]">
-                            {resumable ? "Resume" : "Review Results"}
-                          </span>
-                        </div>
+                    <article className={styles.testRow} key={submission.id}>
+                      <span className={styles.iconBox} aria-hidden="true">
+                        {resumable ? <FileClock /> : <FileCheck2 />}
+                      </span>
+                      <div className={styles.rowCopy}>
+                        <span className={styles.status} data-tone={resumable ? "active" : "complete"}>
+                          {submissionStatusLabel(submission.status)}
+                        </span>
+                        <h3>{submission.exam?.title || "Practice Test"}</h3>
+                        <p>
+                          {resumable && currentSection ? `${currentSection} · ` : ""}
+                          {formatFriendlyDuration(submission.time_spent_seconds)}
+                          {!resumable ? ` · ${submissionScoreLabel(submission)}` : ""}
+                        </p>
                       </div>
-                    </Link>
+                      <Link
+                        className={`${styles.rowAction} ${resumable ? styles.rowActionPrimary : ""}`}
+                        href={resumable ? `/exam/${submission.exam_id}` : `/results/${submission.id}`}
+                      >
+                        {resumable ? "Resume Testing" : "Review Results"}
+                        <ArrowRight aria-hidden="true" />
+                      </Link>
+                    </article>
                   );
                 })}
-                {data.submissions.length === 0 ? (
-                  <EmptyState
-                    title="No attempts yet"
-                    description="Start an available exam to create your first saved attempt."
-                    action={
-                      <Button asChild>
-                        <Link href="/available-exams">Browse exams</Link>
-                      </Button>
-                    }
-                  />
-                ) : null}
               </div>
-            </DashboardPanel>
-          </section>
-
-          <aside className="flex flex-col gap-6">
-            <DashboardPanel title="Recommended guides" description="Fast review before your next section.">
-              <div className="flex flex-col gap-3">
-                {data.guides.map((guide) => (
-                  <Link key={guide.id} href={`/review/${guide.slug}`} className="rounded-[1.5rem] border border-white/70 bg-white/78 p-4 shadow-inner transition hover:border-sky-200/90 hover:bg-white">
-                    <p className="font-semibold text-astra-navy">{guide.title}</p>
-                    <p className="mt-1 text-sm text-slate-500">{guide.estimated_reading_time_minutes} min · {guide.topic}</p>
-                  </Link>
-                ))}
-                {data.guides.length === 0 ? (
-                  <EmptyState title="No guides yet" description="Published review guides will appear here." icon={BookOpen} />
-                ) : null}
-              </div>
-            </DashboardPanel>
-
-            <DashboardPanel title="Study posture" description="Keep the current attempt focused.">
-              <div className="rounded-[1.5rem] border border-white/10 bg-[rgba(6,18,37,0.92)] p-5 text-white shadow-[0_22px_70px_-48px_rgba(6,18,37,0.82)] backdrop-blur-2xl">
-                <p className="text-xs font-black uppercase tracking-[0.18em] text-astra-gold">Exam rule</p>
-                <p className="mt-3 text-sm leading-6 text-slate-200">
-                  Work through the active section, save when needed, and return to results only after submitting.
+            ) : (
+              <div className={styles.empty}>
+                <ClipboardList aria-hidden="true" />
+                <h3>{showingPast ? "You Have No Past Tests" : "You Have No Active Tests"}</h3>
+                <p>
+                  {showingPast
+                    ? "Completed and submitted practice tests will appear here."
+                    : "Choose a full-length practice test below when you are ready to begin."}
                 </p>
               </div>
-            </DashboardPanel>
-          </aside>
-        </div>
-      </AcademicPageShell>
+            )}
+          </section>
+
+          <section className={styles.section} data-ud-check="practice-and-prepare">
+            <div className={styles.sectionHeader}>
+              <div>
+                <h2>Practice and Prepare</h2>
+                <p>Use the testing application or review focused course material.</p>
+              </div>
+            </div>
+            <div className={styles.list}>
+              <article className={styles.practiceRow}>
+                <span className={styles.iconBox} aria-hidden="true"><FolderOpen /></span>
+                <div className={styles.rowCopy}>
+                  <h3>Full-Length Practice</h3>
+                  <p>{data.examDetails.length} published AP test{data.examDetails.length === 1 ? "" : "s"} with timed sections and saved progress.</p>
+                </div>
+                <Link className={`${styles.rowAction} ${styles.rowActionPrimary}`} href="/available-exams">
+                  View Tests <ArrowRight aria-hidden="true" />
+                </Link>
+              </article>
+              <article className={styles.practiceRow}>
+                <span className={styles.iconBox} aria-hidden="true"><BookOpenCheck /></span>
+                <div className={styles.rowCopy}>
+                  <h3>Review Guides</h3>
+                  <p>Prepare by topic before beginning a timed test.</p>
+                </div>
+                <Link className={styles.rowAction} href="/review">
+                  Open Guides <ArrowRight aria-hidden="true" />
+                </Link>
+              </article>
+            </div>
+          </section>
+
+          {data.guides.length > 0 ? (
+            <section className={styles.section} data-ud-check="recommended-review">
+              <div className={styles.sectionHeader}>
+                <div>
+                  <h2>Recommended Review</h2>
+                  <p>Recently published guides from the Astra library.</p>
+                </div>
+              </div>
+              <div className={styles.list}>
+                {data.guides.map((guide) => (
+                  <article className={styles.guideRow} key={guide.id}>
+                    <div className={styles.rowCopy}>
+                      <h3>{guide.title}</h3>
+                      <p>{guide.topic} · {guide.estimated_reading_time_minutes} min</p>
+                    </div>
+                    <Link className={styles.rowAction} href={`/review/${guide.slug}`}>Read Guide</Link>
+                  </article>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          {profile.role === "admin" ? (
+            <aside className={styles.adminNote}>
+              <p><Shield aria-hidden="true" /> Administrator tools are available outside the student testing flow.</p>
+              <Link className={styles.rowAction} href="/admin">Open Admin</Link>
+            </aside>
+          ) : null}
+        </main>
+        <footer className={styles.footer} data-ud-check="student-app-footer">
+          <span>Astra Exams · Independent AP practice</span>
+          <Link href="/settings">Account and accessibility settings</Link>
+        </footer>
+      </div>
     </>
   );
 }

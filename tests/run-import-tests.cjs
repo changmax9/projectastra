@@ -29,7 +29,12 @@ Module._resolveFilename = function resolveAlias(request, parent, isMain, options
 };
 
 const { parseAdminQuestionImportJson } = require(path.join(buildRoot, "lib", "ap-question-format.js"));
-const { normalizeMathDelimiters } = require(path.join(buildRoot, "lib", "math-markdown.js"));
+const {
+  normalizeMarkdownStructure,
+  normalizeMathDelimiters,
+  normalizeMathMarkdown
+} = require(path.join(buildRoot, "lib", "math-markdown.js"));
+const { normalizeQuestionImportItem } = require(path.join(buildRoot, "lib", "question-import.js"));
 const { analyzePdfUpload } = require(path.join(buildRoot, "lib", "pdf.js"));
 
 function source(relPath) {
@@ -341,6 +346,65 @@ assert.equal(
   "$$\n\\frac{2L_0}{3t_0}\n$$",
   "normalizes AP-style block LaTeX delimiters"
 );
+assert.equal(
+  normalizeMarkdownStructure(
+    "Values are shown. | \\(x\\) | 0 | 4 | |---|---:|---:| | \\(f(x)\\) | 8 | 2 | What follows?"
+  ),
+  "Values are shown.\n\n| \\(x\\) | 0 | 4 |\n|---|---:|---:|\n| \\(f(x)\\) | 8 | 2 |\n\nWhat follows?",
+  "repairs a flattened GFM table without consuming surrounding prose"
+);
+assert.equal(
+  normalizeMarkdownStructure(
+    "Values are shown.\\n\\n| \\(x\\) | 0 | 4 |\\n|---|---:|---:|\\n| \\(f(x)\\) | 8 | 2 |\\n\\n(a) Find a value. (b) Explain it."
+  ),
+  "Values are shown.\n\n| \\(x\\) | 0 | 4 |\n|---|---:|---:|\n| \\(f(x)\\) | 8 | 2 |\n\n(a) Find a value.\n\n(b) Explain it.",
+  "repairs escaped line breaks and separates FRQ parts"
+);
+assert.equal(
+  normalizeMarkdownStructure("Tara\\prime s rate uses \\(\\nabla f\\)."),
+  "Tara's rate uses \\(\\nabla f\\).",
+  "repairs OCR possessives without corrupting valid LaTeX commands"
+);
+assert.equal(
+  normalizeMarkdownStructure("Scoring notes: part (a) earns one point; parts (b) and (c) earn two points."),
+  "Scoring notes: part (a) earns one point; parts (b) and (c) earn two points.",
+  "does not mistake scoring-guide part references for FRQ prompt sections"
+);
+assert.match(
+  normalizeMathMarkdown("| \\(x\\) | 0 |\n| --- | ---: |\n| \\(f(x)\\) | 2 |"),
+  /\| \$x\$ \| 0 \|[\s\S]*\| \$f\(x\)\$ \| 2 \|/,
+  "normalizes table structure and math delimiters together"
+);
+
+const normalizedImport = normalizeQuestionImportItem({
+  id: "table-import",
+  exam_name: "AP Calculus AB",
+  subject: "Math",
+  course: "AP Calculus AB",
+  year: 2024,
+  section: "MCQ",
+  exam_type: "Practice Exam",
+  question_number: 1,
+  unit: "Tables",
+  topic: "Derivatives",
+  difficulty: "medium",
+  type: "mcq",
+  question_text: "Values are shown.\n\n| x | 0 |\n| --- | ---: |\n| f(x) | 2 |",
+  question_images: [],
+  choices: [{ id: "A", text: "\\(2\\)", image_url: null }],
+  correct_answer: "A",
+  explanation: "Tara\\prime s value.",
+  source_pdf: null,
+  tags: [],
+  status: "draft",
+  points: 1,
+  time_estimate_seconds: 90
+});
+assert.match(normalizedImport.question_text, /\| --- \| ---: \|/, "question import preserves table line breaks");
+assert.equal(normalizedImport.explanation, "Tara's value.", "question import normalizes structured explanation text");
+
+const mathMarkdownSource = source("components/MathMarkdown.tsx");
+assert.match(mathMarkdownSource, /normalizeMathMarkdown\(content\)/, "all MathMarkdown surfaces use structural and math normalization");
 
 const questionImageAsset = source("components/exam/QuestionImageAsset.tsx");
 assert.match(questionImageAsset, /h-auto max-w-full object-contain/, "QuestionImageAsset preserves image aspect ratio");
@@ -367,8 +431,22 @@ assert.match(appHeader, /href="\/login"/, "logged-out header links to login");
 assert.match(appHeader, /signOutAction/, "logged-in header exposes sign out");
 
 const homePage = source("app/page.tsx");
-assert.match(homePage, /getCurrentProfile/, "home page reads auth state for CTA");
-assert.match(homePage, /profile \? "\/dashboard" : "\/register"/, "logged-in Start practicing goes to dashboard");
+assert.match(homePage, /getCurrentProfile/, "app entry reads auth state");
+assert.match(homePage, /redirect\(profile \? "\/dashboard" : "\/login"\)/, "app entry routes students to the console or sign-in");
+
+const bluebookDashboard = source("app/dashboard/page.tsx");
+assert.match(bluebookDashboard, /Your Tests/, "student console separates the user's tests");
+assert.match(bluebookDashboard, /Practice and Prepare/, "student console exposes the Bluebook practice group");
+assert.match(bluebookDashboard, /\/exam\/\$\{submission\.exam_id\}/, "active tests return through setup before resuming");
+
+const bluebookDeviceCheck = source("components/bluebook/BluebookDeviceCheck.tsx");
+assert.match(bluebookDeviceCheck, /Test Your Device/, "sign-in exposes a device check");
+assert.match(bluebookDeviceCheck, /does not certify an operating system/, "device check does not make false native-readiness claims");
+
+const bluebookExamSetup = source("components/bluebook/BluebookExamSetup.tsx");
+assert.match(bluebookExamSetup, /Before You Start/, "exam launch includes setup checks");
+assert.match(bluebookExamSetup, /checks\.every\(Boolean\)/, "all setup checks are required before launch");
+assert.match(bluebookExamSetup, /launchBluebookPracticeAction/, "setup launches through the Bluebook practice action");
 
 const takeExamClient = source("components/exam/TakeExamClient.tsx");
 assert.doesNotMatch(takeExamClient, /window\.confirm|window\.alert/, "exam flow does not use native browser dialogs");

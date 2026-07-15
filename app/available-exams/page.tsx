@@ -1,9 +1,10 @@
-import { AppHeader } from "@/components/layout/AppHeader";
-import { AcademicPageShell } from "@/components/layout/AcademicPageShell";
+import Link from "next/link";
+import { ChevronLeft } from "lucide-react";
+import { BluebookAppHeader } from "@/components/bluebook/BluebookAppHeader";
 import { AvailableExamsBrowser } from "@/components/exam/AvailableExamsBrowser";
-import { PageHeader } from "@/components/ui-custom/PageHeader";
 import { requireProfile } from "@/lib/auth";
 import { getStudentDashboard } from "@/lib/data";
+import styles from "./AvailableExamsPage.module.css";
 
 export const dynamic = "force-dynamic";
 
@@ -26,15 +27,13 @@ export default async function AvailableExamsPage({
 
   return (
     <>
-      <AppHeader />
-      <AcademicPageShell className="flex flex-col gap-8">
-        <PageHeader
-          eyebrow="Exam catalog"
-          title="Available exams"
-          description="Browse published AP practice exams by subject, course, section, and topic. Each exam starts as one attempt and advances through its internal sections."
-        />
-        <AvailableExamsBrowser exams={data.examDetails} submissions={data.submissions} searchParams={searchParams} />
-      </AcademicPageShell>
+      <BluebookAppHeader label="Full-Length Practice" />
+      <div className={styles.page}>
+        <main className={styles.main}>
+          <Link className={styles.back} href="/dashboard"><ChevronLeft aria-hidden="true" /> Student Home</Link>
+          <AvailableExamsBrowser exams={data.examDetails} submissions={data.submissions} searchParams={searchParams} />
+        </main>
+      </div>
     </>
   );
 }
