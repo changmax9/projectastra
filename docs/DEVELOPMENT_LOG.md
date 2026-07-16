@@ -1434,3 +1434,22 @@ npx tsc --noEmit
   - `python -m py_compile scripts/pdf-ocr-worker.py scripts/pdf-text-worker.py` passed.
   - `git diff --check` passed with only CRLF normalization warnings.
   - `node node_modules/next/dist/bin/next build` passed.
+
+### 2026-06-18 Hybrid visual evidence pass
+
+- Added a worker-only `PDF_VISUAL_AI_MODE=off|audit|assist` stage after page OCR and before durable evidence upload/completion. The default is `off`; `audit` stores provider output as review-only page audit blocks and candidate draft assets; `assist` can re-run finalization with provider visual regions so normal crop rendering can propose bounded evidence.
+- Added a provider-neutral adapter layer in `lib/pdf-visual-ai.ts` with a Mistral OCR adapter and a deterministic fixture adapter for local/evaluation tests. The Mistral adapter sends rendered page images, not source PDFs, and records raw provider markdown/output alongside normalized visual blocks.
+- Added the `visual-enhancement` worker phase. Vercel routes still upload, enqueue, and poll only.
+- Extended the PDF draft review card with an `AI visual evidence` panel that shows provider markdown/regions next to source pages and crop candidates. Provider output is explicitly review-only and is not moved into saved `question_images` unless an admin manually keeps a crop.
+- Added `scripts/evaluate-visual-ai-ocr.ts` and `npm run eval:visual-ai` for the known hard Physics pages `150,170,205,255,570,610`, with fixture fallback when provider credentials are absent.
+- Hardened production behavior for the visual-AI stage: worker startup and `npm run check:ocr:remote` now preflight visual-AI config, Mistral page calls use bounded timeouts and retries, provider outages fail open by default, page/provider images are size-limited, and optional provider image extraction writes local review-only evidence files that the existing R2 evidence uploader can move.
+- Added `tests/fixtures/pdf-visual-ai-golden.json` and upgraded `npm run eval:visual-ai` into a golden-set report with global and per-page pass/fail checks, visual evidence recall, bad-crop placeholder metrics, draft-overgeneration, cost, and latency. The current fixture passes stable hard-page invariants while tracking page 610 FRQ recovery as a future target.
+- Added reviewer feedback fields to candidate visual evidence controls so kept crops can carry labels such as useful crop, wrong region, missing graph, and bad segmentation.
+- Added `npm run repair:supabase:pdf-import:sql` to print targeted idempotent SQL for the Supabase Dashboard update path without mutating the database from this shell.
+
+### 2026-06-19 Visual feedback loop pass
+
+- Supabase migration 009 was applied through the dashboard and `npm run check:supabase:pdf-import` now passes against project `zivxtmxljqidiruogjpq`.
+- Persisted reviewer feedback for candidate PDF visual evidence on existing draft-asset metadata (`bbox.reviewer_feedback`, `bbox.reviewer_notes`, reviewer id, timestamp), with no new migration and no auto-publish path.
+- Added `adminSavePdfDraftAssetFeedbackAction` and a separate `Save feedback` control per candidate asset so admins can label useful crops, wrong regions, missing graphs, and bad segmentation even when they do not keep a crop.
+- Added `npm run report:visual-feedback` to summarize persisted labels from Supabase for future OCR routing and provider-prompt tuning.

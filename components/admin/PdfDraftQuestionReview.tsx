@@ -4,12 +4,13 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useFormState, useFormStatus } from "react-dom";
 import {
+  adminSavePdfDraftAssetFeedbackAction,
   adminRejectPdfDraftQuestionAction,
   adminSavePdfDraftQuestionAction,
   type ActionState
 } from "@/app/actions";
 import { MathMarkdown } from "@/components/MathMarkdown";
-import type { PdfImportDraftAsset, PdfImportDraftQuestion, PdfImportPage } from "@/lib/types";
+import type { PdfImportDraftAsset, PdfImportDraftQuestion, PdfImportPage, QuestionChoice } from "@/lib/types";
 
 function SaveDraftButton({ disabled }: { disabled?: boolean }) {
   const { pending } = useFormStatus();
@@ -55,24 +56,94 @@ function explanationDefault(draft: PdfImportDraftQuestion) {
     .join("\n\n");
 }
 
+type CandidateSelectionTarget = "question" | "choice";
+
 type CandidateSelectionState = Record<string, {
   enabled: boolean;
+  target: CandidateSelectionTarget;
+  choiceId: string;
   croppedUrl: string;
   caption: string;
   alt: string;
   bbox: string;
+  reviewerFeedback: string;
+  reviewerNotes: string;
 }>;
 
+function assetMetadata(asset: PdfImportDraftAsset) {
+  return asset.bbox && typeof asset.bbox === "object" ? asset.bbox : null;
+}
+
+function choiceIdFromAsset(asset: PdfImportDraftAsset) {
+  const bbox = assetMetadata(asset);
+  const choiceId = bbox && typeof bbox.choice_id === "string" ? bbox.choice_id.toUpperCase() : "";
+  return /^[A-E]$/.test(choiceId) ? choiceId : "";
+}
+
 function initialCandidateSelection(asset: PdfImportDraftAsset) {
-  const bbox = asset.bbox && typeof asset.bbox === "object" ? asset.bbox : null;
+  const bbox = assetMetadata(asset);
   const hasGeneratedCrop = Boolean(asset.image_url && bbox && "bbox" in bbox);
+  const reviewerFeedback = bbox && typeof bbox.reviewer_feedback === "string" ? bbox.reviewer_feedback : "unlabeled";
+  const reviewerNotes = bbox && typeof bbox.reviewer_notes === "string" ? bbox.reviewer_notes : "";
+  const choiceId = choiceIdFromAsset(asset);
+  const target: CandidateSelectionTarget = asset.asset_type === "choice_image" && choiceId ? "choice" : "question";
   return {
     enabled: false,
+    target,
+    choiceId,
     croppedUrl: hasGeneratedCrop ? asset.image_url || "" : "",
-    caption: `${asset.asset_type === "unknown" ? "Visual evidence" : asset.asset_type} from PDF page ${asset.page_number}`,
-    alt: `Cropped source evidence from PDF page ${asset.page_number}`,
-    bbox: JSON.stringify(asset.bbox || { page_number: asset.page_number, source_image_url: asset.image_url }, null, 2)
+    caption: target === "choice" && choiceId
+      ? `Choice ${choiceId} visual evidence from PDF page ${asset.page_number}`
+      : `${asset.asset_type === "unknown" ? "Visual evidence" : asset.asset_type} from PDF page ${asset.page_number}`,
+    alt: target === "choice" && choiceId
+      ? `Cropped answer choice ${choiceId} evidence from PDF page ${asset.page_number}`
+      : `Cropped source evidence from PDF page ${asset.page_number}`,
+    bbox: JSON.stringify(asset.bbox || { page_number: asset.page_number, source_image_url: asset.image_url }, null, 2),
+    reviewerFeedback,
+    reviewerNotes
   };
+}
+
+function placeholderChoiceText(choice: QuestionChoice) {
+  const text = choice.text.trim();
+  return !text || text === choice.id || new RegExp(`^(?:Choice|Option)\\s+${choice.id}$`, "i").test(text);
+}
+
+function parseChoicesJson(value: string, fallback: QuestionChoice[]) {
+  try {
+    const parsed = JSON.parse(value) as QuestionChoice[];
+    return Array.isArray(parsed) ? parsed : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function buildChoicesJson(
+  draft: PdfImportDraftQuestion,
+  candidateAssets: PdfImportDraftAsset[],
+  selections: CandidateSelectionState,
+  currentChoicesJson?: string
+) {
+  const choices = (currentChoicesJson ? parseChoicesJson(currentChoicesJson, draft.choices) : draft.choices).map((choice) => ({ ...choice }));
+  for (const asset of candidateAssets) {
+    const selection = selections[asset.id];
+    const croppedUrl = selection?.croppedUrl.trim();
+    if (!selection?.enabled || selection.target !== "choice" || !selection.choiceId || !croppedUrl) continue;
+    let choice = choices.find((item) => item.id.toUpperCase() === selection.choiceId.toUpperCase());
+    if (!choice) {
+      choice = { id: selection.choiceId.toUpperCase(), text: `Option ${selection.choiceId.toUpperCase()}`, image_url: null };
+      choices.push(choice);
+    }
+    choice.image_url = croppedUrl;
+    if (placeholderChoiceText(choice)) choice.text = `Option ${choice.id}`;
+  }
+  const order = ["A", "B", "C", "D", "E"];
+  choices.sort((left, right) => {
+    const leftIndex = order.indexOf(left.id.toUpperCase());
+    const rightIndex = order.indexOf(right.id.toUpperCase());
+    return (leftIndex === -1 ? 99 : leftIndex) - (rightIndex === -1 ? 99 : rightIndex);
+  });
+  return JSON.stringify(choices, null, 2);
 }
 
 function buildQuestionImagesJson(
@@ -83,11 +154,16 @@ function buildQuestionImagesJson(
   const approvedCrops = candidateAssets.flatMap((asset) => {
     const selection = selections[asset.id];
     const croppedUrl = selection?.croppedUrl.trim();
-    if (!selection?.enabled || !croppedUrl) return [];
+    if (!selection?.enabled || selection.target === "choice" || !croppedUrl) return [];
     const bbox = selection.bbox.trim();
+    const feedback = [
+      selection.reviewerFeedback && selection.reviewerFeedback !== "unlabeled" ? `Reviewer feedback: ${selection.reviewerFeedback.replace(/_/g, " ")}` : "",
+      selection.reviewerNotes.trim() ? `Reviewer notes: ${selection.reviewerNotes.trim()}` : ""
+    ].filter(Boolean).join(" ");
     const caption = [
       selection.caption.trim(),
-      bbox ? `Crop/source bbox: ${bbox.replace(/\s+/g, " ")}` : ""
+      bbox ? `Crop/source bbox: ${bbox.replace(/\s+/g, " ")}` : "",
+      feedback
     ].filter(Boolean).join(" ");
     return [{
       id: `pdf-crop-${asset.id}`,
@@ -97,6 +173,22 @@ function buildQuestionImagesJson(
     }];
   });
   return JSON.stringify([...draft.question_images, ...approvedCrops], null, 2);
+}
+
+function snippet(value: unknown, maxLength = 900) {
+  const text = typeof value === "string" ? value : value ? JSON.stringify(value, null, 2) : "";
+  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
+}
+
+function isAiVisualBlock(block: Record<string, unknown>) {
+  const kind = String(block.kind || "");
+  const source = String(block.source || "").toLowerCase();
+  return (
+    block.ai_visual_evidence === true ||
+    kind === "ai_visual_markdown" ||
+    Boolean(block.raw_provider_output) ||
+    /visual-ai|mistral|openai|claude|gemini/.test(source)
+  );
 }
 
 export function PdfDraftQuestionReview({
@@ -115,6 +207,9 @@ export function PdfDraftQuestionReview({
   const [state, action] = useFormState<ActionState, FormData>(adminSavePdfDraftQuestionAction, {});
   const [candidateSelections, setCandidateSelections] = useState<CandidateSelectionState>(() =>
     Object.fromEntries(candidateAssets.map((asset) => [asset.id, initialCandidateSelection(asset)]))
+  );
+  const [choicesJson, setChoicesJson] = useState(() =>
+    buildChoicesJson(draft, candidateAssets, {})
   );
   const [questionImagesJson, setQuestionImagesJson] = useState(() =>
     buildQuestionImagesJson(draft, candidateAssets, {})
@@ -140,6 +235,27 @@ export function PdfDraftQuestionReview({
     })),
     [candidateAssets, candidateSelections]
   );
+  const choiceCandidateSelectionValues = candidateSelectionValues.filter(({ asset }) => asset.asset_type === "choice_image");
+  const promptCandidateSelectionValues = candidateSelectionValues.filter(({ asset }) => asset.asset_type !== "choice_image");
+  const choiceTargetOptions = Array.from(new Set([
+    ...draft.choices.map((choice) => choice.id.toUpperCase()).filter((id) => /^[A-E]$/.test(id)),
+    ...candidateAssets.map(choiceIdFromAsset).filter(Boolean)
+  ])).sort((left, right) => "ABCDE".indexOf(left) - "ABCDE".indexOf(right));
+  const aiVisualEvidence = useMemo(() =>
+    (sourcePages || []).flatMap((page) =>
+      (page.raw_blocks || [])
+        .filter((block) => isAiVisualBlock(block))
+        .map((block, index) => ({
+          key: `${page.id}-${index}`,
+          pageNumber: page.page_number,
+          kind: String(block.kind || "provider-output"),
+          source: String(block.source || "visual provider"),
+          text: snippet(block.text || block.markdown || block.raw_provider_output),
+          bbox: snippet(block.bbox || block.region || null, 500)
+        }))
+    ),
+    [sourcePages]
+  );
 
   function updateCandidateSelection(assetId: string, patch: Partial<CandidateSelectionState[string]>) {
     setCandidateSelections((current) => {
@@ -149,15 +265,20 @@ export function PdfDraftQuestionReview({
         [assetId]: {
           ...(current[assetId] || (asset ? initialCandidateSelection(asset) : {
             enabled: false,
+            target: "question",
+            choiceId: "",
             croppedUrl: "",
             caption: "",
             alt: "",
-            bbox: ""
+            bbox: "",
+            reviewerFeedback: "unlabeled",
+            reviewerNotes: ""
           })),
           ...patch
         }
       };
       setQuestionImagesJson(buildQuestionImagesJson(draft, candidateAssets, next));
+      setChoicesJson((currentChoicesJson) => buildChoicesJson(draft, candidateAssets, next, currentChoicesJson));
       return next;
     });
   }
@@ -222,8 +343,8 @@ export function PdfDraftQuestionReview({
         <span className={`rounded-md border px-3 py-2 ${candidateAssets.length > 0 ? "border-blue-200 bg-blue-50 text-blue-900" : "border-slate-200 bg-slate-50"}`}>
           Visual candidates: {candidateAssets.length}
         </span>
-        <span className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
-          Save status: draft only
+        <span className={`rounded-md border px-3 py-2 ${aiVisualEvidence.length > 0 ? "border-violet-200 bg-violet-50 text-violet-900" : "border-slate-200 bg-slate-50"}`}>
+          AI evidence: {aiVisualEvidence.length}
         </span>
       </div>
 
@@ -262,65 +383,175 @@ export function PdfDraftQuestionReview({
         </div>
       ) : null}
 
+      {aiVisualEvidence.length > 0 ? (
+        <div className="mt-4 rounded-md border border-violet-200 bg-violet-50 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-violet-900">AI visual evidence</p>
+            <span className="text-xs font-medium text-violet-800">Review-only provider output</span>
+          </div>
+          <div className="mt-3 grid gap-3 lg:grid-cols-2">
+            {aiVisualEvidence.map((item) => (
+              <div key={item.key} className="rounded-md border border-violet-100 bg-white p-3 text-xs text-slate-600">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-semibold text-ink">Page {item.pageNumber} · {item.kind}</span>
+                  <span>{item.source}</span>
+                </div>
+                {item.text ? (
+                  <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap rounded-md border border-slate-200 bg-slate-50 p-2 font-mono leading-5">
+                    {item.text}
+                  </pre>
+                ) : (
+                  <p className="mt-2 leading-5">Provider returned a visual region without text.</p>
+                )}
+                {item.bbox ? (
+                  <pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap rounded-md border border-slate-200 bg-white p-2 font-mono leading-5">
+                    {item.bbox}
+                  </pre>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       {candidateAssets.length > 0 ? (
         <div className="mt-4 rounded-md border border-blue-200 bg-blue-50 p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-blue-900">Candidate visual evidence</p>
             <span className="text-xs font-medium text-blue-800">Not saved automatically</span>
           </div>
-          <div className="mt-3 grid gap-3 lg:grid-cols-2">
-            {candidateSelectionValues.map(({ asset, selection }) => (
-              <div key={asset.id} className="rounded-md border border-blue-100 bg-white p-3 text-xs text-slate-600">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="font-semibold text-ink">Page {asset.page_number} · {asset.asset_type}</span>
-                  <span>{asset.status}</span>
-                </div>
-                {asset.image_url ? (
-                  <a href={asset.image_url} target="_blank" className="mt-2 block overflow-hidden rounded border border-slate-200">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={asset.image_url} alt={`Candidate visual evidence from page ${asset.page_number}`} className="h-auto max-h-80 w-full object-contain" />
-                  </a>
-                ) : null}
-                <p className="mt-2 leading-5">{asset.notes}</p>
-                <div className="mt-3 space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3">
-                  <label className="flex items-center gap-2 font-medium text-slate-700">
-                    <input
-                      type="checkbox"
-                      checked={selection.enabled}
-                      onChange={(event) => updateCandidateSelection(asset.id, { enabled: event.target.checked })}
-                      disabled={disabled}
-                    />
-                    Use cropped asset in saved draft
-                  </label>
-                  <label className="block font-medium text-slate-700">
-                    Cropped asset URL
-                    <input
-                      value={selection.croppedUrl}
-                      onChange={(event) => updateCandidateSelection(asset.id, { croppedUrl: event.target.value })}
-                      placeholder="/uploads/media/cropped-diagram.png"
-                      className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1"
-                      disabled={disabled}
-                    />
-                  </label>
-                  <label className="block font-medium text-slate-700">
-                    Caption
-                    <input
-                      value={selection.caption}
-                      onChange={(event) => updateCandidateSelection(asset.id, { caption: event.target.value })}
-                      className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1"
-                      disabled={disabled}
-                    />
-                  </label>
-                  <label className="block font-medium text-slate-700">
-                    Crop/source bbox JSON
-                    <textarea
-                      value={selection.bbox}
-                      onChange={(event) => updateCandidateSelection(asset.id, { bbox: event.target.value })}
-                      rows={3}
-                      className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1 font-mono"
-                      disabled={disabled}
-                    />
-                  </label>
+          <div className="mt-3 space-y-4">
+            {[
+              { key: "choice", title: "Choice-level visual evidence", values: choiceCandidateSelectionValues },
+              { key: "prompt", title: "Prompt-level visual evidence", values: promptCandidateSelectionValues }
+            ].filter((group) => group.values.length > 0).map((group) => (
+              <div key={group.key}>
+                <p className="text-xs font-semibold uppercase tracking-wide text-blue-900">{group.title}</p>
+                <div className="mt-2 grid gap-3 lg:grid-cols-2">
+                  {group.values.map(({ asset, selection }) => {
+                    const bbox = assetMetadata(asset);
+                    const predictedChoice = choiceIdFromAsset(asset);
+                    const confidence = bbox && typeof bbox.association_confidence === "string" ? bbox.association_confidence : "";
+                    const targetValue = selection.target === "choice" && selection.choiceId ? `choice:${selection.choiceId}` : "question";
+                    return (
+                      <div key={asset.id} className="rounded-md border border-blue-100 bg-white p-3 text-xs text-slate-600">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="font-semibold text-ink">Page {asset.page_number} · {asset.asset_type}</span>
+                          <span>{asset.status}</span>
+                        </div>
+                        {asset.asset_type === "choice_image" ? (
+                          <p className="mt-2 rounded-md border border-blue-100 bg-blue-50 px-2 py-1 font-medium text-blue-900">
+                            Predicted choice {predictedChoice || "?"}{confidence ? ` · ${confidence} confidence` : ""}
+                          </p>
+                        ) : null}
+                        {asset.image_url ? (
+                          <a href={asset.image_url} target="_blank" className="mt-2 block overflow-hidden rounded border border-slate-200">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={asset.image_url} alt={`Candidate visual evidence from page ${asset.page_number}`} className="h-auto max-h-80 w-full object-contain" />
+                          </a>
+                        ) : null}
+                        <p className="mt-2 leading-5">{asset.notes}</p>
+                        <div className="mt-3 space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3">
+                          <label className="block font-medium text-slate-700">
+                            Save target
+                            <select
+                              value={targetValue}
+                              onChange={(event) => {
+                                const value = event.target.value;
+                                if (value === "question") updateCandidateSelection(asset.id, { target: "question", choiceId: "" });
+                                else updateCandidateSelection(asset.id, { target: "choice", choiceId: value.replace(/^choice:/, "") });
+                              }}
+                              className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1"
+                              disabled={disabled}
+                            >
+                              <option value="question">Use as question image</option>
+                              {choiceTargetOptions.map((choiceId) => (
+                                <option key={choiceId} value={`choice:${choiceId}`}>{`Use as choice ${choiceId} image`}</option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="flex items-center gap-2 font-medium text-slate-700">
+                            <input
+                              type="checkbox"
+                              checked={selection.enabled}
+                              onChange={(event) => updateCandidateSelection(asset.id, { enabled: event.target.checked })}
+                              disabled={disabled}
+                            />
+                            {selection.target === "choice" && selection.choiceId ? `Use as choice ${selection.choiceId} image` : "Use cropped asset in saved draft"}
+                          </label>
+                          <label className="block font-medium text-slate-700">
+                            Cropped asset URL
+                            <input
+                              value={selection.croppedUrl}
+                              onChange={(event) => updateCandidateSelection(asset.id, { croppedUrl: event.target.value })}
+                              placeholder="/uploads/media/cropped-diagram.png"
+                              className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1"
+                              disabled={disabled}
+                            />
+                          </label>
+                          {selection.target === "question" ? (
+                            <label className="block font-medium text-slate-700">
+                              Caption
+                              <input
+                                value={selection.caption}
+                                onChange={(event) => updateCandidateSelection(asset.id, { caption: event.target.value })}
+                                className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1"
+                                disabled={disabled}
+                              />
+                            </label>
+                          ) : null}
+                          <label className="block font-medium text-slate-700">
+                            Crop/source bbox JSON
+                            <textarea
+                              value={selection.bbox}
+                              onChange={(event) => updateCandidateSelection(asset.id, { bbox: event.target.value })}
+                              rows={3}
+                              className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1 font-mono"
+                              disabled={disabled}
+                            />
+                          </label>
+                          <form action={adminSavePdfDraftAssetFeedbackAction} className="space-y-2 rounded-md border border-blue-100 bg-white p-2">
+                            <input type="hidden" name="asset_id" value={asset.id} />
+                            <input type="hidden" name="job_id" value={draft.job_id} />
+                            <label className="block font-medium text-slate-700">
+                              Reviewer feedback
+                              <select
+                                name="reviewer_feedback"
+                                value={selection.reviewerFeedback}
+                                onChange={(event) => updateCandidateSelection(asset.id, { reviewerFeedback: event.target.value })}
+                                className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1"
+                                disabled={disabled}
+                              >
+                                <option value="unlabeled">Unlabeled</option>
+                                <option value="useful_crop">Useful crop</option>
+                                <option value="wrong_region">Wrong region</option>
+                                <option value="missing_graph">Missing graph</option>
+                                <option value="bad_segmentation">Bad segmentation</option>
+                              </select>
+                            </label>
+                            <label className="block font-medium text-slate-700">
+                              Reviewer notes
+                              <textarea
+                                name="reviewer_notes"
+                                value={selection.reviewerNotes}
+                                onChange={(event) => updateCandidateSelection(asset.id, { reviewerNotes: event.target.value })}
+                                rows={2}
+                                className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1"
+                                disabled={disabled}
+                              />
+                            </label>
+                            <button
+                              type="submit"
+                              disabled={disabled}
+                              className="rounded-md border border-blue-200 px-2 py-1 text-xs font-semibold text-blue-800 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              Save feedback
+                            </button>
+                          </form>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             ))}
@@ -404,7 +635,7 @@ export function PdfDraftQuestionReview({
         <div className="grid gap-3 lg:grid-cols-2">
           <label className="block text-sm font-medium text-slate-700">
             Choices JSON
-            <textarea name="choices_json" rows={7} defaultValue={JSON.stringify(draft.choices, null, 2)} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-xs" />
+            <textarea name="choices_json" rows={7} value={choicesJson} onChange={(event) => setChoicesJson(event.target.value)} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-xs" />
           </label>
           <label className="block text-sm font-medium text-slate-700">
             Question images JSON

@@ -1,0 +1,94 @@
+{
+  "version": 1,
+  "defaultFixtureId": "physics-hard-pages-v1",
+  "fixtures": [
+    {
+      "id": "physics-hard-pages-v1",
+      "description": "Known hard pages from the 718-page Physics packet used to evaluate automation-first, review-gated visual OCR.",
+      "pdfPathHint": "D:/xwechat_files/wxid_bdd83i6ke01g12_764f/msg/file/2026-06/物理2简答题 选择题.pdf",
+      "pages": [150, 170, 205, 255, 570, 610],
+      "expectations": {
+        "statusAfter": "needs_review",
+        "draftCountStable": true,
+        "minDraftCount": 6,
+        "maxDraftCountDelta": 0,
+        "minVisualAiAssetDelta": 6,
+        "minAiBlocksPerPage": 2,
+        "requiresRawOcrAudit": true,
+        "pages": [
+          {
+            "pageNumber": 150,
+            "label": "graph-choice MCQ evidence",
+            "expectedQuestionNumbers": [6, 7],
+            "minDrafts": 2,
+            "minChoiceCount": 5,
+            "minAiBlocks": 2,
+            "minCandidateAssets": 2,
+            "requiresRawOcrAudit": true,
+            "cropUsefulness": "unlabeled",
+            "falsePositiveExpected": false
+          },
+          {
+            "pageNumber": 170,
+            "label": "low-confidence visual OCR page",
+            "minDrafts": 0,
+            "minAiBlocks": 2,
+            "minCandidateAssets": 0,
+            "requiresRawOcrAudit": true,
+            "cropUsefulness": "unlabeled",
+            "falsePositiveExpected": false
+          },
+          {
+            "pageNumber": 205,
+            "label": "diagram/table review page",
+            "expectedQuestionNumbers": [18, 19],
+            "minDrafts": 1,
+            "minChoiceCount": 8,
+            "minAiBlocks": 2,
+            "minCandidateAssets": 1,
+            "requiresRawOcrAudit": true,
+            "cropUsefulness": "unlabeled",
+            "falsePositiveExpected": false
+          },
+          {
+            "pageNumber": 255,
+            "label": "visual-choice review page",
+            "expectedQuestionNumbers": [27, 28],
+            "expectedTypes": ["frq", "mcq"],
+            "minDrafts": 1,
+            "minChoiceCount": 4,
+            "minFrqParts": 1,
+            "minAiBlocks": 2,
+            "minCandidateAssets": 1,
+            "requiresRawOcrAudit": true,
+            "cropUsefulness": "unlabeled",
+            "falsePositiveExpected": false
+          },
+          {
+            "pageNumber": 570,
+            "label": "late-packet visual evidence page",
+            "minDrafts": 0,
+            "minAiBlocks": 2,
+            "minCandidateAssets": 0,
+            "requiresRawOcrAudit": true,
+            "cropUsefulness": "unlabeled",
+            "falsePositiveExpected": false
+          },
+          {
+            "pageNumber": 610,
+            "label": "FRQ prompt with graph/table/diagram evidence",
+            "targetQuestionNumbers": [3],
+            "targetTypes": ["frq"],
+            "targetMinFrqParts": 1,
+            "minDrafts": 0,
+            "minAiBlocks": 2,
+            "minCandidateAssets": 0,
+            "requiresRawOcrAudit": true,
+            "cropUsefulness": "unlabeled",
+            "falsePositiveExpected": false
+          }
+        ]
+      }
+    }
+  ]
+}

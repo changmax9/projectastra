@@ -39,6 +39,7 @@ import {
   submitSubmission,
   submitCurrentSection,
   updatePdfMetadata,
+  updatePdfImportDraftAssetFeedback,
   updatePdfImportDraftStatus,
   updateSubmissionProgress,
   upsertExam,
@@ -841,6 +842,18 @@ export async function adminRejectPdfDraftQuestionAction(formData: FormData) {
   if (!draftId) throw new Error("Missing draft id.");
   await updatePdfImportDraftStatus(draftId, "rejected", null, admin.id);
   if (jobId) revalidatePath(`/admin/pdf-imports/${jobId}`);
+}
+
+export async function adminSavePdfDraftAssetFeedbackAction(formData: FormData) {
+  const admin = await requireAdmin();
+  const assetId = String(formData.get("asset_id") || "");
+  const jobId = String(formData.get("job_id") || "");
+  const feedback = String(formData.get("reviewer_feedback") || "unlabeled");
+  const notes = String(formData.get("reviewer_notes") || "");
+  if (!assetId) throw new Error("Missing draft asset id.");
+  const result = await updatePdfImportDraftAssetFeedback(assetId, { feedback, notes }, admin.id);
+  revalidatePath("/admin/pdfs");
+  if (jobId || result.jobId) revalidatePath(`/admin/pdf-imports/${jobId || result.jobId}`);
 }
 
 export async function adminSaveReviewGuideAction(formData: FormData) {
